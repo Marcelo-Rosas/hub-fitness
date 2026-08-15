@@ -9,7 +9,6 @@ import fs from 'fs';
 import https from 'https';
 import path from 'path';
 import { spawn } from 'child_process';
-import { fileURLToPath } from 'url';
 import { URL } from 'url';
 import {
   DEFAULT_PUCOMEX_ROLE,
@@ -21,8 +20,11 @@ import {
 } from './environments';
 import { fillPathTemplate } from './endpoints';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const WINDOWS_CERT_SCRIPT = path.join(__dirname, 'windowsCertRequest.ps1');
+// process.cwd() — esbuild CJS zera import.meta.url; script fica fora do bundle.
+const WINDOWS_CERT_SCRIPT = path.join(
+  process.cwd(),
+  'src/core/comex/windowsCertRequest.ps1',
+);
 
 /** VECTRA HUB LTDA A1 — CurrentUser\My (não exportável) */
 export const VECTRA_HUB_CERT_THUMBPRINT_DEFAULT = '73AD1B836553434CCA2E753F6866ADC9BE629458';
