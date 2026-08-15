@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" width="1200" height="675" style="background:#090d16; font-family: system-ui, -apple-system, sans-serif;">
+  <!-- Background Grid Effect -->
+  <rect x="0" y="0" width="1200" height="675" fill="#090d16" />
+  <circle cx="600" cy="337" r="400" fill="#0284c7" opacity="0.08" />
+
+  <!-- Login Card Box -->
+  <g transform="translate(375, 110)">
+    <rect x="0" y="0" width="450" height="465" rx="16" fill="#0f172a" stroke="#1e293b" stroke-width="2" />
+
+    <!-- Title -->
+    <text x="40" y="55" fill="#38bdf8" font-size="22" font-weight="800">HUB-SIM v3.5</text>
+    <text x="40" y="80" fill="#cbd5e1" font-size="13">Portal de Acesso Executivo do Board 3PL</text>
+
+    <!-- Email Field -->
+    <text x="40" y="125" fill="#94a3b8" font-size="12" font-weight="600">E-mail Corporativo</text>
+    <rect x="40" y="135" width="370" height="42" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1" />
+    <text x="55" y="161" fill="#f8fafc" font-size="13">cfo@hubfitness.com.br</text>
+
+    <!-- Password Field -->
+    <text x="40" y="205" fill="#94a3b8" font-size="12" font-weight="600">Senha de Acesso</text>
+    <rect x="40" y="215" width="370" height="42" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1" />
+    <text x="55" y="241" fill="#f8fafc" font-size="13">••••••••••••</text>
+
+    <!-- Submit Button -->
+    <rect x="40" y="280" width="370" height="45" rx="8" fill="#0284c7" />
+    <text x="145" y="308" fill="#ffffff" font-size="14" font-weight="800">ENTRAR NO SISTEMA</text>
+
+    <!-- Board Fast Access Shortcut Pills -->
+    <text x="40" y="355" fill="#64748b" font-size="11" font-weight="700">ATALHOS RÁPIDOS DO BOARD (DEMO):</text>
+    
+    <rect x="40" y="370" width="175" height="30" rx="6" fill="#1e293b" stroke="#0284c7" stroke-width="1" />
+    <text x="50" y="389" fill="#38bdf8" font-size="11" font-weight="700">CFO (Acesso Total)</text>
+
+    <rect x="235" y="370" width="175" height="30" rx="6" fill="#1e293b" />
+    <text x="245" y="389" fill="#cbd5e1" font-size="11">Sócio / Investidor</text>
+
+    <rect x="40" y="410" width="175" height="30" rx="6" fill="#1e293b" />
+    <text x="50" y="429" fill="#cbd5e1" font-size="11">Comitê de Risco</text>
+
+    <rect x="235" y="410" width="175" height="30" rx="6" fill="#1e293b" />
+    <text x="245" y="429" fill="#cbd5e1" font-size="11">VP Comercial</text>
+  </g>
+</svg>

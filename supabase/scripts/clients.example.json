@@ -1,0 +1,15 @@
+{
+  "clients": [
+    {
+      "slug": "konnen",
+      "databaseUrl": "postgresql://postgres:postgres@127.0.0.1:54322/postgres",
+      "ssl": false,
+      "note": "Cliente #0 dogfood — calibração, não âncora comercial"
+    },
+    {
+      "slug": "acme-fitness",
+      "databaseUrl": "postgresql://postgres:YOUR_PASSWORD@db.YOUR_REF.supabase.co:5432/postgres",
+      "note": "Exemplo de consumidor real (DB próprio)"
+    }
+  ]
+}

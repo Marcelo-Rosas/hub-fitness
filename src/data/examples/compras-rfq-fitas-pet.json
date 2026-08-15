@@ -1,0 +1,75 @@
+{
+  "domain": "compras",
+  "example": true,
+  "rfq": true,
+  "example_note": "Folha RFQ Fitas PET 16mm. Destino Galpão A Itajaí/SC. Remover example:true só com preço+frete reais.",
+  "rfq_brief": "HUB-FITNESS — Galpão A, Itajaí/Navegantes (SC). Cotação: fita de arquear PET 16mm × 0,8mm (rolo). Destino SC — CIF-SP não vale. Informar R$/rolo, FOB/CIF, frete Itajaí, ICMS, prazo, MOQ.",
+  "destination": {
+    "site": "Galpão A",
+    "city": "Itajaí / Navegantes",
+    "uf": "SC"
+  },
+  "items": [
+    {
+      "category": "Fitas PET",
+      "item_name": "Fita de Arquear PET 16mm × 0,8mm",
+      "sku_spec": "PET 16mm × 0,8mm, rolo ~20kg / ~1000m, verde ou transparente",
+      "unit_of_measure": "rolo",
+      "monthly_volume_hypothesis": {
+        "qty": 1,
+        "historical_data": false,
+        "status": "sem_dados_historicos"
+      },
+      "suppliers": [
+        {
+          "trade_name": "Polifita Embalagens",
+          "city": "Joinville",
+          "uf": "SC",
+          "freight_type_quoted": "FOB",
+          "freight_covers_itajai_sc": true,
+          "lead_time_days_to_itajai": 2,
+          "icms_rate_pct": 12,
+          "unit_price_brl": 0,
+          "price_type": "rfq",
+          "shipping_cost_monthly_brl_to_itajai": 0,
+          "landed_cost_monthly_brl": 0,
+          "notes": "PREENCHER unit_price + frete Galpão A. RFQ SC."
+        },
+        {
+          "trade_name": "Mosca Embalagens",
+          "city": "Curitiba",
+          "uf": "PR",
+          "freight_type_quoted": "FOB",
+          "freight_covers_itajai_sc": false,
+          "lead_time_days_to_itajai": 3,
+          "icms_rate_pct": 12,
+          "unit_price_brl": 0,
+          "price_type": "rfq",
+          "shipping_cost_monthly_brl_to_itajai": 0,
+          "landed_cost_monthly_brl": 0,
+          "notes": "PREENCHER frete PR→Itajaí. ICMS 12%."
+        },
+        {
+          "trade_name": "Cyklop do Brasil",
+          "city": "Itupeva",
+          "uf": "SP",
+          "freight_type_quoted": "FOB",
+          "freight_covers_itajai_sc": false,
+          "lead_time_days_to_itajai": 4,
+          "icms_rate_pct": 12,
+          "unit_price_brl": 0,
+          "price_type": "rfq",
+          "shipping_cost_monthly_brl_to_itajai": 0,
+          "landed_cost_monthly_brl": 0,
+          "notes": "CIF-SP não cobre Itajaí — cotar frete até Galpão A."
+        }
+      ],
+      "recommended_for_hub_sc": {
+        "supplier_trade_name": "",
+        "reason": "Não eleger vencedor antes do RFQ com preço real.",
+        "discarded_sp_cif_trap": true
+      },
+      "accounting_hint": "5.1.01.03"
+    }
+  ]
+}

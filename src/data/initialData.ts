@@ -1,0 +1,888 @@
+import { UserRole, RoleConfig, VasDriver, Scenario, AuditLog, SwotItem, GovernanceCheck, DreGranularItem, MappedVsImplementedCostItem, SupplierCompany, SupplierQuote, DreMonth } from '../types';
+
+export const USER_ROLES: RoleConfig[] = [
+  {
+    id: 'cfo',
+    name: 'CFO / Controller',
+    description: 'Acesso total de edição, auditoria, criação de cenários e simulações completas.',
+    canEdit: true,
+    canInspect: true,
+    pitchModeOnly: false,
+  },
+  {
+    id: 'socio',
+    name: 'Sócio / Investidor',
+    description: 'Edição de premissas de alto nível, inspeção de fórmulas e aprovação de cenários.',
+    canEdit: true,
+    canInspect: true,
+    pitchModeOnly: false,
+  },
+  {
+    id: 'comite',
+    name: 'Comitê de Risco',
+    description: 'Modo de Leitura + Inspeção de Células. Trava de edição ativada 🔒.',
+    canEdit: false,
+    canInspect: true,
+    pitchModeOnly: false,
+  },
+  {
+    id: 'comercial',
+    name: 'Comercial / Vendas',
+    description: 'Modo Pitch Mode exclusivo para apresentações executivas com travas de segurança.',
+    canEdit: false,
+    canInspect: false,
+    pitchModeOnly: true,
+  },
+  {
+    id: 'compras',
+    name: 'Assistente de Compras',
+    description: 'RFQ e fila de compras. Sem edição de DRE/caixa (M2/M4).',
+    canEdit: true,
+    canInspect: false,
+    pitchModeOnly: false,
+  },
+];
+
+import { computeCliaSpineMonthly, computeRentMonthly, computeCondominiumMonthly, computeWmsProprioImpact, SC_V36_WMS_PROPRIO } from '../core/engine';
+import { defaultParams } from '../core/params';
+
+const CLIA_SPINE_M12 = computeCliaSpineMonthly(12, defaultParams);
+const CLIA_SPINE_M24 = computeCliaSpineMonthly(24, defaultParams);
+const CLIA_TOWER_Y1 = 1_350;
+const CLIA_STOR_Y1 = 1_597;
+const CLIA_DTA_Y1 = 600;
+const CLIA_HAND_Y1 = Math.max(0, CLIA_SPINE_M12 - CLIA_TOWER_Y1 - CLIA_STOR_Y1 - CLIA_DTA_Y1);
+const CLIA_TOWER_Y2 = 1_350;
+const CLIA_STOR_Y2 = 3_195;
+const CLIA_DTA_Y2 = 1_200;
+const CLIA_HAND_Y2 = Math.max(0, CLIA_SPINE_M24 - CLIA_TOWER_Y2 - CLIA_STOR_Y2 - CLIA_DTA_Y2);
+const RENT_Y1 = computeRentMonthly(defaultParams, 1);
+const RENT_Y2 = computeRentMonthly(defaultParams, 2);
+const CONDO_Y1 = computeCondominiumMonthly(defaultParams, 1);
+const CONDO_Y2 = computeCondominiumMonthly(defaultParams, 2);
+const V36_WMS = computeWmsProprioImpact(defaultParams);
+
+export const INITIAL_VAS_DRIVERS: VasDriver[] = [
+  {
+    id: 'v1', category: 'Armazenagem', service: 'Armaz. Fitness Quinzenal',
+    tier: 'Core', price: 22.50, unit: 'R$/quinzenal/palete',
+    quantityM1_6: 600, quantityM7_12: 2226, quantityM13_24: 2612,
+    mixPercent: 48.0, revenue: 0 // Recalculado dinamicamente
+  },
+  {
+    id: 'v2', category: 'Movimentação', service: 'Handling In/Out Padrão',
+    tier: 'Core', price: 25.00, unit: 'R$/movimentação',
+    quantityM1_6: 800, quantityM7_12: 2080, quantityM13_24: 2440,
+    mixPercent: 25.0, revenue: 0
+  },
+  {
+    id: 'v3', category: 'Movimentação', service: 'Descarga Mecanizada (>500kg)',
+    tier: 'Heavy-Duty', price: 35.00, unit: 'R$/palete',
+    quantityM1_6: 200, quantityM7_12: 400, quantityM13_24: 520,
+    mixPercent: 7.0, revenue: 0
+  },
+  {
+    id: 'v4', category: 'Serviços Especiais', service: "Desunitização FCL 40'",
+    tier: 'Container', price: 1400.00, unit: 'R$/contêiner',
+    quantityM1_6: 3, quantityM7_12: 9, quantityM13_24: 12,
+    mixPercent: 6.0, revenue: 0
+  },
+  {
+    id: 'v5', category: 'VAS Técnico', service: 'Kitting / Pré-montagem B2C',
+    tier: 'Premium P5', price: 2500.00, unit: 'R$/setup SKU',
+    quantityM1_6: 5, quantityM7_12: 8, quantityM13_24: 12,
+    mixPercent: 5.0, revenue: 0
+  },
+  {
+    id: 'v6', category: 'VAS Técnico', service: 'Logística Reversa 24h',
+    tier: 'Premium P5', price: 45.00, unit: 'R$/unidade processada',
+    quantityM1_6: 100, quantityM7_12: 300, quantityM13_24: 450,
+    mixPercent: 4.0, revenue: 0
+  },
+  {
+    id: 'v7', category: 'VAS Técnico', service: 'Etiquetagem Unitária',
+    tier: 'Beneficiamento', price: 0.75, unit: 'R$/etiqueta',
+    quantityM1_6: 2000, quantityM7_12: 5000, quantityM13_24: 7000,
+    mixPercent: 2.0, revenue: 0
+  },
+  {
+    id: 'v8', category: 'Seguros', service: 'Ad Valorem (0,10% s/ NF)',
+    tier: 'Taxa', price: 0.10, unit: '% sobre NF',
+    quantityM1_6: 90600, quantityM7_12: 205200, quantityM13_24: 242500,
+    mixPercent: 0.1, revenue: 0
+  },
+];
+
+export const INITIAL_SCENARIOS: Scenario[] = [
+  {
+    id: 'sc-baseline',
+    name: 'Realista v3.5 (Oficial)',
+    isBaseline: true,
+    occupancyRate: 0.75,
+    llM7Plus: 14279,
+    capexTotal: 207300,
+    m24Cash: 765446,
+    fatorR: 28.4,
+    status: 'ok',
+    notes: 'Cenário base validado pela auditoria spine v3.5.',
+  },
+  {
+    id: SC_V36_WMS_PROPRIO,
+    name: 'v3.6 WMS Próprio + Logcomex',
+    isBaseline: false,
+    occupancyRate: 0.75,
+    llM7Plus: V36_WMS.llM7Plus,
+    capexTotal: V36_WMS.capexTotal,
+    m24Cash: V36_WMS.saldoM24CarenciaAluguel,
+    fatorR: 28.4,
+    status: 'ok',
+    notes: 'WMS sweat equity (caixa de software = 0). OPEX tech R$ 3.000/mês (Logcomex 2.500 + cloud 500) a partir de M1, aditivo. DAS inalterado. CAPEX permanece R$ 207.300 — CCTV não cotado. Fator R / PL adicional não alterados.',
+  },
+  {
+    id: 'sc-pessimistic',
+    name: 'Pessimista 35% Ocupação',
+    isBaseline: false,
+    occupancyRate: 0.35,
+    llM7Plus: -63100,
+    capexTotal: 207300,
+    m24Cash: 182300,
+    fatorR: 31.2,
+    mitigationStrategy: 'Sublocar 30% da área útil + renegociar aluguel base com carência.',
+    status: 'critical',
+    notes: 'Risco de deficit operacional a partir do M7 sem mitigação.',
+  },
+  {
+    id: 'sc-optimistic',
+    name: 'Otimista Expansão +20%',
+    isBaseline: false,
+    occupancyRate: 0.90,
+    llM7Plus: 32450,
+    capexTotal: 240000,
+    m24Cash: 1120000,
+    fatorR: 28.1,
+    status: 'ok',
+    notes: 'Antecipa locação de posições no galpão B com margem expandida.',
+  },
+];
+
+export const INITIAL_AUDIT_LOGS: AuditLog[] = [
+  {
+    id: 'log-1',
+    user: 'CFO / Controller',
+    driver: 'Preço Armaz. Heavy-Duty',
+    before: 'R$ 60,00',
+    after: 'R$ 65,00',
+    timestamp: '12/08/2026 14:32:05',
+  },
+  {
+    id: 'log-2',
+    user: 'Sócio',
+    driver: 'Aluguel M7-M24',
+    before: 'R$ 28.000',
+    after: 'R$ 26.500',
+    timestamp: '12/08/2026 15:10:18',
+  },
+  {
+    id: 'log-3',
+    user: 'Auditoria v3.5',
+    driver: 'Ajuste Fator R Prolabore',
+    before: '26.8%',
+    after: '28.4%',
+    timestamp: '12/08/2026 16:45:00',
+  },
+];
+
+export const INITIAL_GOVERNANCE_CHECKS: GovernanceCheck[] = [
+  {
+    id: 'gov-1',
+    label: 'Valor 425k Bloqueado',
+    status: 'passed',
+    detail: 'Deprecado R$ 425k bloqueado estritamente. Atualizado para R$ 207,3k CAPEX v3.5.',
+    isLockedRule: true,
+  },
+  {
+    id: 'gov-2',
+    label: 'Valor 789k Bloqueado',
+    status: 'passed',
+    detail: 'Deprecado R$ 789k bloqueado estritamente. Modelo recalcula DRE acumulado dinâmico.',
+    isLockedRule: true,
+  },
+  {
+    id: 'gov-3',
+    label: 'Alíquota 21,7% Bloqueada',
+    status: 'passed',
+    detail: 'Alíquota antiga 21,7% vetada. Aplicando DAS 6,00% Simples Nacional Anexo III com Fator R >= 28%.',
+    isLockedRule: true,
+  },
+  {
+    id: 'gov-4',
+    label: 'Valor 804k Bloqueado',
+    status: 'passed',
+    detail: 'Bloqueio ativo contra valor legado 804k. Saldo final M24 auditado em R$ 765.446.',
+    isLockedRule: true,
+  },
+  {
+    id: 'gov-5',
+    label: 'Gatilho Fator R 28% - 28.7%',
+    status: 'passed',
+    detail: 'Monitoramento contínuo da folha/prolabore sobre RBT12 para manter Simples Nacional Anexo III.',
+    isLockedRule: false,
+  },
+  {
+    id: 'gov-6',
+    label: 'Teto Simples Nacional R$ 4,8M',
+    status: 'passed',
+    detail: 'Alerta ativado para Spin-off no M54 quando RBT12 ultrapassar R$ 4,80M.',
+    isLockedRule: false,
+  },
+];
+
+export const INITIAL_SWOT: SwotItem[] = [
+  {
+    type: 'strength',
+    title: 'Expertise 3PL Fitness Especializado',
+    description: 'Capacidade técnica de handling e armazenagem heavy-duty para equipamentos pesados de academia.',
+    impact: 'Redução de 48% no TCO do cliente SANCO comparado com operação própria.',
+  },
+  {
+    type: 'strength',
+    title: 'Estrutura Tributária Optimizada (Simples Anexo III)',
+    description: 'Aproveitamento do Fator R mantido em 28,4% para alíquota efetiva de DAS em apenas 6,0%.',
+    impact: 'Economia fiscal direta superior a R$ 340.000 nos 24 primeiros meses.',
+  },
+  {
+    type: 'weakness',
+    title: 'Concentração de Ocupação nos Primeiros 6 Meses',
+    description: 'Dependência da rampa de captação de posições no Galpão A até atingir 75% no M7.',
+    impact: 'Exige capital de giro preservado acima do piso prudencial de R$ 150k.',
+  },
+  {
+    type: 'weakness',
+    title: 'Sensibilidade de Margem em Serviços P1 (Estocagem pura)',
+    description: 'Margem bruta de P1 é inferior aos serviços de alto valor agregado P4 e P5 (Kitting e Ad Valorem).',
+    impact: 'Exige manutenção da trava de mix de P5 >= 25%.',
+  },
+  {
+    type: 'opportunity',
+    title: 'Serviços 4PL Upside & Cross-docking (+R$ 101,5k)',
+    description: 'Oferta complementar de gestão de transporte, pré-montagem B2C e kitting customizado.',
+    impact: 'Gera ROI de 15,4x sobre o investimento em software e inteligência operacional.',
+  },
+  {
+    type: 'opportunity',
+    title: 'Spin-off Estratégico no Ano 5 (RBT12 > 4,8M)',
+    description: 'Criação de nova entidade jurídica para segregação de serviços logísticos e faturamento.',
+    impact: 'Preserva enquadramento tributário com ganho de NPV estimado em R$ +0,9M a +1,5M.',
+  },
+  {
+    type: 'threat',
+    title: 'Oscilação do Custo de Ocupação & Condomínio Logístico',
+    description: 'Reajustes pelo IGPM/IPCA nos contratos de locação industrial.',
+    impact: 'Plano prevê cláusula de carência no M7 e opção de sublocação parcial de 30% em cenário pessimista.',
+  },
+  {
+    type: 'threat',
+    title: 'Alteração na Legislação do Simples Nacional (Fator R)',
+    description: 'Mudanças nas alíquotas do Anexo III ou regras de proporcionalidade de prolabore.',
+    impact: 'Monitoramento preventivo em tempo real via módulo M5 com alertas dinâmicos.',
+  },
+];
+
+export const INITIAL_GRANULAR_DRE_ITEMS: DreGranularItem[] = [
+  // === RECEITAS (Base M7: R$ 205.200) ===
+  {
+    id: 'rec-armazenagem',
+    section: 'receita', type: 'servico', category: 'Armazenagem',
+    name: 'Armazenagem Fitness (Quinzenal)',
+    monthlyAmountY1: 99000, monthlyAmountY2: 116250,
+    active: true, accountCode: '4.1.01.01', costCenterId: 'CC 002',
+    notes: 'Base: 2.226 pos × R$ 44,48/pos/mês (equivalente quinzenal R$ 22,50)',
+    composition: [
+      { id: 'rec-arm-p1', name: 'P1 Estocador puro', formula: '20% mix × piso quinzenal', monthlyAmountY1: 19800, monthlyAmountY2: 23250 },
+      { id: 'rec-arm-p2', name: 'P2 Franquias fitness', formula: '25% mix', monthlyAmountY1: 24750, monthlyAmountY2: 29063 },
+      { id: 'rec-arm-p4', name: 'P4 B2B academias / redes', formula: '35% mix âncora', monthlyAmountY1: 34650, monthlyAmountY2: 40687 },
+      { id: 'rec-arm-p5', name: 'P5 Premium kitting (ocupação)', formula: '20% mix', monthlyAmountY1: 19800, monthlyAmountY2: 23250 },
+    ],
+  },
+  {
+    id: 'rec-handling',
+    section: 'receita', type: 'servico', category: 'Movimentação',
+    name: 'Handling Inbound/Outbound + Descarga Mecânica',
+    monthlyAmountY1: 52000, monthlyAmountY2: 61000,
+    active: true, accountCode: '4.1.01.02', costCenterId: 'CC 002',
+    notes: 'Inclui descarga mecanizada R$ 35/palete e manual R$ 18/vol',
+    composition: [
+      { id: 'rec-h-in', name: 'Handling inbound', formula: 'R$ 25/vol', monthlyAmountY1: 18000, monthlyAmountY2: 21000 },
+      { id: 'rec-h-out', name: 'Handling outbound', formula: 'R$ 25/vol', monthlyAmountY1: 18000, monthlyAmountY2: 21000 },
+      { id: 'rec-h-mec', name: 'Descarga mecanizada >500kg', formula: 'R$ 35/palete', monthlyAmountY1: 16000, monthlyAmountY2: 19000 },
+    ],
+  },
+  {
+    id: 'rec-desova',
+    section: 'receita', type: 'servico', category: 'Contêineres',
+    name: "Desunitização FCL 40' Heavy",
+    monthlyAmountY1: 12600, monthlyAmountY2: 16800,
+    active: true, accountCode: '4.1.01.03', costCenterId: 'CC 002',
+    notes: '~9 containers/mês × R$ 1.400 (Benchmark SANCO)',
+    composition: [
+      { id: 'rec-des-fcl', name: 'Desova FCL 40\'', formula: '9 CNTR × R$ 1.400', monthlyAmountY1: 12600, monthlyAmountY2: 14000 },
+      { id: 'rec-des-cross', name: 'Cross-dock / posicionamento extra', formula: 'Y2 +3 CNTR', monthlyAmountY1: 0, monthlyAmountY2: 2800 },
+    ],
+  },
+  {
+    id: 'rec-vas-kitting',
+    section: 'receita', type: 'servico', category: 'VAS Técnico',
+    name: 'Kitting / Pré-montagem / Reversa 24h / Etiquetagem',
+    monthlyAmountY1: 26600, monthlyAmountY2: 33450,
+    active: true, accountCode: '4.1.02.01', costCenterId: 'CC 002',
+    notes: 'VAS técnico P5 + Reversa 24h (diferencial fitness)',
+    composition: [
+      { id: 'rec-vas-kit', name: 'Kitting / pré-montagem B2C', formula: 'setup SKU', monthlyAmountY1: 12000, monthlyAmountY2: 15000 },
+      { id: 'rec-vas-rev', name: 'Logística reversa 24h', formula: 'R$ 45/un', monthlyAmountY1: 8000, monthlyAmountY2: 10000 },
+      { id: 'rec-vas-eti', name: 'Etiquetagem unitária EAN', formula: 'R$ 0,75/un', monthlyAmountY1: 6600, monthlyAmountY2: 8450 },
+    ],
+  },
+  {
+    id: 'rec-advalorem',
+    section: 'receita', type: 'servico', category: 'Seguros',
+    name: 'Ad Valorem Operacional (0,10% s/ NF)',
+    monthlyAmountY1: 205, monthlyAmountY2: 243,
+    active: true, accountCode: '4.1.01.05', costCenterId: 'CC 002',
+    notes: '⚠️ CORRIGIDO: 0,10% sobre NF mensal (~R$ 205k). NÃO é R$ 950k.',
+    composition: [
+      { id: 'rec-adv-nf', name: '0,10% sobre NF de serviços', formula: 'params.pricing.adValoremPct × NF', monthlyAmountY1: 205, monthlyAmountY2: 243 },
+    ],
+  },
+  {
+    id: 'rec-4pl-ct',
+    section: 'receita', type: 'servico', category: '4PL Upside',
+    name: 'Torre de Controle CLIA (Não-Base)',
+    monthlyAmountY1: CLIA_SPINE_M12,
+    monthlyAmountY2: CLIA_SPINE_M24,
+    active: true, engineLocked: true, accountCode: '4.1.04.01', costCenterId: 'CC 001',
+    notes: `Derivado do spine CLIA (engine): M12≈R$ ${CLIA_SPINE_M12.toLocaleString('pt-BR')}, M24≈R$ ${CLIA_SPINE_M24.toLocaleString('pt-BR')}. Upside entreposto Forte — fora do Fator R.`,
+    composition: [
+      { id: 'rec-clia-tower', name: 'Tower fee (3 clientes)', formula: 'R$ 450 × clientes', monthlyAmountY1: CLIA_TOWER_Y1, monthlyAmountY2: CLIA_TOWER_Y2 },
+      { id: 'rec-clia-stor', name: 'Markup armazenagem CIF', formula: '0,08% CIF × FEU', monthlyAmountY1: CLIA_STOR_Y1, monthlyAmountY2: CLIA_STOR_Y2 },
+      { id: 'rec-clia-dta', name: 'Fee DTA por processo', formula: 'R$ 100 × FEU', monthlyAmountY1: CLIA_DTA_Y1, monthlyAmountY2: CLIA_DTA_Y2 },
+      { id: 'rec-clia-hand', name: 'Markup handling / desova', formula: '26,6% × base Forte', monthlyAmountY1: CLIA_HAND_Y1, monthlyAmountY2: CLIA_HAND_Y2 },
+    ],
+  },
+
+  // === CUSTOS VARIÁVEIS / COGS ===
+  {
+    id: 'cst-cv-posicao',
+    section: 'custo', type: 'variavel', category: 'CV por Posição',
+    name: 'Custo Variável por Posição Ocupada',
+    monthlyAmountY1: 35505, monthlyAmountY2: 45600,
+    active: true, accountCode: '5.1.04.01', costCenterId: 'CC 002',
+    notes: 'R$ 16,45/posição ocupada. Y2 sobe proporcional à ocupação 88%.',
+    composition: [
+      { id: 'cst-cv-energia', name: 'Energia trifásica galpão', formula: 'CC 002', monthlyAmountY1: 12000, monthlyAmountY2: 15400 },
+      { id: 'cst-cv-limp', name: 'Limpeza e conservação', formula: 'CC 002', monthlyAmountY1: 4500, monthlyAmountY2: 5800 },
+      { id: 'cst-cv-epi', name: 'EPIs e segurança operacional', formula: 'CC 002', monthlyAmountY1: 3005, monthlyAmountY2: 3900 },
+      { id: 'cst-cv-cons', name: 'Consumo operacional / WMS SaaS', formula: 'R$ 16,45/pos', monthlyAmountY1: 16000, monthlyAmountY2: 20500 },
+    ],
+  },
+  {
+    id: 'cst-mo-terceirizada',
+    section: 'custo', type: 'variavel', category: 'MO Terceirizada',
+    name: 'Mão de Obra Terceirizada (Chapa/Desova)',
+    monthlyAmountY1: 12000, monthlyAmountY2: 12600,
+    active: true, accountCode: '5.1.02.01', costCenterId: 'CC 002',
+    notes: '⚠️ EXCLUÍDO do numerador do Fator R (correção v3.1).',
+    composition: [
+      { id: 'cst-mo-chapa', name: 'Chapa de desova FCL', formula: 'excluído Fator R', monthlyAmountY1: 8000, monthlyAmountY2: 8400 },
+      { id: 'cst-mo-conf', name: 'Conferência avulsa / pico', formula: 'excluído Fator R', monthlyAmountY1: 4000, monthlyAmountY2: 4200 },
+    ],
+  },
+  {
+    id: 'cst-opex-maquinas',
+    section: 'custo', type: 'fixo', category: 'Frota',
+    name: 'OPEX Máquinas (Diesel/Manutenção/Baterias)',
+    monthlyAmountY1: 4400, monthlyAmountY2: 4600,
+    active: true, accountCode: '5.1.05.01', costCenterId: 'CC 003',
+    notes: 'Custo operacional direto das empilhadeiras 2.5t.',
+    composition: [
+      { id: 'cst-maq-energia', name: 'Diesel / recarga baterias', formula: 'CC 003', monthlyAmountY1: 2400, monthlyAmountY2: 2500 },
+      { id: 'cst-maq-manut', name: 'Manutenção preventiva', formula: 'CC 003', monthlyAmountY1: 1400, monthlyAmountY2: 1460 },
+      { id: 'cst-maq-pecas', name: 'Peças e pneus de pátio', formula: 'CC 003', monthlyAmountY1: 600, monthlyAmountY2: 640 },
+    ],
+  },
+  {
+    id: 'cst-insumos',
+    section: 'custo', type: 'variavel', category: 'Insumos',
+    name: 'Insumos Embalagem (Stretch/Fitas/Etiquetas/Cantoneiras)',
+    monthlyAmountY1: 12000, monthlyAmountY2: 16000,
+    active: true, accountCode: '5.1.01.01', costCenterId: 'CC 002',
+    notes: 'Proporcional à movimentação. Sincronizável com Supplier Quotes — composition por conta analítica.',
+    composition: [
+      { id: 'cst-ins-stretch', name: 'Filme stretch', formula: '5.1.01.01', monthlyAmountY1: 5500, monthlyAmountY2: 7200 },
+      { id: 'cst-ins-bolha', name: 'Plástico bolha', formula: '5.1.01.02', monthlyAmountY1: 500, monthlyAmountY2: 800 },
+      { id: 'cst-ins-fitas', name: 'Fitas PET', formula: '5.1.01.03', monthlyAmountY1: 1500, monthlyAmountY2: 2000 },
+      { id: 'cst-ins-cant', name: 'Cantoneiras', formula: '5.1.01.04', monthlyAmountY1: 1000, monthlyAmountY2: 1300 },
+      { id: 'cst-ins-eti', name: 'Etiquetas WMS', formula: '5.1.01.05', monthlyAmountY1: 2500, monthlyAmountY2: 3200 },
+      { id: 'cst-ins-ribbon', name: 'Ribbons', formula: '5.1.01.06', monthlyAmountY1: 500, monthlyAmountY2: 700 },
+      { id: 'cst-ins-lacre', name: 'Fita lacre', formula: '5.1.01.07', monthlyAmountY1: 500, monthlyAmountY2: 800 },
+    ],
+  },
+
+  // === DESPESAS OPEX ===
+  {
+    id: 'cst-pessoal-clt-pl',
+    section: 'despesa', type: 'fixo', category: 'Pessoal',
+    name: 'Pessoal CLT + Pró-labore Regular',
+    monthlyAmountY1: 49500, monthlyAmountY2: 52000,
+    active: true, accountCode: '5.2.01.01', costCenterId: 'CC 001',
+    notes: 'Folha operacional + administrativa + PL regular. COMPÕE Fator R.',
+    composition: [
+      { id: 'desp-sal', name: 'Salários CLT admin / supervisor', formula: '5.2.01.01 · Fator R', monthlyAmountY1: 18500, monthlyAmountY2: 20000 },
+      { id: 'desp-pl-reg', name: 'Pró-labore regular sócios', formula: '5.2.01.02 · Fator R', monthlyAmountY1: 18500, monthlyAmountY2: 18500 },
+      { id: 'desp-enc', name: 'FGTS / INSS patronal', formula: '5.2.01.06–07 · Fator R', monthlyAmountY1: 8000, monthlyAmountY2: 8500 },
+      { id: 'desp-prov', name: 'Férias + 13º (provisão)', formula: '5.2.01.04–05 · Fator R', monthlyAmountY1: 4500, monthlyAmountY2: 5000 },
+    ],
+  },
+  {
+    id: 'cst-pl-adicional',
+    section: 'despesa', type: 'fixo', category: 'Governança Fator R',
+    name: 'Pró-labore Adicional (Fator R Discricionário)',
+    monthlyAmountY1: 7000, monthlyAmountY2: 15000,
+    active: true, accountCode: '5.2.01.03', costCenterId: 'CC 005',
+    notes: '🔒 CRÍTICO: M4-11=R$7k | M12=R$11k | M13+=R$15k. Mantém Anexo III 6%.',
+    composition: [
+      { id: 'desp-pl-m4', name: 'Faixa M4–M11', formula: 'params.fiscal.plAdditional', monthlyAmountY1: 7000, monthlyAmountY2: 0 },
+      { id: 'desp-pl-m13', name: 'Faixa M13–M24', formula: 'params.fiscal.plAdditional', monthlyAmountY1: 0, monthlyAmountY2: 15000 },
+    ],
+  },
+  {
+    id: 'cst-depreciacao',
+    section: 'despesa', type: 'fixo', category: 'Depreciação',
+    name: 'Depreciação CAPEX (Racks + Equipamentos)',
+    monthlyAmountY1: 3704, monthlyAmountY2: 3704,
+    active: true, accountCode: '5.2.05.01', costCenterId: 'CC 002',
+    notes: 'Fixa desde M1. Base R$ 207.300 / 56 meses vida útil média.',
+    composition: [
+      { id: 'desp-dep-racks', name: 'Racks porta-paletes KONNEN', formula: '1.2.02 / 56m', monthlyAmountY1: 2200, monthlyAmountY2: 2200 },
+      { id: 'desp-dep-eqp', name: 'Empilhadeiras / equipamentos', formula: '1.2.02 / 56m', monthlyAmountY1: 900, monthlyAmountY2: 900 },
+      { id: 'desp-dep-ti', name: 'CCTV / WMS hardware', formula: '1.2.02 / 56m', monthlyAmountY1: 604, monthlyAmountY2: 604 },
+    ],
+  },
+  {
+    id: 'cst-aluguel',
+    section: 'despesa', type: 'fixo', category: 'Ocupação',
+    name: 'Aluguel Galpão A (2.500 m²)',
+    monthlyAmountY1: RENT_Y1, monthlyAmountY2: RENT_Y2,
+    active: true, accountCode: '5.2.02.01', costCenterId: 'CC 002',
+    notes: `2.500 m² × R$ ${defaultParams.rent.pricePerM2}/m² = R$ ${RENT_Y1.toLocaleString('pt-BR')}/mês. M1–M6 = R$ 0 (Carência Aluguel). M13+ aplica IGPM ${defaultParams.rent.igpmPct * 100}%.`,
+    composition: [
+      {
+        id: 'desp-alug-base',
+        name: 'Locação 2.500 m²',
+        formula: `${defaultParams.rent.areaM2} m² × R$ ${defaultParams.rent.pricePerM2}/m²`,
+        monthlyAmountY1: RENT_Y1,
+        monthlyAmountY2: RENT_Y2,
+      },
+    ],
+  },
+  {
+    id: 'cst-condominio',
+    section: 'despesa', type: 'fixo', category: 'Ocupação',
+    name: 'Condomínio Logístico',
+    monthlyAmountY1: CONDO_Y1, monthlyAmountY2: CONDO_Y2,
+    active: true, accountCode: '5.2.02.02', costCenterId: 'CC 002',
+    notes: `R$ ${defaultParams.rent.condominiumPerM2.toFixed(2)}/m² × ${defaultParams.rent.areaM2} m². Independente do aluguel (R$ ${defaultParams.rent.pricePerM2}/m²).`,
+    composition: [
+      {
+        id: 'desp-cond',
+        name: 'Condomínio R$ 2,60/m²',
+        formula: `R$ ${defaultParams.rent.condominiumPerM2.toFixed(2)}/m² × ${defaultParams.rent.areaM2} m²`,
+        monthlyAmountY1: CONDO_Y1,
+        monthlyAmountY2: CONDO_Y2,
+      },
+    ],
+  },
+];
+
+export const OFFICIAL_DRE_24M: DreMonth[] = [
+  { month: 1, label: 'M1', receitaServicos: 136800, das6Percent: 8208, irpj: 328, csll: 287, pisCofinsCppIss: 7592, custosOperacionais: 44734, despesasOperacionais: 66704, lucroLiquido: 17154 },
+  { month: 2, label: 'M2', receitaServicos: 150480, das6Percent: 9029, irpj: 361, csll: 316, pisCofinsCppIss: 8352, custosOperacionais: 48568, despesasOperacionais: 66704, lucroLiquido: 26179 },
+  { month: 3, label: 'M3', receitaServicos: 164160, das6Percent: 9850, irpj: 394, csll: 345, pisCofinsCppIss: 9111, custosOperacionais: 52402, despesasOperacionais: 66704, lucroLiquido: 35204 },
+  { month: 4, label: 'M4', receitaServicos: 177840, das6Percent: 10670, irpj: 427, csll: 373, pisCofinsCppIss: 9870, custosOperacionais: 56236, despesasOperacionais: 73704, lucroLiquido: 37230 },
+  { month: 5, label: 'M5', receitaServicos: 191520, das6Percent: 11491, irpj: 460, csll: 402, pisCofinsCppIss: 10629, custosOperacionais: 60071, despesasOperacionais: 73704, lucroLiquido: 46254 },
+  { month: 6, label: 'M6', receitaServicos: 205200, das6Percent: 12312, irpj: 492, csll: 431, pisCofinsCppIss: 11389, custosOperacionais: 63905, despesasOperacionais: 73704, lucroLiquido: 55279 },
+  { month: 7, label: 'M7', receitaServicos: 205200, das6Percent: 12312, irpj: 492, csll: 431, pisCofinsCppIss: 11389, custosOperacionais: 63905, despesasOperacionais: 133704, lucroLiquido: -4721 },
+  { month: 8, label: 'M8', receitaServicos: 205200, das6Percent: 12312, irpj: 492, csll: 431, pisCofinsCppIss: 11389, custosOperacionais: 63905, despesasOperacionais: 133704, lucroLiquido: -4721 },
+  { month: 9, label: 'M9', receitaServicos: 205200, das6Percent: 12312, irpj: 492, csll: 431, pisCofinsCppIss: 11389, custosOperacionais: 63905, despesasOperacionais: 133704, lucroLiquido: -4721 },
+  { month: 10, label: 'M10', receitaServicos: 205200, das6Percent: 12312, irpj: 492, csll: 431, pisCofinsCppIss: 11389, custosOperacionais: 63905, despesasOperacionais: 133704, lucroLiquido: -4721 },
+  { month: 11, label: 'M11', receitaServicos: 205200, das6Percent: 12312, irpj: 492, csll: 431, pisCofinsCppIss: 11389, custosOperacionais: 63905, despesasOperacionais: 133704, lucroLiquido: -4721 },
+  { month: 12, label: 'M12', receitaServicos: 205200, das6Percent: 12312, irpj: 492, csll: 431, pisCofinsCppIss: 11389, custosOperacionais: 63905, despesasOperacionais: 137704, lucroLiquido: -8721 },
+  { month: 13, label: 'M13', receitaServicos: 212375, das6Percent: 12743, irpj: 510, csll: 446, pisCofinsCppIss: 11787, custosOperacionais: 78600, despesasOperacionais: 88873, lucroLiquido: 32159 },
+  { month: 14, label: 'M14', receitaServicos: 212375, das6Percent: 12743, irpj: 510, csll: 446, pisCofinsCppIss: 11787, custosOperacionais: 78600, despesasOperacionais: 88873, lucroLiquido: 32159 },
+  { month: 15, label: 'M15', receitaServicos: 212375, das6Percent: 12743, irpj: 510, csll: 446, pisCofinsCppIss: 11787, custosOperacionais: 78600, despesasOperacionais: 88873, lucroLiquido: 32159 },
+  { month: 16, label: 'M16', receitaServicos: 212375, das6Percent: 12743, irpj: 510, csll: 446, pisCofinsCppIss: 11787, custosOperacionais: 78600, despesasOperacionais: 88873, lucroLiquido: 32159 },
+  { month: 17, label: 'M17', receitaServicos: 212375, das6Percent: 12743, irpj: 510, csll: 446, pisCofinsCppIss: 11787, custosOperacionais: 78600, despesasOperacionais: 88873, lucroLiquido: 32159 },
+  { month: 18, label: 'M18', receitaServicos: 212375, das6Percent: 12743, irpj: 510, csll: 446, pisCofinsCppIss: 11787, custosOperacionais: 78600, despesasOperacionais: 88873, lucroLiquido: 32159 },
+  { month: 19, label: 'M19', receitaServicos: 212375, das6Percent: 12743, irpj: 510, csll: 446, pisCofinsCppIss: 11787, custosOperacionais: 78600, despesasOperacionais: 88873, lucroLiquido: 32159 },
+  { month: 20, label: 'M20', receitaServicos: 212375, das6Percent: 12743, irpj: 510, csll: 446, pisCofinsCppIss: 11787, custosOperacionais: 78600, despesasOperacionais: 88873, lucroLiquido: 32159 },
+  { month: 21, label: 'M21', receitaServicos: 212375, das6Percent: 12743, irpj: 510, csll: 446, pisCofinsCppIss: 11787, custosOperacionais: 78600, despesasOperacionais: 88873, lucroLiquido: 32159 },
+  { month: 22, label: 'M22', receitaServicos: 212375, das6Percent: 12743, irpj: 510, csll: 446, pisCofinsCppIss: 11787, custosOperacionais: 78600, despesasOperacionais: 88873, lucroLiquido: 32159 },
+  { month: 23, label: 'M23', receitaServicos: 212375, das6Percent: 12743, irpj: 510, csll: 446, pisCofinsCppIss: 11787, custosOperacionais: 78600, despesasOperacionais: 88873, lucroLiquido: 32159 },
+  { month: 24, label: 'M24', receitaServicos: 212375, das6Percent: 12743, irpj: 510, csll: 446, pisCofinsCppIss: 11787, custosOperacionais: 78600, despesasOperacionais: 88873, lucroLiquido: 32159 },
+];
+
+export const INITIAL_MAPPED_VS_IMPLEMENTED_COSTS: MappedVsImplementedCostItem[] = [
+  {
+    id: 'map-1',
+    category: 'Insumos de Embalagem',
+    itemName: 'Filme Stretch 500mm x 25 micras (Paletização Inbound/Outbound)',
+    mappedJsonAmountY1: 6500,
+    implementedDreAmountY1: 6000,
+    unitOfMeasure: 'Rolo 3.5kg / Bobina',
+    status: 'otimizado',
+    gapDescription: 'Mapeado no JSON como verba global de insumos. Necessita cotação de bobinas manuais e automáticas PEBD no eixo SP-PR-SC.',
+    recommendedAction: 'Consolidar lote para o Galpão A (Itajaí/SC) com PR (Scheffer/FOB) ou SC (IW8). Não usar CIF paulista como critério — não cobre o hub.',
+  },
+  {
+    id: 'map-2',
+    category: 'Insumos de Embalagem',
+    itemName: 'Paletes de Madeira PBR HT Tratados (Padrão 1,20m x 1,00m)',
+    mappedJsonAmountY1: 3500,
+    implementedDreAmountY1: 3800,
+    unitOfMeasure: 'Unidade (Compra / Pool)',
+    status: 'completo',
+    gapDescription: 'Demandado em lote inicial de 300 unidades e reposição quinzenal. Exige certificação fitossanitária HT para exportação/desova.',
+    recommendedAction: 'Comparar fornecedor Ecopack (PR) x SB Pallet (SP) x Águia Pallets (SC). Opção de locação pooling (R$ 14/mês).',
+  },
+  {
+    id: 'map-3',
+    category: 'Insumos de Embalagem',
+    itemName: 'Fitas de Arquear PET, Cantoneiras & Fita Lacre Personalizada',
+    mappedJsonAmountY1: 2000,
+    implementedDreAmountY1: 2200,
+    unitOfMeasure: 'Kg / Rolo 19mm',
+    status: 'completo',
+    gapDescription: 'Insumos para amarração e arqueação de equipamentos heavy-duty e kitting B2C.',
+    recommendedAction: 'Padronizar fita PET de poliéster de alta tenacidade de fornecedor direto da fábrica de SC/SP.',
+  },
+  {
+    id: 'map-4',
+    category: 'Equipamentos & Frota',
+    itemName: 'Locação de Empilhadeiras Elétricas 2.5t + Baterias Tracionárias',
+    mappedJsonAmountY1: 4800,
+    implementedDreAmountY1: 4800,
+    unitOfMeasure: 'Mês / Equipamento Full-Service',
+    status: 'completo',
+    gapDescription: '2 unidades de empilhadeiras tracionárias 2.5t para movimentação de pátio e estocagem em altura.',
+    recommendedAction: 'Negociar contrato de 24 meses com Transpotech STILL/Linde (PR/SC) ou Greentech Hyster (SP) com suporte em até 4h.',
+  },
+  {
+    id: 'map-5',
+    category: 'Equipamentos & Frota',
+    itemName: 'Manutenção Preventiva & Troca de Peças de Pátio / Transpaleteiras',
+    mappedJsonAmountY1: 3200,
+    implementedDreAmountY1: 3200,
+    unitOfMeasure: 'Mês / Franquia Hora-Máquina',
+    status: 'parcial',
+    gapDescription: 'Previsto em contrato SLA mas sujeito a custos variáveis de peças por desgaste de rodagem.',
+    recommendedAction: 'Atrelar manutenção preventiva à locadora das empilhadeiras para isenção de peças preventivas.',
+  },
+  {
+    id: 'map-6',
+    category: 'Utilidades Operacionais',
+    itemName: 'Energia Elétrica Trifásica & Carregamento de Baterias Tracionárias',
+    mappedJsonAmountY1: 6500,
+    implementedDreAmountY1: 6500,
+    unitOfMeasure: 'kWh Consumido / Demanda',
+    status: 'pendente_cotacao',
+    gapDescription: 'Energia do galpão A (iluminação LED + estações de recarga rápida de lítio). Mercado Livre x Concessionária.',
+    recommendedAction: 'Migração para o Mercado Livre de Energia (ACL) a partir do M7 para redução de até 22% na tarifa trifásica.',
+  },
+];
+
+export const INITIAL_SUPPLIER_COMPANIES: SupplierCompany[] = [
+  // São Paulo (SP)
+  {
+    id: 'sup-sp-1',
+    name: 'MBB / Polycamp Embalagens Ind.',
+    state: 'SP',
+    city: 'Sumaré / São Paulo',
+    specialty: 'Filme Stretch, Fitas de Arquear PET e Insumos de Unitização',
+    rating: 4.8,
+    deliveryLeadTimeDays: 2,
+    freightType: 'CIF',
+    paymentTerms: '30 / 60 dias no boleto',
+    icmsTaxRate: 18,
+    contactPhone: '(19) 3828-9000',
+    contactEmail: 'comercial@mbbembalagens.com.br',
+  },
+  {
+    id: 'sup-sp-2',
+    name: 'SB Pallet & Merchan Plásticos',
+    state: 'SP',
+    city: 'São Paulo / SP',
+    specialty: 'Paletes PBR Madeira Tratada HT, Paletes de Plástico PEAD e Caixas',
+    rating: 4.7,
+    deliveryLeadTimeDays: 3,
+    freightType: 'CIF',
+    paymentTerms: '28 / 56 dias',
+    icmsTaxRate: 18,
+    contactPhone: '(11) 2955-4000',
+    contactEmail: 'vendas@sbpallet.com.br',
+  },
+  {
+    id: 'sup-sp-3',
+    name: 'Greentech & Pontes Hyster SP',
+    state: 'SP',
+    city: 'Monte Mor / São Paulo',
+    specialty: 'Locação e Venda de Empilhadeiras Elétricas Hyster/Yale & STILL',
+    rating: 4.9,
+    deliveryLeadTimeDays: 5,
+    freightType: 'CIF',
+    paymentTerms: 'Mensal com faturamento D+30',
+    icmsTaxRate: 18,
+    contactPhone: '(19) 3879-1200',
+    contactEmail: 'locacao@greentechlog.com.br',
+  },
+
+  // Paraná (PR)
+  {
+    id: 'sup-pr-1',
+    name: 'Ecopack Madeiras & Pallets',
+    state: 'PR',
+    city: 'Curitiba / Paraná',
+    specialty: 'Paletes PBR Madeira Tratada HT Phytosanitary, Caixas Sob Medida',
+    rating: 4.9,
+    deliveryLeadTimeDays: 2,
+    freightType: 'CIF',
+    paymentTerms: '30 / 60 / 90 dias',
+    icmsTaxRate: 12,
+    contactPhone: '(41) 3382-7700',
+    contactEmail: 'contato@ecopackmadeiras.com.br',
+  },
+  {
+    id: 'sup-pr-2',
+    name: 'Transpotech STILL & Linde PR',
+    state: 'PR',
+    city: 'Curitiba / Paraná',
+    specialty: 'Locação Full-Service de Empilhadeiras STILL/Linde e Manutenção',
+    rating: 4.9,
+    deliveryLeadTimeDays: 3,
+    freightType: 'CIF',
+    paymentTerms: 'Mensal 30 dias',
+    icmsTaxRate: 12,
+    contactPhone: '(41) 3218-8000',
+    contactEmail: 'vendas.pr@transpotech.com.br',
+  },
+  {
+    id: 'sup-pr-3',
+    name: 'Bela Máquina & Scheffer Logística',
+    state: 'PR',
+    city: 'Ponta Grossa / Curitiba - PR',
+    specialty: 'Sistemas de Armazenagem, Filme Stretch Industrial e Automação',
+    rating: 4.6,
+    deliveryLeadTimeDays: 4,
+    freightType: 'FOB',
+    paymentTerms: '30 / 60 dias',
+    icmsTaxRate: 12,
+    contactPhone: '(42) 3220-4500',
+    contactEmail: 'comercial@schefferlogistica.com.br',
+  },
+
+  // Santa Catarina (SC)
+  {
+    id: 'sup-sc-1',
+    name: 'Grupo IW8 Intralogística SC',
+    state: 'SC',
+    city: 'Brusque / Santa Catarina',
+    specialty: 'Paletes de Plástico PEAD Reforçado, Containment & Estruturas Heavy',
+    rating: 4.8,
+    deliveryLeadTimeDays: 3,
+    freightType: 'CIF',
+    paymentTerms: '30 / 60 dias',
+    icmsTaxRate: 12,
+    contactPhone: '(47) 3355-3000',
+    contactEmail: 'compras@iw8.com.br',
+  },
+  {
+    id: 'sup-sc-2',
+    name: 'Águia Pallets & Madeiras SC',
+    state: 'SC',
+    city: 'Joinville / Santa Catarina',
+    specialty: 'Fabricação de Paletes de Madeira PBR, HT Export e Logística Reversa',
+    rating: 4.7,
+    deliveryLeadTimeDays: 2,
+    freightType: 'CIF',
+    paymentTerms: '30 / 60 / 90 dias',
+    icmsTaxRate: 12,
+    contactPhone: '(47) 3433-2100',
+    contactEmail: 'vendas@aguiapallets.com.br',
+  },
+  {
+    id: 'sup-sc-3',
+    name: 'Transpotech Chapecó & SC',
+    state: 'SC',
+    city: 'Chapecó / Santa Catarina',
+    specialty: 'Locação de Empilhadeiras e Transpaleteiras para Eixo Sul',
+    rating: 4.8,
+    deliveryLeadTimeDays: 3,
+    freightType: 'CIF',
+    paymentTerms: 'Mensal 30 dias',
+    icmsTaxRate: 12,
+    contactPhone: '(49) 3329-9900',
+    contactEmail: 'vendas.sc@transpotech.com.br',
+  },
+];
+
+export const INITIAL_SUPPLIER_QUOTES: SupplierQuote[] = [
+  // --- FILME STRETCH (3 Fornecedores SP, PR, SC) ---
+  {
+    id: 'q-stretch-sp',
+    supplierId: 'sup-sp-1',
+    supplierName: 'MBB / Polycamp Embalagens (SP)',
+    supplierState: 'SP',
+    materialCategory: 'Filme Stretch',
+    productDescription: 'Filme Stretch Manual 500mm x 25 micras PEBD (Bobina 3.5kg)',
+    unitPrice: 42.50,
+    monthlyVolumeUnit: 140, // 140 bobinas/mês
+    totalMonthlyCost: 5950,
+    shippingCostMonthly: 800, // CIF paulista NÃO cobre Itajaí/SC
+    totalMonthlyWithFreight: 6750,
+    score: 78,
+    isRecommendedWinner: false,
+    notes: 'CIF gratuito só para entregas no Estado de SP. Destino HUB-FITNESS = Itajaí/Navegantes: frete extra ~R$ 800/mês + ICMS 18%.',
+  },
+  {
+    id: 'q-stretch-pr',
+    supplierId: 'sup-pr-3',
+    supplierName: 'Bela Máquina / Scheffer (PR)',
+    supplierState: 'PR',
+    materialCategory: 'Filme Stretch',
+    productDescription: 'Filme Stretch 500mm x 25 micras Rolo 3.5kg (Caixa c/ 4 un)',
+    unitPrice: 39.90,
+    monthlyVolumeUnit: 140,
+    totalMonthlyCost: 5586,
+    shippingCostMonthly: 450, // FOB
+    totalMonthlyWithFreight: 6036,
+    score: 91,
+    isRecommendedWinner: true,
+    notes: 'Melhor landed cost no Galpão A (Itajaí/SC): FOB + BR-376 ≈ R$ 450/mês. ICMS 12% (PR→SC).',
+  },
+  {
+    id: 'q-stretch-sc',
+    supplierId: 'sup-sc-1',
+    supplierName: 'Grupo IW8 / Polymer (SC)',
+    supplierState: 'SC',
+    materialCategory: 'Filme Stretch',
+    productDescription: 'Filme Stretch Azul/Transparente 500mm (Bobina 3.0kg)',
+    unitPrice: 41.00,
+    monthlyVolumeUnit: 150,
+    totalMonthlyCost: 6150,
+    shippingCostMonthly: 200,
+    totalMonthlyWithFreight: 6350,
+    score: 84,
+    isRecommendedWinner: false,
+    notes: 'Fornecedor local (Brusque/SC): reposição em 3 dias no Galpão A. Landed ~R$ 6.350 — reserva tática vs PR.',
+  },
+
+  // --- PALETES PBR HT / PLÁSTICO (3 Fornecedores SP, PR, SC) ---
+  {
+    id: 'q-pallet-pr',
+    supplierId: 'sup-pr-1',
+    supplierName: 'Ecopack Madeiras & Pallets (PR)',
+    supplierState: 'PR',
+    materialCategory: 'Paletes PBR HT / Plástico',
+    productDescription: 'Palete Madeira PBR Novo (1,20x1,00m) Tratado HT Fitossanitário 1.200kg',
+    unitPrice: 52.00,
+    monthlyVolumeUnit: 70, // reposição e expansão
+    totalMonthlyCost: 3640,
+    shippingCostMonthly: 0, // CIF lote >50
+    totalMonthlyWithFreight: 3640,
+    score: 95,
+    isRecommendedWinner: true,
+    notes: 'Vencedor do Eixo Sul! Madeira de reflorestamento com certificado HT. Entrega CIF sem frete adicional.',
+  },
+  {
+    id: 'q-pallet-sp',
+    supplierId: 'sup-sp-2',
+    supplierName: 'SB Pallet & Merchan (SP)',
+    supplierState: 'SP',
+    materialCategory: 'Paletes PBR HT / Plástico',
+    productDescription: 'Palete PBR1 Recondicionado / Novo Certificado ABRAS',
+    unitPrice: 58.00,
+    monthlyVolumeUnit: 70,
+    totalMonthlyCost: 4060,
+    shippingCostMonthly: 0,
+    totalMonthlyWithFreight: 4060,
+    score: 88,
+    isRecommendedWinner: false,
+    notes: 'Certificação ABRAS garantida. Preço R$ 6,00 maior por unidade que a cotação do PR.',
+  },
+  {
+    id: 'q-pallet-sc',
+    supplierId: 'sup-sc-2',
+    supplierName: 'Águia Pallets SC (SC)',
+    supplierState: 'SC',
+    materialCategory: 'Paletes PBR HT / Plástico',
+    productDescription: 'Palete Plástico PEAD Reforçado Racks Heavy-Duty 1.500kg (Locação/Compra)',
+    unitPrice: 215.00, // compra definitiva
+    monthlyVolumeUnit: 18,
+    totalMonthlyCost: 3870,
+    shippingCostMonthly: 150,
+    totalMonthlyWithFreight: 4020,
+    score: 86,
+    isRecommendedWinner: false,
+    notes: 'Ideal para câmara fria e área farmacêutica. Alta durabilidade (>10 anos).',
+  },
+
+  // --- LOCAÇÃO DE EMPILHADEIRAS (3 Fornecedores SP, PR, SC) ---
+  {
+    id: 'q-empilhadora-pr',
+    supplierId: 'sup-pr-2',
+    supplierName: 'Transpotech STILL & Linde (PR)',
+    supplierState: 'PR',
+    materialCategory: 'Locação Empilhadeiras',
+    productDescription: 'Empilhadeira Elétrica STILL RX20-20 (2.5t) + Bateria Lítio + Carregador + SLA 4h',
+    unitPrice: 2175.00, // R$ / unidade / mês
+    monthlyVolumeUnit: 2, // 2 empilhadeiras
+    totalMonthlyCost: 4350,
+    shippingCostMonthly: 0, // Manutenção inclusa
+    totalMonthlyWithFreight: 4350,
+    score: 96,
+    isRecommendedWinner: true,
+    notes: 'Vencedor Executivo! Frota nova com bateria de Lítio (carregamento rápido). Atendimento técnico em Curitiba/PR e Joinville/SC.',
+  },
+  {
+    id: 'q-empilhadora-sp',
+    supplierId: 'sup-sp-3',
+    supplierName: 'Greentech & Pontes Hyster (SP)',
+    supplierState: 'SP',
+    materialCategory: 'Locação Empilhadeiras',
+    productDescription: 'Empilhadeira Elétrica Hyster J2.5XN (2.5t) Full Service com manutenção',
+    unitPrice: 2400.00,
+    monthlyVolumeUnit: 2,
+    totalMonthlyCost: 4800,
+    shippingCostMonthly: 0,
+    totalMonthlyWithFreight: 4800,
+    score: 90,
+    isRecommendedWinner: false,
+    notes: 'Equipamento Hyster consagrado de alta resistência. Custo mensal R$ 450 acima da Transpotech.',
+  },
+  {
+    id: 'q-empilhadora-sc',
+    supplierId: 'sup-sc-3',
+    supplierName: 'Transpotech Chapecó & SC (SC)',
+    supplierState: 'SC',
+    materialCategory: 'Locação Empilhadeiras',
+    productDescription: 'Empilhadeira Elétrica Yale ERP25 + Transpaleteira Elétrica Tracionária',
+    unitPrice: 2250.00,
+    monthlyVolumeUnit: 2,
+    totalMonthlyCost: 4500,
+    shippingCostMonthly: 0,
+    totalMonthlyWithFreight: 4500,
+    score: 91,
+    isRecommendedWinner: false,
+    notes: 'Inclui transpaleteira elétrica reserva sem custo no contrato de 24 meses.',
+  },
+];
+
+

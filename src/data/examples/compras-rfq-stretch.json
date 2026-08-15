@@ -1,0 +1,81 @@
+{
+  "domain": "compras",
+  "example": true,
+  "rfq": true,
+  "example_note": "Folha RFQ stretch. Preencher campos com PREENCHER após cotação CIF/FOB Galpão A (Itajaí). Remover example: true só quando unit_price e frete forem reais.",
+  "rfq_brief": "HUB-FITNESS — 3PL fitness, Galpão A, Itajaí/Navegantes (SC). Pedido de cotação: filme stretch PEBD 500 mm × 20–25 µm, transparente, bobina ~3–4 kg (manual e, se houver, machine 17–23 µm). Destino: Itajaí/SC (não SP). Informar: R$/bobina, CIF ou FOB, frete até o galpão, ICMS, prazo, MOQ, validade da proposta.",
+  "destination": {
+    "site": "Galpão A",
+    "city": "Itajaí / Navegantes",
+    "uf": "SC"
+  },
+  "items": [
+    {
+      "category": "Filme Stretch",
+      "item_name": "Filme Stretch PEBD Manual 500 mm",
+      "sku_spec": "500 mm × 20–25 µm, PEBD, transparente, bobina ~3–4 kg",
+      "unit_of_measure": "bobina",
+      "monthly_volume_hypothesis": {
+        "qty": 150,
+        "basis": "HIPÓTESE — calibrar com paletes expedidos reais (não usar 150 às cegas)"
+      },
+      "suppliers": [
+        {
+          "legal_name": "Fort Plast Indústria de Embalagens Ltda.",
+          "trade_name": "Fort Plast",
+          "cnpj": "",
+          "city": "Palhoça",
+          "uf": "SC",
+          "website": "https://www.fortplast.com.br/",
+          "phone": "(48) 3286-0221",
+          "email": "",
+          "specialty": "Fabricante de filme stretch",
+          "freight_type_quoted": "PREENCHER",
+          "freight_covers_itajai_sc": true,
+          "lead_time_days_to_itajai": 0,
+          "payment_terms": "",
+          "icms_rate_pct": 12,
+          "unit_price_brl": 0,
+          "price_date": "",
+          "price_type": "rfq",
+          "shipping_cost_monthly_brl_to_itajai": 0,
+          "landed_cost_monthly_brl": 0,
+          "moq": "",
+          "notes": "PREENCHER unit_price_brl + frete até Itajaí. CIF-SP não vale. Landed = preço × qty + frete Galpão A.",
+          "sources": ["https://www.fortplast.com.br/"]
+        },
+        {
+          "legal_name": "Teckplast Embalagens Ltda.",
+          "trade_name": "Teckplast",
+          "cnpj": "",
+          "city": "Jaraguá do Sul",
+          "uf": "SC",
+          "website": "https://embalagens.teckplast.com.br/",
+          "phone": "(47) 3349-3771",
+          "email": "",
+          "specialty": "Filmes stretch e fitas",
+          "freight_type_quoted": "PREENCHER",
+          "freight_covers_itajai_sc": true,
+          "lead_time_days_to_itajai": 0,
+          "payment_terms": "",
+          "icms_rate_pct": 12,
+          "unit_price_brl": 0,
+          "price_date": "",
+          "price_type": "rfq",
+          "shipping_cost_monthly_brl_to_itajai": 0,
+          "landed_cost_monthly_brl": 0,
+          "moq": "",
+          "notes": "PREENCHER. Loja em Itajaí — confirmar se atende Galpão A CIF ou FOB.",
+          "sources": ["https://embalagens.teckplast.com.br/solucoes-em-embalagens/filme-stretch-em-itajai/"]
+        }
+      ],
+      "recommended_for_hub_sc": {
+        "supplier_trade_name": "",
+        "reason": "Não eleger vencedor antes do RFQ. Vence o menor landed no Galpão A com lead ≤5 dias úteis.",
+        "discarded_sp_cif_trap": true
+      },
+      "accounting_hint": "5.1.01.01",
+      "risks": "Variação resina PE; volume 150 é hipótese; não misturar preço/bobina com preço/kg."
+    }
+  ]
+}

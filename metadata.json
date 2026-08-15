@@ -1,0 +1,6 @@
+{
+  "name": "HUB-FITNESS · 3PL Logistics Planner",
+  "description": "Interactive financial simulator and executive dashboard for HUB-FITNESS 3PL logistics, DRE 24m, Fator R, cashflow projections, and scenario planning.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

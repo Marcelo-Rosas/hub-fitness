@@ -1,0 +1,81 @@
+{
+  "domain": "compras",
+  "example": true,
+  "rfq": true,
+  "example_note": "Folha RFQ palete PBR HT. Lote inicial ~300 un é compra única — NÃO usar como volume mensal do DRE. Remover example: true só com unit_price e frete reais até Itajaí.",
+  "rfq_brief": "HUB-FITNESS — 3PL fitness, Galpão A, Itajaí/Navegantes (SC). Pedido de cotação: palete PBR madeira 1,20 × 1,00 m, tratamento HT NIMF-15. Destino: Itajaí/SC (não SP). Informar: (1) R$/un lote inicial ~300, (2) R$/un reposição, (3) CIF ou FOB + frete até o galpão, (4) ICMS, prazo, MOQ, validade. Não misturar lote 300 com custo mensal.",
+  "destination": {
+    "site": "Galpão A",
+    "city": "Itajaí / Navegantes",
+    "uf": "SC"
+  },
+  "items": [
+    {
+      "category": "Paletes PBR HT / Plastico",
+      "item_name": "Palete PBR Madeira HT 1,20×1,00 m",
+      "sku_spec": "PBR 1,20 × 1,00 m, tratamento HT NIMF-15",
+      "unit_of_measure": "unidade",
+      "monthly_volume_hypothesis": {
+        "qty": 0,
+        "basis": "PREENCHER reposição/mês. Lote inicial ~300 é CAPEX/estoque — não lançar 300 no DRE mensal."
+      },
+      "suppliers": [
+        {
+          "legal_name": "",
+          "trade_name": "Águia Pallets",
+          "cnpj": "",
+          "city": "Joinville",
+          "uf": "SC",
+          "website": "https://www.aguiapallets.com.br/",
+          "phone": "",
+          "email": "",
+          "specialty": "Fabricação palete PBR madeira HT",
+          "freight_type_quoted": "PREENCHER",
+          "freight_covers_itajai_sc": true,
+          "lead_time_days_to_itajai": 0,
+          "payment_terms": "",
+          "icms_rate_pct": 12,
+          "unit_price_brl": 0,
+          "price_date": "",
+          "price_type": "rfq",
+          "shipping_cost_monthly_brl_to_itajai": 0,
+          "landed_cost_monthly_brl": 0,
+          "moq": "PREENCHER lote 300 + reposição",
+          "notes": "PREENCHER R$/un (lote 300 e reposição) + frete Galpão A. CIF-SP não vale.",
+          "sources": ["https://www.aguiapallets.com.br/"]
+        },
+        {
+          "legal_name": "",
+          "trade_name": "Ecopack",
+          "cnpj": "",
+          "city": "Curitiba",
+          "uf": "PR",
+          "website": "",
+          "phone": "",
+          "email": "",
+          "specialty": "Paletes PBR madeira HT",
+          "freight_type_quoted": "PREENCHER",
+          "freight_covers_itajai_sc": true,
+          "lead_time_days_to_itajai": 0,
+          "payment_terms": "",
+          "icms_rate_pct": 12,
+          "unit_price_brl": 0,
+          "price_date": "",
+          "price_type": "rfq",
+          "shipping_cost_monthly_brl_to_itajai": 0,
+          "landed_cost_monthly_brl": 0,
+          "moq": "PREENCHER lote 300 + reposição",
+          "notes": "PREENCHER landed Itajaí (preço + frete PR→SC). Não usar R$ 52 do seed do planner.",
+          "sources": []
+        }
+      ],
+      "recommended_for_hub_sc": {
+        "supplier_trade_name": "",
+        "reason": "Não eleger vencedor antes do RFQ. Vence o menor landed no Galpão A. Lote 300 ≠ custo mensal.",
+        "discarded_sp_cif_trap": true
+      },
+      "accounting_hint": "5.1.01.02",
+      "risks": "HT NIMF-15 obrigatório; misturar lote inicial com reposição distorce o DRE."
+    }
+  ]
+}

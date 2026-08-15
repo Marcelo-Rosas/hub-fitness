@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" width="1200" height="675" style="background:#090d16; font-family: system-ui, -apple-system, sans-serif;">
+  <rect x="0" y="0" width="1200" height="60" fill="#0f172a" />
+  <text x="30" y="38" fill="#38bdf8" font-size="20" font-weight="800">HUB-SIM v3.5</text>
+  <text x="170" y="38" fill="#94a3b8" font-size="16" font-weight="500">| M13: Pipeline de Vendas &amp; CRM Comercial 180 Dias</text>
+
+  <g transform="translate(30, 80)">
+    <rect x="0" y="0" width="1140" height="565" rx="12" fill="#1e293b" stroke="#334155" stroke-width="1.5" />
+    <text x="30" y="40" fill="#f8fafc" font-size="18" font-weight="700">Funil Comercial Kanban &amp; Projeção de Ramp-up de Ocupação</text>
+
+    <!-- Pipeline Columns -->
+    <rect x="30" y="70" width="250" height="460" rx="8" fill="#0f172a" />
+    <text x="45" y="100" fill="#38bdf8" font-size="13" font-weight="800">1. PROSPECÇÃO (R$ 820k)</text>
+    <rect x="40" y="115" width="230" height="80" rx="6" fill="#1e293b" />
+    <text x="50" y="140" fill="#f8fafc" font-size="12" font-weight="700">Suplementos SC Corp</text>
+    <text x="50" y="160" fill="#94a3b8" font-size="11">400 Paletes | R$ 38.000/mês</text>
+
+    <rect x="305" y="70" width="250" height="460" rx="8" fill="#0f172a" />
+    <text x="320" y="100" fill="#fbbf24" font-size="13" font-weight="800">2. PROPOSTA EMITIDA</text>
+    <rect x="315" y="115" width="230" height="80" rx="6" fill="#1e293b" />
+    <text x="325" y="140" fill="#f8fafc" font-size="12" font-weight="700">Rede de Franquias Fit</text>
+    <text x="325" y="160" fill="#94a3b8" font-size="11">650 Paletes | R$ 62.000/mês</text>
+
+    <rect x="580" y="70" width="250" height="460" rx="8" fill="#0f172a" />
+    <text x="595" y="100" fill="#c084fc" font-size="13" font-weight="800">3. NEGOCIAÇÃO FINAL</text>
+    <rect x="590" y="115" width="230" height="80" rx="6" fill="#1e293b" />
+    <text x="600" y="140" fill="#f8fafc" font-size="12" font-weight="700">Importadora Nutri B2B</text>
+    <text x="600" y="160" fill="#94a3b8" font-size="11">300 Paletes | R$ 29.500/mês</text>
+
+    <rect x="855" y="70" width="250" height="460" rx="8" fill="#0f172a" />
+    <text x="870" y="100" fill="#34d399" font-size="13" font-weight="800">4. GANHO / ASSINADO</text>
+    <rect x="865" y="115" width="230" height="80" rx="6" fill="#1e293b" stroke="#10b981" stroke-width="1" />
+    <text x="875" y="140" fill="#34d399" font-size="12" font-weight="700">Atacado Brasil Fitness</text>
+    <text x="875" y="160" fill="#cbd5e1" font-size="11">750 Paletes | R$ 78.000/mês</text>
+  </g>
+</svg>

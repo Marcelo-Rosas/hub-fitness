@@ -1,0 +1,82 @@
+{
+  "domain": "compras",
+  "example": false,
+  "example_note": "Fallback de pesquisa (estimativa 2024–2026) quando Gemini offline. Não confundir com folha RFQ (preço 0).",
+  "destination": {
+    "site": "Galpão A",
+    "city": "Itajaí / Navegantes",
+    "uf": "SC"
+  },
+  "items": [
+    {
+      "category": "Fitas PET",
+      "item_name": "Fita de Arquear PET Verde (16mm × 0,8mm)",
+      "sku_spec": "PET 16mm × 0,8mm, rolo ~20kg / ~1000m, reciclável",
+      "unit_of_measure": "rolo",
+      "monthly_volume_hypothesis": {
+        "qty": 1,
+        "historical_data": false,
+        "status": "sem_dados_historicos"
+      },
+      "suppliers": [
+        {
+          "trade_name": "Polifita Embalagens",
+          "email": "vendas@polifita.com.br",
+          "city": "Joinville",
+          "uf": "SC",
+          "freight_type_quoted": "FOB",
+          "freight_covers_itajai_sc": true,
+          "lead_time_days_to_itajai": 2,
+          "icms_rate_pct": 12,
+          "unit_price_brl": 148.5,
+          "price_type": "estimativa",
+          "price_date": "2026-08",
+          "shipping_cost_monthly_brl_to_itajai": 32,
+          "landed_cost_monthly_brl": 180.5,
+          "notes": "Estimativa SC · frete local até Galpão A. Confirmar RFQ.",
+          "sources": ["Catálogo regional SC (estimativa)"]
+        },
+        {
+          "trade_name": "Mosca Embalagens",
+          "email": "comercial@moscaembalagens.com.br",
+          "city": "Curitiba",
+          "uf": "PR",
+          "freight_type_quoted": "FOB",
+          "freight_covers_itajai_sc": false,
+          "lead_time_days_to_itajai": 3,
+          "icms_rate_pct": 12,
+          "unit_price_brl": 139,
+          "price_type": "estimativa",
+          "price_date": "2026-08",
+          "shipping_cost_monthly_brl_to_itajai": 48,
+          "landed_cost_monthly_brl": 187,
+          "notes": "Estimativa PR→Itajaí FOB+frete. ICMS 12%.",
+          "sources": ["Tabela regional PR (estimativa)"]
+        },
+        {
+          "trade_name": "Cyklop do Brasil",
+          "email": "vendas@cyklop.com.br",
+          "city": "Itupeva",
+          "uf": "SP",
+          "freight_type_quoted": "FOB",
+          "freight_covers_itajai_sc": false,
+          "lead_time_days_to_itajai": 4,
+          "icms_rate_pct": 12,
+          "unit_price_brl": 134,
+          "price_type": "estimativa",
+          "price_date": "2026-08",
+          "shipping_cost_monthly_brl_to_itajai": 62,
+          "landed_cost_monthly_brl": 196,
+          "notes": "CIF-SP não cobre Itajaí — frete estimado até Galpão A.",
+          "sources": ["Catálogo Cyklop (estimativa)"]
+        }
+      ],
+      "recommended_for_hub_sc": {
+        "supplier_trade_name": "Polifita Embalagens",
+        "reason": "Menor landed SC (estimativa). Validar RFQ antes de Sync DRE.",
+        "discarded_sp_cif_trap": true
+      },
+      "accounting_hint": "5.1.01.03"
+    }
+  ]
+}

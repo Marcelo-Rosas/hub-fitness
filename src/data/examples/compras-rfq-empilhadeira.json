@@ -1,0 +1,81 @@
+{
+  "domain": "compras",
+  "example": true,
+  "rfq": true,
+  "example_note": "Folha RFQ locação retrátil. OPEX (não CAPEX). SLA técnico em Itajaí/Vale do Itajaí é eliminatório. Não usar R$ 8.000 da pesquisa nem R$ 2.175 do seed. Remover example: true só com R$/mês reais.",
+  "rfq_brief": "HUB-FITNESS — 3PL fitness, Galpão A, Itajaí/Navegantes (SC). Pedido de cotação: locação full-service 24 meses, 2 empilhadeiras retráteis elétricas >500 kg, altura 8,5 m, bateria lítio preferencial. SLA técnico ≤4 h no Vale do Itajaí. Informar: R$/mês por equipamento (full-service), o que entra (manutenção, pneus, deslocamento), franquia de peças, prazo de instalação, validade. Atendimento só em SP/PR sem base SC não atende.",
+  "destination": {
+    "site": "Galpão A",
+    "city": "Itajaí / Navegantes",
+    "uf": "SC"
+  },
+  "items": [
+    {
+      "category": "Locacao Empilhadeiras",
+      "item_name": "Locação Full-Service Retrátil Elétrica",
+      "sku_spec": ">500 kg, operação 8,5 m, lítio preferencial, SLA técnico ≤4 h Vale do Itajaí",
+      "unit_of_measure": "mês/equipamento",
+      "monthly_volume_hypothesis": {
+        "qty": 2,
+        "basis": "2 retráteis em contrato 24 meses — confirmar frota na visita técnica"
+      },
+      "suppliers": [
+        {
+          "legal_name": "",
+          "trade_name": "Rioita Empilhadeiras",
+          "cnpj": "",
+          "city": "Itajaí",
+          "uf": "SC",
+          "website": "",
+          "phone": "",
+          "email": "",
+          "specialty": "Locação empilhadeira — atendimento Itajaí",
+          "freight_type_quoted": "local",
+          "freight_covers_itajai_sc": true,
+          "lead_time_days_to_itajai": 0,
+          "payment_terms": "",
+          "icms_rate_pct": 12,
+          "unit_price_brl": 0,
+          "price_date": "",
+          "price_type": "rfq",
+          "shipping_cost_monthly_brl_to_itajai": 0,
+          "landed_cost_monthly_brl": 0,
+          "moq": "2 equipamentos / 24 meses",
+          "notes": "PREENCHER R$/mês full-service. SLA local é critério eliminatório. Não usar R$ 8.000 da pesquisa.",
+          "sources": []
+        },
+        {
+          "legal_name": "",
+          "trade_name": "GV Logística",
+          "cnpj": "",
+          "city": "Itajaí",
+          "uf": "SC",
+          "website": "https://www.gvlogistica.com.br/aluguel-empilhadeira-itajai/",
+          "phone": "",
+          "email": "",
+          "specialty": "Locação empilhadeira full-service região Itajaí",
+          "freight_type_quoted": "local",
+          "freight_covers_itajai_sc": true,
+          "lead_time_days_to_itajai": 0,
+          "payment_terms": "",
+          "icms_rate_pct": 12,
+          "unit_price_brl": 0,
+          "price_date": "",
+          "price_type": "rfq",
+          "shipping_cost_monthly_brl_to_itajai": 0,
+          "landed_cost_monthly_brl": 0,
+          "moq": "2 equipamentos / 24 meses",
+          "notes": "PREENCHER R$/mês + o que o full-service cobre. Confirmar retrátil 8,5 m (não só contrabalançada).",
+          "sources": ["https://www.gvlogistica.com.br/aluguel-empilhadeira-itajai/"]
+        }
+      ],
+      "recommended_for_hub_sc": {
+        "supplier_trade_name": "",
+        "reason": "Não eleger vencedor antes do RFQ. Sem SLA ≤4 h no Vale do Itajaí, desclassifica. Locação = OPEX, não CAPEX 207.300.",
+        "discarded_sp_cif_trap": true
+      },
+      "accounting_hint": "locação OPEX, não CAPEX",
+      "risks": "Retrátil 8,5 m ≠ empilhadeira de pátio; seed Transpotech R$ 2.175 não substitui RFQ."
+    }
+  ]
+}

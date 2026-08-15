@@ -1,0 +1,133 @@
+{
+  "domain": "compras",
+  "example": true,
+  "example_note": "Template para clonar no M10. Preços ESTIMATIVA da pesquisa SC-PR-SP — NÃO aplicar no cadastro até RFQ com landed real no Galpão A (Itajaí).",
+  "items": [
+    {
+      "category": "Filme Stretch",
+      "item_name": "Filme Stretch PEBD Manual/Automático",
+      "sku_spec": "500 mm x 20-25 µm, PEBD, transparente",
+      "unit_of_measure": "bobina",
+      "monthly_volume_hypothesis": {
+        "qty": 150,
+        "basis": "EXEMPLO — calibrar com paletes expedidos reais"
+      },
+      "suppliers": [
+        {
+          "legal_name": "Fort Plast Indústria de Embalagens Ltda.",
+          "trade_name": "Fort Plast",
+          "city": "Palhoça",
+          "uf": "SC",
+          "website": "https://www.fortplast.com.br/",
+          "phone": "(48) 3286-0221",
+          "specialty": "Fabricante de filme stretch",
+          "freight_type_quoted": "FOB",
+          "freight_covers_itajai_sc": true,
+          "lead_time_days_to_itajai": 1,
+          "icms_rate_pct": 12,
+          "unit_price_brl": 0,
+          "price_type": "estimativa",
+          "shipping_cost_monthly_brl_to_itajai": 0,
+          "landed_cost_monthly_brl": 0,
+          "notes": "EXEMPLO. Preencher unit_price + frete até Itajaí após RFQ. Não usar landed da pesquisa (estava ~10× abaixo do DRE).",
+          "sources": ["https://www.fortplast.com.br/"]
+        },
+        {
+          "legal_name": "Teckplast Embalagens Ltda.",
+          "trade_name": "Teckplast",
+          "city": "Jaraguá do Sul",
+          "uf": "SC",
+          "website": "https://embalagens.teckplast.com.br/",
+          "phone": "(47) 3349-3771",
+          "specialty": "Filmes stretch e fitas",
+          "freight_type_quoted": "FOB",
+          "freight_covers_itajai_sc": true,
+          "lead_time_days_to_itajai": 2,
+          "icms_rate_pct": 12,
+          "unit_price_brl": 0,
+          "price_type": "estimativa",
+          "shipping_cost_monthly_brl_to_itajai": 0,
+          "landed_cost_monthly_brl": 0,
+          "notes": "EXEMPLO. Loja em Itajaí. Cotar CIF/FOB Galpão A.",
+          "sources": ["https://embalagens.teckplast.com.br/solucoes-em-embalagens/filme-stretch-em-itajai/"]
+        }
+      ],
+      "recommended_for_hub_sc": {
+        "supplier_trade_name": "Fort Plast",
+        "reason": "EXEMPLO — fabricante SC, lead time curto. Confirmar por RFQ.",
+        "discarded_sp_cif_trap": true
+      },
+      "accounting_hint": "5.1.01.01"
+    },
+    {
+      "category": "Paletes PBR HT / Plastico",
+      "item_name": "Palete PBR Madeira HT 1,20x1,00m",
+      "sku_spec": "PBR, tratamento HT NIMF-15",
+      "unit_of_measure": "unidade",
+      "monthly_volume_hypothesis": {
+        "qty": 0,
+        "basis": "EXEMPLO — lote inicial ~300 é CAPEX/estoque, não volume mensal"
+      },
+      "suppliers": [
+        {
+          "trade_name": "Águia Pallets",
+          "city": "Joinville",
+          "uf": "SC",
+          "website": "https://www.aguiapallets.com.br/",
+          "freight_type_quoted": "CIF",
+          "freight_covers_itajai_sc": true,
+          "lead_time_days_to_itajai": 3,
+          "icms_rate_pct": 12,
+          "unit_price_brl": 0,
+          "price_type": "estimativa",
+          "shipping_cost_monthly_brl_to_itajai": 0,
+          "landed_cost_monthly_brl": 0,
+          "notes": "EXEMPLO. RFQ HT + frete Itajaí. Não misturar lote 300 com custo mensal."
+        }
+      ],
+      "recommended_for_hub_sc": {
+        "supplier_trade_name": "Águia Pallets",
+        "reason": "EXEMPLO — fabricante SC",
+        "discarded_sp_cif_trap": true
+      },
+      "accounting_hint": "5.1.01.02"
+    },
+    {
+      "category": "Locacao Empilhadeiras",
+      "item_name": "Locação Full-Service Retrátil Elétrica",
+      "sku_spec": ">500 kg, 8,5 m, lítio, SLA ≤4 h Vale do Itajaí",
+      "unit_of_measure": "mês/equipamento",
+      "monthly_volume_hypothesis": { "qty": 2, "basis": "2 retráteis (contrato 24m) — confirmar frota" },
+      "suppliers": [
+        {
+          "trade_name": "Rioita Empilhadeiras",
+          "city": "Itajaí",
+          "uf": "SC",
+          "freight_covers_itajai_sc": true,
+          "lead_time_days_to_itajai": 1,
+          "unit_price_brl": 0,
+          "price_type": "estimativa",
+          "landed_cost_monthly_brl": 0,
+          "notes": "EXEMPLO. SLA local é critério eliminatório. Não usar R$ 8.000 da pesquisa sem RFQ."
+        },
+        {
+          "trade_name": "GV Logística",
+          "city": "Itajaí",
+          "uf": "SC",
+          "website": "https://www.gvlogistica.com.br/aluguel-empilhadeira-itajai/",
+          "freight_covers_itajai_sc": true,
+          "unit_price_brl": 0,
+          "price_type": "estimativa",
+          "landed_cost_monthly_brl": 0,
+          "notes": "EXEMPLO. Full-service + suporte 24h na região."
+        }
+      ],
+      "recommended_for_hub_sc": {
+        "supplier_trade_name": "Rioita Empilhadeiras",
+        "reason": "EXEMPLO — atendimento em Itajaí; RFQ 8,5 m lítio",
+        "discarded_sp_cif_trap": true
+      },
+      "accounting_hint": "locação OPEX, não CAPEX"
+    }
+  ]
+}

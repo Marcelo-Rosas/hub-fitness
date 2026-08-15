@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" width="1200" height="675" style="background:#090d16; font-family: system-ui, -apple-system, sans-serif;">
+  <rect x="0" y="0" width="1200" height="60" fill="#0f172a" />
+  <text x="30" y="38" fill="#38bdf8" font-size="20" font-weight="800">HUB-SIM v3.5</text>
+  <text x="170" y="38" fill="#94a3b8" font-size="16" font-weight="500">| M2: DRE Granular 24 Meses (Auditoria Contábil)</text>
+  <rect x="1000" y="18" width="170" height="28" rx="6" fill="#0d9488" />
+  <text x="1015" y="37" fill="#ffffff" font-size="12" font-weight="700">✓ DRE AUDITADA v3.5</text>
+
+  <g transform="translate(30, 80)">
+    <rect x="0" y="0" width="1140" height="565" rx="12" fill="#1e293b" stroke="#334155" stroke-width="1.5" />
+    <text x="30" y="40" fill="#f8fafc" font-size="18" font-weight="700">Demonstração do Resultado do Exercício (DRE Granular 24m)</text>
+
+    <!-- Table Header -->
+    <rect x="30" y="65" width="1080" height="40" rx="6" fill="#0f172a" />
+    <text x="50" y="90" fill="#94a3b8" font-size="12" font-weight="700">CONTA DRE / DEDUTIBILIDADE</text>
+    <text x="450" y="90" fill="#94a3b8" font-size="12" font-weight="700">ACUMULADO M1-M12</text>
+    <text x="680" y="90" fill="#94a3b8" font-size="12" font-weight="700">ACUMULADO M13-M24</text>
+    <text x="910" y="90" fill="#94a3b8" font-size="12" font-weight="700">TOTAL 24 MESES</text>
+
+    <!-- Rows -->
+    <rect x="30" y="115" width="1080" height="45" fill="#1e293b" />
+    <text x="50" y="142" fill="#38bdf8" font-size="13" font-weight="700">1. RECEITA BRUTA DE SERVIÇOS 3PL</text>
+    <text x="450" y="142" fill="#f8fafc" font-size="13" font-weight="600">R$ 2.462.400</text>
+    <text x="680" y="142" fill="#f8fafc" font-size="13" font-weight="600">R$ 6.170.400</text>
+    <text x="910" y="142" fill="#38bdf8" font-size="14" font-weight="800">R$ 8.632.800</text>
+
+    <rect x="30" y="165" width="1080" height="45" fill="#0f172a" opacity="0.5" />
+    <text x="50" y="192" fill="#f43f5e" font-size="13" font-weight="600">2. Impostos Incidentes (DAS Simples Nacional 6%)</text>
+    <text x="450" y="192" fill="#cbd5e1" font-size="13">-R$ 147.744</text>
+    <text x="680" y="192" fill="#cbd5e1" font-size="13">-R$ 370.224</text>
+    <text x="910" y="192" fill="#f43f5e" font-size="14" font-weight="700">-R$ 517.968</text>
+
+    <rect x="30" y="215" width="1080" height="45" fill="#1e293b" />
+    <text x="50" y="242" fill="#34d399" font-size="13" font-weight="700">3. RECEITA LÍQUIDA</text>
+    <text x="450" y="242" fill="#f8fafc" font-size="13">R$ 2.314.656</text>
+    <text x="680" y="242" fill="#f8fafc" font-size="13">R$ 5.800.176</text>
+    <text x="910" y="242" fill="#34d399" font-size="14" font-weight="800">R$ 8.114.832</text>
+
+    <rect x="30" y="265" width="1080" height="45" fill="#0f172a" opacity="0.5" />
+    <text x="50" y="292" fill="#fbbf24" font-size="13" font-weight="600">4. Custos Operacionais Diretos (OPEX Mão de Obra e Aluguel)</text>
+    <text x="450" y="292" fill="#cbd5e1" font-size="13">-R$ 1.250.000</text>
+    <text x="680" y="292" fill="#cbd5e1" font-size="13">-R$ 2.410.000</text>
+    <text x="910" y="292" fill="#fbbf24" font-size="14" font-weight="700">-R$ 3.660.000</text>
+
+    <rect x="30" y="315" width="1080" height="50" rx="6" fill="#0284c7" opacity="0.2" stroke="#0284c7" stroke-width="1" />
+    <text x="50" y="346" fill="#38bdf8" font-size="15" font-weight="800">EBITDA OPERACIONAL (22,8% MARGEM)</text>
+    <text x="450" y="346" fill="#f8fafc" font-size="14" font-weight="700">R$ 561.430</text>
+    <text x="680" y="346" fill="#f8fafc" font-size="14" font-weight="700">R$ 1.406.850</text>
+    <text x="910" y="346" fill="#38bdf8" font-size="16" font-weight="800">R$ 1.968.280</text>
+  </g>
+</svg>

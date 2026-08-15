@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 860" width="1440" height="860">
+  <defs>
+    <style type="text/css"><![CDATA[
+      text { font-family: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      .mono { font-family: 'JetBrains Mono', ui-monospace, Consolas, monospace; }
+    ]]></style>
+    <linearGradient id="hexBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1F3864"/>
+      <stop offset="100%" stop-color="#0F1C32"/>
+    </linearGradient>
+    <filter id="card" x="-3%" y="-3%" width="106%" height="112%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <rect width="1440" height="860" fill="#F8F9FA"/>
+
+  <!-- SIDEBAR COLAPSADA (Shell w-17) -->
+  <rect x="0" y="0" width="68" height="860" fill="#1F3864"/>
+  <rect x="20" y="16" width="28" height="28" rx="8" fill="url(#hexBg)" stroke="#ffffff" stroke-opacity="0.20"/>
+  <g transform="translate(23.5,19.5)" fill="none">
+    <path d="M10 1.2L17.4 5.5V14.1L10 18.4L2.6 14.1V5.5L10 1.2Z" stroke="#C6EFCE" stroke-width="1.4" stroke-linejoin="round"/>
+    <path d="M6.2 6.6V13.2M13.8 6.6V13.2M6.2 9.9H13.8" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/>
+  </g>
+
+  <rect x="18" y="64" width="32" height="32" rx="8" fill="#ffffff" fill-opacity="0.08"/>
+  <text x="26" y="84" fill="#94a3b8" font-size="10" font-weight="800">M1</text>
+
+  <rect x="18" y="104" width="32" height="32" rx="8" fill="#ffffff" fill-opacity="0.08"/>
+  <text x="26" y="124" fill="#94a3b8" font-size="10" font-weight="800">M2</text>
+
+  <rect x="18" y="144" width="32" height="32" rx="8" fill="#10b981" fill-opacity="0.22" stroke="#10b981" stroke-opacity="0.45"/>
+  <text x="26" y="164" fill="#C6EFCE" font-size="10" font-weight="800">M3</text>
+
+  <rect x="18" y="184" width="32" height="32" rx="8" fill="#ffffff" fill-opacity="0.08"/>
+  <text x="24" y="204" fill="#94a3b8" font-size="10" font-weight="800">M11</text>
+
+  <rect x="18" y="224" width="32" height="32" rx="8" fill="#ffffff" fill-opacity="0.08"/>
+  <text x="24" y="244" fill="#94a3b8" font-size="10" font-weight="800">M14</text>
+
+  <circle cx="34" cy="828" r="4" fill="#4ade80"/>
+  <text x="20" y="848" fill="#94a3b8" font-size="8" font-weight="700">CFO</text>
+
+  <!-- TOPBAR ENXUTA -->
+  <rect x="68" y="0" width="1372" height="52" fill="#ffffff"/>
+  <line x1="68" y1="52" x2="1440" y2="52" stroke="#e5e7eb"/>
+
+  <rect x="84" y="12" width="28" height="28" rx="8" fill="#f1f5f9"/>
+  <g transform="translate(91,18)" stroke="#1F3864" stroke-width="1.7" stroke-linecap="round">
+    <path d="M0 2h12M0 8h12M0 14h12"/>
+  </g>
+
+  <rect x="124" y="12" width="176" height="28" rx="4" fill="#FFFBEB" stroke="#fde68a"/>
+  <text x="136" y="31" fill="#6b7280" font-size="11">Cen&#225;rio:</text>
+  <text x="188" y="31" fill="#111827" font-size="11" font-weight="800">Realista v3.5</text>
+
+  <rect x="1188" y="12" width="132" height="28" rx="4" fill="#f59e0b"/>
+  <text x="1202" y="31" fill="#0f172a" font-size="11" font-weight="800">Assistente CFO IA</text>
+
+  <rect x="1332" y="12" width="1" height="28" fill="#e5e7eb"/>
+  <text x="1344" y="24" fill="#111827" font-size="10" font-weight="800">CFO Admin</text>
+  <text x="1344" y="38" fill="#16a34a" font-size="9" font-weight="600">Acesso Total</text>
+
+  <!-- MODULE HEADER COMPACTO (sem botoes duplicados) -->
+  <rect x="88" y="68" width="1332" height="64" rx="12" fill="#1F3864"/>
+  <rect x="100" y="80" width="28" height="16" rx="3" fill="#022c22" stroke="#10b981" stroke-opacity="0.35"/>
+  <text x="106" y="92" fill="#6ee7b7" font-size="9" font-weight="800" class="mono">M3</text>
+  <text x="136" y="92" fill="#34d399" font-size="10" font-weight="800">HUB-SIM  3PL LOGISTICS PLANNER</text>
+  <text x="100" y="118" fill="#ffffff" font-size="18" font-weight="900">Cadastro financeiro</text>
+  <text x="980" y="118" fill="#cbd5e1" font-size="11">Edi&#231;&#227;o &#250;nica  &#183;  M2 somente leitura</text>
+
+  <!-- KPIs -->
+  <g filter="url(#card)">
+    <rect x="88" y="148" width="318" height="64" rx="12" fill="#ecfdf5" stroke="#a7f3d0"/>
+    <text x="104" y="168" fill="#64748b" font-size="10" font-weight="800" letter-spacing="0.5">RECEITA Y1 / M&#202;S</text>
+    <text x="104" y="196" fill="#022c22" font-size="20" font-weight="900" class="mono">R$ 205.200</text>
+
+    <rect x="422" y="148" width="318" height="64" rx="12" fill="#fff1f2" stroke="#fecdd3"/>
+    <text x="438" y="168" fill="#64748b" font-size="10" font-weight="800" letter-spacing="0.5">CUSTO Y1 / M&#202;S</text>
+    <text x="438" y="196" fill="#4c0519" font-size="20" font-weight="900" class="mono">R$ 63.905</text>
+
+    <rect x="756" y="148" width="318" height="64" rx="12" fill="#fffbeb" stroke="#fde68a"/>
+    <text x="772" y="168" fill="#64748b" font-size="10" font-weight="800" letter-spacing="0.5">DESPESA Y1 / M&#202;S</text>
+    <text x="772" y="196" fill="#451a03" font-size="20" font-weight="900" class="mono">R$ 133.704</text>
+
+    <rect x="1090" y="148" width="330" height="64" rx="12" fill="#eef2ff" stroke="#c7d2fe"/>
+    <text x="1106" y="168" fill="#64748b" font-size="10" font-weight="800" letter-spacing="0.5">RESULTADO Y1 / M&#202;S</text>
+    <text x="1106" y="196" fill="#1e1b4b" font-size="20" font-weight="900" class="mono">R$ 7.591</text>
+  </g>
+
+  <!-- TABELAS -->
+  <rect x="88" y="228" width="980" height="196" rx="12" fill="#0f172a" stroke="#1e293b"/>
+  <rect x="88" y="228" width="980" height="34" rx="12" fill="#022c22"/>
+  <rect x="88" y="246" width="980" height="16" fill="#022c22"/>
+  <text x="108" y="250" fill="#6ee7b7" font-size="11" font-weight="800" letter-spacing="0.8">RECEITAS</text>
+  <rect x="920" y="236" width="132" height="22" rx="8" fill="#10b981"/>
+  <text x="944" y="251" fill="#020617" font-size="11" font-weight="800">+ Nova linha</text>
+
+  <text x="108" y="280" fill="#64748b" font-size="9" font-weight="700">CONTA</text>
+  <text x="220" y="280" fill="#64748b" font-size="9" font-weight="700">NOME</text>
+  <text x="520" y="280" fill="#64748b" font-size="9" font-weight="700">CC</text>
+  <text x="620" y="280" fill="#64748b" font-size="9" font-weight="700">ANO 1</text>
+  <text x="760" y="280" fill="#64748b" font-size="9" font-weight="700">ANO 2</text>
+  <text x="900" y="280" fill="#64748b" font-size="9" font-weight="700">A&#199;&#213;ES</text>
+
+  <text x="108" y="306" fill="#e2e8f0" font-size="12" class="mono">4.1.01.01</text>
+  <text x="220" y="306" fill="#f8fafc" font-size="12">Armazenagem quinzenal</text>
+  <text x="520" y="306" fill="#94a3b8" font-size="12">CC 002</text>
+  <text x="620" y="306" fill="#f8fafc" font-size="12" font-weight="700" class="mono">99.040</text>
+  <text x="760" y="306" fill="#cbd5e1" font-size="12" class="mono">116.200</text>
+  <text x="900" y="306" fill="#38bdf8" font-size="11" font-weight="700">Editar</text>
+
+  <text x="108" y="332" fill="#e2e8f0" font-size="12" class="mono">4.1.01.02</text>
+  <text x="220" y="332" fill="#f8fafc" font-size="12">Handling In/Out</text>
+  <text x="520" y="332" fill="#94a3b8" font-size="12">CC 002</text>
+  <text x="620" y="332" fill="#f8fafc" font-size="12" font-weight="700" class="mono">52.000</text>
+  <text x="760" y="332" fill="#cbd5e1" font-size="12" class="mono">61.000</text>
+  <text x="900" y="332" fill="#38bdf8" font-size="11" font-weight="700">Editar</text>
+
+  <rect x="100" y="344" width="956" height="28" rx="8" fill="#064e3b"/>
+  <text x="108" y="363" fill="#6ee7b7" font-size="12" font-weight="700">4.1.04.01  Control Tower CLIA</text>
+  <text x="520" y="363" fill="#6ee7b7" font-size="12">CC 001</text>
+  <text x="620" y="363" fill="#6ee7b7" font-size="12" font-weight="700" class="mono">6.274</text>
+  <text x="760" y="363" fill="#6ee7b7" font-size="12" class="mono">12.548</text>
+  <rect x="888" y="350" width="72" height="16" rx="4" fill="#022c22" stroke="#10b981" stroke-opacity="0.40"/>
+  <text x="898" y="362" fill="#6ee7b7" font-size="9" font-weight="800">TRAVADA</text>
+
+  <text x="820" y="404" fill="#34d399" font-size="12" font-weight="800">Total Y1  R$ 205.200</text>
+
+  <rect x="88" y="440" width="980" height="148" rx="12" fill="#0f172a" stroke="#1e293b"/>
+  <rect x="88" y="440" width="980" height="34" rx="12" fill="#4c0519"/>
+  <rect x="88" y="458" width="980" height="16" fill="#4c0519"/>
+  <text x="108" y="462" fill="#fda4af" font-size="11" font-weight="800" letter-spacing="0.8">CUSTOS (COGS)</text>
+  <rect x="920" y="448" width="132" height="22" rx="8" fill="#10b981"/>
+  <text x="944" y="463" fill="#020617" font-size="11" font-weight="800">+ Nova linha</text>
+
+  <text x="108" y="496" fill="#e2e8f0" font-size="12" class="mono">5.1.04.01</text>
+  <text x="220" y="496" fill="#f8fafc" font-size="12">Custo vari&#225;vel / posi&#231;&#227;o</text>
+  <text x="520" y="496" fill="#94a3b8" font-size="12">CC 002</text>
+  <text x="620" y="496" fill="#f8fafc" font-size="12" font-weight="700" class="mono">35.505</text>
+  <text x="760" y="496" fill="#cbd5e1" font-size="12" class="mono">45.600</text>
+  <text x="900" y="496" fill="#38bdf8" font-size="11" font-weight="700">Editar</text>
+
+  <text x="108" y="522" fill="#e2e8f0" font-size="12" class="mono">5.1.02.01</text>
+  <text x="220" y="522" fill="#f8fafc" font-size="12">MO terceirizada (fora Fator R)</text>
+  <text x="520" y="522" fill="#94a3b8" font-size="12">CC 002</text>
+  <text x="620" y="522" fill="#f8fafc" font-size="12" font-weight="700" class="mono">12.000</text>
+  <text x="760" y="522" fill="#cbd5e1" font-size="12" class="mono">12.600</text>
+  <text x="900" y="522" fill="#38bdf8" font-size="11" font-weight="700">Editar</text>
+
+  <text x="108" y="548" fill="#e2e8f0" font-size="12" class="mono">5.1.05.01</text>
+  <text x="220" y="548" fill="#f8fafc" font-size="12">OPEX m&#225;quinas</text>
+  <text x="520" y="548" fill="#94a3b8" font-size="12">CC 003</text>
+  <text x="620" y="548" fill="#f8fafc" font-size="12" font-weight="700" class="mono">4.400</text>
+  <text x="760" y="548" fill="#cbd5e1" font-size="12" class="mono">4.600</text>
+  <text x="900" y="548" fill="#38bdf8" font-size="11" font-weight="700">Editar</text>
+  <text x="832" y="572" fill="#fda4af" font-size="12" font-weight="800">Total Y1  R$ 63.905</text>
+
+  <rect x="88" y="604" width="980" height="228" rx="12" fill="#0f172a" stroke="#1e293b"/>
+  <rect x="88" y="604" width="980" height="34" rx="12" fill="#451a03"/>
+  <rect x="88" y="622" width="980" height="16" fill="#451a03"/>
+  <text x="108" y="626" fill="#fcd34d" font-size="11" font-weight="800" letter-spacing="0.8">DESPESAS (OPEX)</text>
+  <rect x="920" y="612" width="132" height="22" rx="8" fill="#10b981"/>
+  <text x="944" y="627" fill="#020617" font-size="11" font-weight="800">+ Nova linha</text>
+
+  <text x="108" y="660" fill="#e2e8f0" font-size="12" class="mono">5.2.01.01</text>
+  <text x="220" y="660" fill="#f8fafc" font-size="12">Pessoal CLT + PL regular</text>
+  <text x="520" y="660" fill="#94a3b8" font-size="12">CC 001</text>
+  <text x="620" y="660" fill="#f8fafc" font-size="12" font-weight="700" class="mono">49.500</text>
+  <text x="760" y="660" fill="#cbd5e1" font-size="12" class="mono">52.000</text>
+  <text x="900" y="660" fill="#38bdf8" font-size="11" font-weight="700">Editar</text>
+
+  <rect x="100" y="672" width="956" height="26" rx="6" fill="#1c1917"/>
+  <text x="108" y="690" fill="#e2e8f0" font-size="12" class="mono">5.2.02.01</text>
+  <text x="220" y="690" fill="#fde68a" font-size="12" font-weight="700">Aluguel Galp&#227;o A</text>
+  <text x="520" y="690" fill="#94a3b8" font-size="12">CC 002</text>
+  <text x="620" y="690" fill="#f8fafc" font-size="12" font-weight="700" class="mono">60.000</text>
+  <text x="760" y="690" fill="#cbd5e1" font-size="12" class="mono">63.000</text>
+  <text x="900" y="690" fill="#38bdf8" font-size="11" font-weight="700">Editar</text>
+
+  <text x="108" y="720" fill="#e2e8f0" font-size="12" class="mono">5.2.02.02</text>
+  <text x="220" y="720" fill="#f8fafc" font-size="12">Condom&#237;nio R$ 2,60/m&#178;</text>
+  <text x="520" y="720" fill="#94a3b8" font-size="12">CC 002</text>
+  <text x="620" y="720" fill="#f8fafc" font-size="12" font-weight="700" class="mono">6.500</text>
+  <text x="760" y="720" fill="#cbd5e1" font-size="12" class="mono">6.825</text>
+  <text x="900" y="720" fill="#38bdf8" font-size="11" font-weight="700">Editar</text>
+
+  <text x="108" y="746" fill="#e2e8f0" font-size="12" class="mono">5.2.03.03</text>
+  <text x="220" y="746" fill="#f8fafc" font-size="12">OPEX Tech (Logcomex + cloud)</text>
+  <text x="520" y="746" fill="#94a3b8" font-size="12">CC 001</text>
+  <text x="620" y="746" fill="#f8fafc" font-size="12" font-weight="700" class="mono">0</text>
+  <text x="760" y="746" fill="#cbd5e1" font-size="12" class="mono">0</text>
+  <text x="900" y="746" fill="#38bdf8" font-size="11" font-weight="700">Editar</text>
+  <text x="820" y="812" fill="#fcd34d" font-size="12" font-weight="800">Total Y1  R$ 133.704</text>
+
+  <!-- PAINEL LATERAL ENXUTO -->
+  <g filter="url(#card)">
+    <rect x="1084" y="228" width="336" height="604" rx="12" fill="#ffffff" stroke="#e2e8f0"/>
+    <rect x="1084" y="228" width="336" height="44" rx="12" fill="#1F3864"/>
+    <rect x="1084" y="248" width="336" height="24" fill="#1F3864"/>
+    <text x="1100" y="256" fill="#ffffff" font-size="13" font-weight="800">Nova linha  Despesa</text>
+    <g transform="translate(1392,242)" stroke="#94a3b8" stroke-width="1.8" fill="none" stroke-linecap="round">
+      <path d="M1 1l12 12M13 1L1 13"/>
+    </g>
+
+    <text x="1100" y="298" fill="#64748b" font-size="10" font-weight="700">NOME</text>
+    <rect x="1100" y="304" width="304" height="32" rx="8" fill="#f8fafc" stroke="#cbd5e1"/>
+    <text x="1112" y="325" fill="#94a3b8" font-size="12">Seguro patrimonial</text>
+
+    <text x="1100" y="362" fill="#64748b" font-size="10" font-weight="700">ANO 1  R$/m&#234;s</text>
+    <rect x="1100" y="368" width="144" height="32" rx="8" fill="#f8fafc" stroke="#cbd5e1"/>
+    <text x="1112" y="389" fill="#0f172a" font-size="13" font-weight="700" class="mono">0</text>
+    <text x="1260" y="362" fill="#64748b" font-size="10" font-weight="700">ANO 2  R$/m&#234;s</text>
+    <rect x="1260" y="368" width="144" height="32" rx="8" fill="#f8fafc" stroke="#cbd5e1"/>
+    <text x="1272" y="389" fill="#0f172a" font-size="13" font-weight="700" class="mono">0</text>
+
+    <text x="1100" y="428" fill="#1F3864" font-size="11" font-weight="800">Grupo do plano</text>
+    <rect x="1100" y="436" width="304" height="32" rx="8" fill="#FFFBEB" stroke="#fde68a"/>
+    <text x="1112" y="457" fill="#111827" font-size="12" font-weight="700">Custos e despesas</text>
+    <path d="M1384 448l4 5 4-5" fill="none" stroke="#6b7280" stroke-width="1.4"/>
+
+    <text x="1100" y="496" fill="#1F3864" font-size="11" font-weight="800">Conta anal&#237;tica</text>
+    <rect x="1100" y="504" width="304" height="120" rx="8" fill="#0f172a"/>
+    <text x="1112" y="526" fill="#64748b" font-size="10" class="mono">5.2</text>
+    <text x="1144" y="526" fill="#64748b" font-size="10">sint&#233;tica &#183; n&#227;o lan&#231;a</text>
+    <rect x="1108" y="536" width="288" height="28" rx="6" fill="#1e3a8a" fill-opacity="0.50" stroke="#60a5fa" stroke-opacity="0.45"/>
+    <text x="1120" y="555" fill="#bfdbfe" font-size="11" font-weight="700">5.2.02.01  Aluguel de im&#243;vel</text>
+    <text x="1120" y="584" fill="#e2e8f0" font-size="11">5.2.02.02  Condom&#237;nio</text>
+    <text x="1120" y="608" fill="#e2e8f0" font-size="11">5.2.03.03  TI / SaaS</text>
+
+    <rect x="1100" y="636" width="148" height="28" rx="8" fill="#1F3864"/>
+    <text x="1124" y="655" fill="#ffffff" font-size="11" font-weight="700">+ Criar conta</text>
+    <rect x="1256" y="636" width="148" height="28" rx="8" fill="#ffffff" stroke="#fecaca"/>
+    <text x="1298" y="655" fill="#be123c" font-size="11" font-weight="700">Excluir</text>
+
+    <text x="1100" y="692" fill="#1F3864" font-size="11" font-weight="800">Centro de custo</text>
+    <rect x="1100" y="700" width="304" height="32" rx="8" fill="#f8fafc" stroke="#cbd5e1"/>
+    <text x="1112" y="721" fill="#0f172a" font-size="12">CC 002  Operacional armaz&#233;m</text>
+    <path d="M1384 712l4 5 4-5" fill="none" stroke="#6b7280" stroke-width="1.4"/>
+
+    <rect x="1100" y="752" width="144" height="36" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="1140" y="775" fill="#475569" font-size="13" font-weight="700">Cancelar</text>
+    <rect x="1256" y="752" width="148" height="36" rx="8" fill="#006100"/>
+    <text x="1284" y="775" fill="#ffffff" font-size="13" font-weight="800">Salvar</text>
+  </g>
+</svg>

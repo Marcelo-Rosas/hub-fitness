@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" width="1200" height="675" style="background:#090d16; font-family: system-ui, -apple-system, sans-serif;">
+  <rect x="0" y="0" width="1200" height="60" fill="#0f172a" />
+  <text x="30" y="38" fill="#38bdf8" font-size="20" font-weight="800">HUB-SIM v3.5</text>
+  <text x="170" y="38" fill="#94a3b8" font-size="16" font-weight="500">| M10: Compras, Cotações &amp; Gestão de Fornecedores 3PL (SC, SP, PR)</text>
+
+  <g transform="translate(30, 80)">
+    <rect x="0" y="0" width="1140" height="565" rx="12" fill="#1e293b" stroke="#334155" stroke-width="1.5" />
+    <text x="30" y="40" fill="#f8fafc" font-size="18" font-weight="700">Assistente de Compras &amp; Comparativo Tributário ICMS de Cotações</text>
+
+    <!-- Vendor Cards -->
+    <rect x="30" y="70" width="340" height="210" rx="10" fill="#0f172a" stroke="#10b981" stroke-width="2" />
+    <text x="50" y="100" fill="#34d399" font-size="13" font-weight="800">VENCEDORA: EMBALAGENS SC LTDA</text>
+    <text x="50" y="130" fill="#f8fafc" font-size="20" font-weight="800">Filme Stretch 18 micras</text>
+    <text x="50" y="155" fill="#cbd5e1" font-size="12">Preço Unit: R$ 24,50 / rolo | ICMS: 12% (SC)</text>
+    <text x="50" y="175" fill="#cbd5e1" font-size="12">Frete CIF Incluído | Lead Time: 3 dias</text>
+    <rect x="50" y="195" width="130" height="24" rx="4" fill="#10b981" opacity="0.2" />
+    <text x="62" y="211" fill="#34d399" font-size="11" font-weight="700">✓ APLICAR NO DRE</text>
+
+    <rect x="400" y="70" width="340" height="210" rx="10" fill="#0f172a" stroke="#334155" stroke-width="1" />
+    <text x="420" y="100" fill="#94a3b8" font-size="13" font-weight="800">FORNECEDOR SP (FOB)</text>
+    <text x="420" y="130" fill="#f8fafc" font-size="20" font-weight="800">Palete PBR HT Madeira</text>
+    <text x="420" y="155" fill="#cbd5e1" font-size="12">Preço Unit: R$ 58,00 | ICMS: 18% (SP)</text>
+    <text x="420" y="175" fill="#cbd5e1" font-size="12">Frete FOB R$ 1.200/mês | Lead Time: 7 dias</text>
+
+    <rect x="770" y="70" width="340" height="210" rx="10" fill="#0f172a" stroke="#334155" stroke-width="1" />
+    <text x="790" y="100" fill="#94a3b8" font-size="13" font-weight="800">FORNECEDOR PR (CIF)</text>
+    <text x="790" y="130" fill="#f8fafc" font-size="20" font-weight="800">Locação Empilhadeiras VNA</text>
+    <text x="790" y="155" fill="#cbd5e1" font-size="12">Mensalidade: R$ 6.800 / máquina</text>
+    <text x="790" y="175" fill="#cbd5e1" font-size="12">Manutenção Preventiva 24h inclusa</text>
+
+    <!-- Cost gap breakdown -->
+    <rect x="30" y="300" width="1080" height="230" rx="10" fill="#0f172a" />
+    <text x="50" y="335" fill="#38bdf8" font-size="15" font-weight="700">Análise Mapeado (Modelo Base) vs Implementado (DRE Granular)</text>
+    <text x="50" y="370" fill="#cbd5e1" font-size="12">• Custos Operacionais Mapeados no Modelo Base Y1: R$ 104.166 / mês</text>
+    <text x="50" y="395" fill="#cbd5e1" font-size="12">• Custos Ativos Selecionados nas Cotações Y1: R$ 98.400 / mês</text>
+    <text x="50" y="420" fill="#34d399" font-size="13" font-weight="700">✓ Otimização Logística Alcançada: R$ 5.766 / mês de Economia Direta</text>
+  </g>
+</svg>

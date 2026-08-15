@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Card Radii Enforcement (Strict 8px) */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --radius-xl: 8px;
+  --radius-2xl: 8px;
+
+  /* High-Contrast Navy & Slate Color Palette */
+  --color-navy-950: #0f1c32;
+  --color-navy-900: #1F3864;
+  --color-navy-800: #2a487d;
+  --color-navy-700: #365896;
+
+  --color-slate-header: #44546A;
+  --color-slate-sidebar: #1F3864;
+  --color-canvas-bg: #F8F9FA;
+
+  /* Semantic Financial Colors */
+  --color-[#C6EFCE]: #C6EFCE;
+  --color-[#006100]: #006100;
+  --color-[#FFF2CC]: #FFF2CC;
+  --color-[#7F6000]: #7F6000;
+  --color-[#FCE4D6]: #FCE4D6;
+  --color-[#C65911]: #C65911;
+  --color-[#DDEBF7]: #DDEBF7;
+  --color-[#1F4E79]: #1F4E79;
+}
+
+/* Custom Scrollbar and Utility Enforcement */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Print styling for PDF One-Pager */
+@media print {
+  header, aside, footer, .no-print {
+    display: none !important;
+  }
+  body, main {
+    background: white !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+  }
+}
+
