@@ -36,7 +36,8 @@ async function getPool(connectionString: string): Promise<PgPool> {
 }
 
 function connectionString(): string | null {
-  const url = process.env.DATABASE_URL || process.env.OPERATOR_DATABASE_URL;
+  // Operator first — never force Comex DATABASE_URL onto Operator reads.
+  const url = process.env.OPERATOR_DATABASE_URL || process.env.DATABASE_URL;
   return url && String(url).trim() ? String(url).trim() : null;
 }
 

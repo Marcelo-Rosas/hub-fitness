@@ -46,7 +46,8 @@ UI/copy: bind a `hubParams` / milestones / engine — não petrificar BP v3.5 em
 
 - Operator = Postgres Supabase (cadastro, price_*, `intranet.*`)  
 - Client = database-per-client — **sem `tenant_id`**  
-- Runtime app hoje: intranet/comex muitas vezes **SQLite** local até `DATABASE_URL` / wiring  
+- Runtime: intranet/comex = **SQLite** até wiring; M12/M14 leem Operator via **`OPERATOR_DATABASE_URL`**  
+- **Nunca** apontar `DATABASE_URL` (Comex) para o Operator — misturar quebra ADR-003  
 - Schema `intranet` = **privado** — não listar em `[api].schemas` Data API  
 - Konnen = dogfood Client #0 — não âncora comercial / BE
 
