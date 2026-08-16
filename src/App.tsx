@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { PlannerProvider, usePlanner } from './context/PlannerContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { LoginScreen } from './components/LoginScreen';
@@ -9,12 +9,11 @@ import { M2Dre } from './components/modules/M2Dre';
 import { M3CadastroFinanceiro } from './components/modules/M3CadastroFinanceiro';
 import { M4Caixa } from './components/modules/M4Caixa';
 import { M5FatorR } from './components/modules/M5FatorR';
-import { M6Cenarios } from './components/modules/M6Cenarios';
+import { M6MixCenarios } from './components/modules/M6MixCenarios';
 import { M7Ano3Expansao } from './components/modules/M7Ano3Expansao';
 import { M8SpinOff } from './components/modules/M8SpinOff';
 import { M9ExportGovernanca } from './components/modules/M9ExportGovernanca';
 import { M10AssistenteCompras } from './components/modules/M10AssistenteCompras';
-import { M11SimuladorMix } from './components/modules/M11SimuladorMix';
 import { M12ContratosSla } from './components/modules/M12ContratosSla';
 import { M13PipelineCrm } from './components/modules/M13PipelineCrm';
 import { M14CpqPropostas } from './components/modules/M14CpqPropostas';
@@ -23,6 +22,19 @@ import { M16BenchmarkCustos } from './components/modules/M16BenchmarkCustos';
 import { M17SimuladorAnexoV } from './components/modules/M17SimuladorAnexoV';
 import { M18Comex } from './components/modules/M18Comex';
 import { M19Intranet } from './components/modules/M19Intranet';
+
+const RedirectM11ToM6: React.FC = () => {
+  const { setActiveModule } = usePlanner();
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    params.set('module', 'M6');
+    if (params.get('tab') === 'simulator') params.set('tab', 'mix');
+    if (!params.get('tab')) params.set('tab', 'mix');
+    window.history.replaceState(null, '', `?${params.toString()}`);
+    setActiveModule('M6');
+  }, [setActiveModule]);
+  return <M6MixCenarios />;
+};
 
 const ModuleRouter: React.FC = () => {
   const { activeModule } = usePlanner();
@@ -47,7 +59,7 @@ const ModuleRouter: React.FC = () => {
     case 'M5':
       return <M5FatorR />;
     case 'M6':
-      return <M6Cenarios />;
+      return <M6MixCenarios />;
     case 'M7':
       return <M7Ano3Expansao />;
     case 'M8':
@@ -57,7 +69,7 @@ const ModuleRouter: React.FC = () => {
     case 'M10':
       return <M10AssistenteCompras />;
     case 'M11':
-      return <M11SimuladorMix />;
+      return <RedirectM11ToM6 />;
     case 'M12':
       return <M12ContratosSla />;
     case 'M13':

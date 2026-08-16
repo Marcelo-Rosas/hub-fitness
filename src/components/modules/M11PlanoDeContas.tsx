@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { SearchableSelect } from '../ui/SearchableSelect';
 
-export const M11PlanoDeContas: React.FC = () => {
+export const M11PlanoDeContas: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }) => {
   const { dreMonths, activeScenario, chartOfAccounts, costCenters, hubParams, financeSource } = usePlanner();
 
   const [activeTab, setActiveTab] = useState<'plan' | 'rules' | 'fatorRValidator' | 'export'>('plan');
@@ -263,6 +263,12 @@ export const M11PlanoDeContas: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {readOnly && (
+        <div className="bg-slate-100 border border-slate-300 text-slate-700 px-3 py-2 rounded-lg text-xs font-semibold">
+          Somente leitura nesta aba (M6). CRUD de contas e centros de custo: módulo M3 Cadastro financeiro.
+        </div>
+      )}
 
       {/* NAVIGATION TABS */}
       <div className="flex border-b border-gray-200 bg-white rounded-t-xl px-4 pt-3 gap-2 shadow-xs">

@@ -133,6 +133,6 @@ Spec: `2026-08-15-email-rfq-approve-design.md` (tokens, NOTIFY, HTML `/approve/:
 
 ## Execution order
 
-**Now:** Phase 5 CoA/ledger shipped (Operator finance tables + API + PlannerContext).  
-**Next:** smoke live bundle + P2 Mix→COGS / Ad Valorem CPQ se pedido.  
-**Phases 2–4:** already done.
+**Now:** M6 Mix & Cenários unificado shipped (spec/plan 2026-08-16).  
+**Next:** Ad Valorem CPQ / v1.1 custos bottom-up / Ponte B — se pedido.  
+**Phases 2–5:** already done.

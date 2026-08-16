@@ -21,7 +21,7 @@ import { canEditFinance } from '../../core/rbac/moduleEdit';
 import { INITIAL_GRANULAR_DRE_ITEMS } from '../../data/initialData';
 import { OFFICIAL_TOTALS_24M } from '../../data/officialData';
 
-export const M6Cenarios: React.FC = () => {
+export const M6Cenarios: React.FC<{ embed?: boolean }> = ({ embed = false }) => {
   const {
     scenarios,
     scenariosSource,
@@ -31,12 +31,15 @@ export const M6Cenarios: React.FC = () => {
     duplicateScenario,
     updateScenarioDrivers,
     ledgerBaseItems,
+    previewMixItems,
+    isMixDirty,
     hubParams,
     activeRole,
   } = usePlanner();
 
   const canEdit = canEditFinance(activeRole);
-  const ledgerItems = ledgerBaseItems.length ? ledgerBaseItems : INITIAL_GRANULAR_DRE_ITEMS;
+  const base = ledgerBaseItems.length ? ledgerBaseItems : INITIAL_GRANULAR_DRE_ITEMS;
+  const ledgerItems = isMixDirty && previewMixItems.length ? previewMixItems : base;
 
   const baseline = scenarios.find((s) => s.isBaseline) || scenarios[0];
   const pessimistic = scenarios.find((s) => s.id === 'sc-pessimistic') || scenarios[1] || scenarios[0];
@@ -73,6 +76,12 @@ export const M6Cenarios: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {isMixDirty && (
+        <div className="bg-amber-50 border border-amber-300 text-amber-950 px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2">
+          ⚠ Mix pendente — Tornado/KPI refletem preview (não commitado no cadastro).
+        </div>
+      )}
+      {!embed && (
       <ModuleHeader
         moduleId="M6"
         title="Matriz de Cenários & Análise Tornado"
@@ -118,6 +127,7 @@ export const M6Cenarios: React.FC = () => {
           </button>
         }
       />
+      )}
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-4 space-y-3">
         <div className="flex flex-wrap gap-2">

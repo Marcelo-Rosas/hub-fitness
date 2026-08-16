@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { usePlanner } from '../../context/PlannerContext';
 import { RAW_MIX_DATA_JSON, PROFILE_PRESETS } from '../../data/mixSimulatorData';
 import { M11PlanoDeContas } from './M11PlanoDeContas';
@@ -45,20 +45,29 @@ import {
   Cell,
 } from 'recharts';
 
-export const M11SimuladorMix: React.FC = () => {
+export const M11SimuladorMix: React.FC<{
+  embedPanel?: 'simulator' | 'enquadramento' | 'board_memo' | 'plano_contas';
+}> = ({ embedPanel }) => {
   const {
     activeRole,
     pitchMode,
     activeMix,
     updateActiveMix,
-    applyMixToGlobalModel,
-    addAuditLog,
+    commitMixPreview,
+    discardMixPreview,
+    isMixDirty,
+    committedMixWeights,
     hubParams,
     ledgerBaseItems,
   } = usePlanner();
 
-  // Navigation tab state
-  const [activeTab, setActiveTab] = useState<'simulator' | 'enquadramento' | 'board_memo' | 'plano_contas'>('simulator');
+  const canCommit = (activeRole === 'cfo' || activeRole === 'socio') && !pitchMode;
+
+  // Navigation tab state (ignored when embedPanel set by M6 shell)
+  const [localTab, setLocalTab] = useState<'simulator' | 'enquadramento' | 'board_memo' | 'plano_contas'>('simulator');
+  const activeTab = embedPanel ?? localTab;
+  const setActiveTab = setLocalTab;
+  const embedded = !!embedPanel;
 
   // Local weights for smooth slider interaction
   const [mixWeights, setMixWeights] = useState({
@@ -73,6 +82,19 @@ export const M11SimuladorMix: React.FC = () => {
   const [appliedNotification, setAppliedNotification] = useState<string | null>(null);
 
   const totalMixSum = mixWeights.p1 + mixWeights.p2 + mixWeights.p4 + mixWeights.p5;
+
+  // Preview path: keep Context activeMix in sync (Tornado / Fator R live)
+  useEffect(() => {
+    updateActiveMix({
+      p1: mixWeights.p1,
+      p2: mixWeights.p2,
+      p4: mixWeights.p4,
+      p5: mixWeights.p5,
+      presetName: activePresetKey,
+    });
+    // Intentionally omit updateActiveMix — identity changes every render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mixWeights.p1, mixWeights.p2, mixWeights.p4, mixWeights.p5, activePresetKey]);
 
   // Calculated weighted metrics based on active slider weights
   const calculations = useMemo(() => {
@@ -191,15 +213,29 @@ export const M11SimuladorMix: React.FC = () => {
     }
   };
 
-  // Handler to sync mix to all consumer contracts and global DRE
+  // Commit Mix → ledger (preview until here)
   const handleApplyToGlobalModel = () => {
-    applyMixToGlobalModel(mixWeights, calculations.weightedMcPos);
+    commitMixPreview({
+      p1: mixWeights.p1,
+      p2: mixWeights.p2,
+      p4: mixWeights.p4,
+      p5: mixWeights.p5,
+      presetName: activePresetKey,
+    });
     setAppliedNotification(
-      `⚡ Mix aplicado com sucesso! Todos os contratos consumidores, DRE e Cenários atualizados com MC R$ ${calculations.weightedMcPos.toFixed(
-        2
-      )}/pos.`
+      `⚡ Mix commitado no cadastro. MC R$ ${calculations.weightedMcPos.toFixed(2)}/pos.`,
     );
     setTimeout(() => setAppliedNotification(null), 5000);
+  };
+
+  const handleDiscardMix = () => {
+    discardMixPreview();
+    setMixWeights({
+      p1: committedMixWeights.p1,
+      p2: committedMixWeights.p2,
+      p4: committedMixWeights.p4,
+      p5: committedMixWeights.p5,
+    });
   };
 
   // Filtered raw json table
@@ -279,11 +315,12 @@ export const M11SimuladorMix: React.FC = () => {
       )}
 
       {/* HEADER SECTION */}
+      {!embedded && (
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-900 px-2.5 py-0.5 rounded-full border border-blue-200">
-              Módulo M11
+              {embedded ? 'M6 · Mix' : 'Módulo M11'}
             </span>
             <span className="text-[10px] font-mono text-slate-500">
               Modelagem Estratégica & Diretrizes do Board BP v3.5
@@ -310,22 +347,72 @@ export const M11SimuladorMix: React.FC = () => {
           </button>
 
           <button
+            onClick={handleDiscardMix}
+            disabled={!isMixDirty || pitchMode}
+            className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border transition-all cursor-pointer ${
+              isMixDirty && !pitchMode
+                ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
+                : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+            }`}
+            title="Descartar preview do Mix"
+          >
+            <span>Descartar preview</span>
+          </button>
+
+          <button
             onClick={handleApplyToGlobalModel}
-            disabled={totalMixSum !== 100 || pitchMode}
+            disabled={totalMixSum !== 100 || !canCommit}
             className={`px-4 py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer ${
-              totalMixSum === 100 && !pitchMode
+              totalMixSum === 100 && canCommit
                 ? 'bg-blue-800 hover:bg-blue-900 text-white shadow-blue-200'
                 : 'bg-slate-300 text-slate-500 cursor-not-allowed'
             }`}
-            title="Sincronizar mix com DRE 24m, Dashboard M1 e Cenários M6"
+            title="Aplicar Mix ao cadastro (Commit)"
           >
             <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
-            <span>Aplicar Mix ao Modelo Global</span>
+            <span>Aplicar ao Cadastro</span>
           </button>
         </div>
       </div>
+      )}
+
+      {embedded && activeTab === 'simulator' && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button
+            onClick={exportToCsv}
+            className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-xs flex items-center justify-center gap-2 border border-slate-300 transition-all cursor-pointer"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+            <span>Excel (.csv)</span>
+          </button>
+          <button
+            onClick={handleDiscardMix}
+            disabled={!isMixDirty || pitchMode}
+            className={`px-3.5 py-2 rounded-xl font-bold text-xs border transition-all cursor-pointer ${
+              isMixDirty && !pitchMode
+                ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
+                : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+            }`}
+          >
+            Descartar preview
+          </button>
+          <button
+            onClick={handleApplyToGlobalModel}
+            disabled={totalMixSum !== 100 || !canCommit}
+            className={`px-4 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 transition-all cursor-pointer ${
+              totalMixSum === 100 && canCommit
+                ? 'bg-blue-800 hover:bg-blue-900 text-white'
+                : 'bg-slate-300 text-slate-500 cursor-not-allowed'
+            }`}
+          >
+            <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
+            Aplicar ao Cadastro
+          </button>
+        </div>
+      )}
 
       {/* VIEW TABS BAR */}
+      {!embedded && (
       <div className="flex items-center gap-2 bg-slate-200/80 p-1.5 rounded-xl border border-slate-300/80">
         <button
           onClick={() => setActiveTab('simulator')}
@@ -375,6 +462,7 @@ export const M11SimuladorMix: React.FC = () => {
           <span>Plano de Contas PCASP</span>
         </button>
       </div>
+      )}
 
       {/* TAB 1: INTERACTIVE SIMULATOR */}
       {activeTab === 'simulator' && (
@@ -1336,7 +1424,7 @@ export const M11SimuladorMix: React.FC = () => {
       )}
 
       {/* TAB 4: PLANO DE CONTAS REFERENCIAL */}
-      {activeTab === 'plano_contas' && <M11PlanoDeContas />}
+      {activeTab === 'plano_contas' && <M11PlanoDeContas readOnly={embedded} />}
     </div>
   );
 };

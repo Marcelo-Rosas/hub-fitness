@@ -20,8 +20,10 @@ describe('moduleVisibility', () => {
     expect(canViewModule('compras', 'M19')).toBe(true);
   });
 
-  it('comercial não vê M3', () => {
-    expect(canViewModule('comercial', 'M3')).toBe(false);
+  it('M11 deep-link view resolves like M6', () => {
+    expect(canViewModule('cfo', 'M11')).toBe(true);
+    expect(canViewModule('comercial', 'M11')).toBe(false);
+    expect(canViewModule('comercial', 'M6')).toBe(false);
   });
 
   it('cfo vê M2 e M19', () => {

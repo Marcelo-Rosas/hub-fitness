@@ -123,7 +123,7 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
         { id: 'M3', label: 'Cadastro financeiro', icon: DollarSign },
         { id: 'M4', label: 'Fluxo de Caixa', icon: PieChart },
         { id: 'M5', label: 'Fator R & Tributos', icon: Percent },
-        { id: 'M11', label: 'Plano de Contas & Mix', icon: Sliders },
+        { id: 'M6', label: 'Mix & Cenários', icon: Sliders },
         { id: 'M15', label: 'RH & Custos SC', icon: Users },
       ],
     },
@@ -169,7 +169,6 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
       label: '🔮 Estratégia',
       icon: Sparkles,
       items: [
-        { id: 'M6', label: 'Testes de Estresse', icon: GitCompare },
         { id: 'M7', label: 'Expansão Ano 3', icon: Layers },
         { id: 'M8', label: 'Visão 60m & Spin-off', icon: Building2 },
       ],

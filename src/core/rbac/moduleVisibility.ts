@@ -55,7 +55,8 @@ export const MODULE_VISIBILITY: Record<UserRole, readonly ModuleId[]> = {
 export function canViewModule(role: UserRole, moduleId: string): boolean {
   const list = MODULE_VISIBILITY[role];
   if (!list) return false;
-  return list.includes(moduleId as ModuleId);
+  const resolved = moduleId === 'M11' ? 'M6' : moduleId;
+  return list.includes(resolved as ModuleId);
 }
 
 export function visibleModules(role: UserRole): ModuleId[] {
