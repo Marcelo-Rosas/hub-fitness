@@ -17,7 +17,7 @@ Sidebar e edição usam ifs esparsos (`comercial`/`compras` escondem M2/M4; M3 e
 3. **Sócio** realiza cadastros e define atribuições (Árvore / Cargos / Funcionários / Cadastro). CFO não edita org.
 4. **Visão sidebar** = matriz estática em código (`MODULE_VISIBILITY`). Sem UI/Postgres para editar matriz na v1.
 5. **Edição** = helpers `moduleEdit` (não só esconder menu).
-6. Canal e-mail Plan B (aprovação externa) = **fora** desta spec.
+6. Canal e-mail Plan B (aprovação externa) = **fora** desta spec — ver [`2026-08-15-email-rfq-approve-design.md`](./2026-08-15-email-rfq-approve-design.md).
 
 ## Matriz de visão (sidebar)
 
