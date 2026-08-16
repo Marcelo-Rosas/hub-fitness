@@ -486,6 +486,13 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       id: newId,
       name,
       isBaseline: false,
+      drivers: {
+        occupancyRate: occupancy,
+        rentFactor: 1,
+        cogsVariableFactor: 1,
+        hcOpexFactor: 1,
+        techOpexActive: false,
+      },
       occupancyRate: occupancy,
       llM7Plus: Math.round((llM7 ?? 14_279) * scale),
       capexTotal: hubParams.capex.total,

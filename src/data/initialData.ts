@@ -1,4 +1,4 @@
-import { UserRole, RoleConfig, VasDriver, Scenario, AuditLog, SwotItem, GovernanceCheck, DreGranularItem, MappedVsImplementedCostItem, SupplierCompany, SupplierQuote, DreMonth } from '../types';
+import { UserRole, RoleConfig, VasDriver, Scenario, ScenarioDrivers, AuditLog, SwotItem, GovernanceCheck, DreGranularItem, MappedVsImplementedCostItem, SupplierCompany, SupplierQuote, DreMonth } from '../types';
 
 export const USER_ROLES: RoleConfig[] = [
   {
@@ -113,11 +113,20 @@ export const INITIAL_VAS_DRIVERS: VasDriver[] = [
   },
 ];
 
+const d = (partial: Partial<ScenarioDrivers> & Pick<ScenarioDrivers, 'occupancyRate'>): ScenarioDrivers => ({
+  rentFactor: 1,
+  cogsVariableFactor: 1,
+  hcOpexFactor: 1,
+  techOpexActive: false,
+  ...partial,
+});
+
 export const INITIAL_SCENARIOS: Scenario[] = [
   {
     id: 'sc-baseline',
     name: 'Realista v3.5 (Oficial)',
     isBaseline: true,
+    drivers: d({ occupancyRate: 0.75 }),
     occupancyRate: 0.75,
     llM7Plus: 14279,
     capexTotal: 207300,
@@ -130,6 +139,7 @@ export const INITIAL_SCENARIOS: Scenario[] = [
     id: SC_V36_WMS_PROPRIO,
     name: 'v3.6 WMS Próprio + Logcomex',
     isBaseline: false,
+    drivers: d({ occupancyRate: 0.75, techOpexActive: true }),
     occupancyRate: 0.75,
     llM7Plus: V36_WMS.llM7Plus,
     capexTotal: V36_WMS.capexTotal,
@@ -142,6 +152,7 @@ export const INITIAL_SCENARIOS: Scenario[] = [
     id: 'sc-pessimistic',
     name: 'Pessimista 35% Ocupação',
     isBaseline: false,
+    drivers: d({ occupancyRate: 0.35 }),
     occupancyRate: 0.35,
     llM7Plus: -63100,
     capexTotal: 207300,
@@ -155,6 +166,7 @@ export const INITIAL_SCENARIOS: Scenario[] = [
     id: 'sc-optimistic',
     name: 'Otimista Expansão +20%',
     isBaseline: false,
+    drivers: d({ occupancyRate: 0.90 }),
     occupancyRate: 0.90,
     llM7Plus: 32450,
     capexTotal: 240000,
@@ -296,6 +308,7 @@ export const INITIAL_GRANULAR_DRE_ITEMS: DreGranularItem[] = [
     name: 'Armazenagem Fitness (Quinzenal)',
     monthlyAmountY1: 99000, monthlyAmountY2: 116250,
     active: true, accountCode: '4.1.01.01', costCenterId: 'CC 002',
+    costBehavior: 'fixed',
     notes: 'Base: 2.226 pos × R$ 44,48/pos/mês (equivalente quinzenal R$ 22,50)',
     composition: [
       { id: 'rec-arm-p1', name: 'P1 Estocador puro', formula: '20% mix × piso quinzenal', monthlyAmountY1: 19800, monthlyAmountY2: 23250 },
@@ -310,6 +323,7 @@ export const INITIAL_GRANULAR_DRE_ITEMS: DreGranularItem[] = [
     name: 'Handling Inbound/Outbound + Descarga Mecânica',
     monthlyAmountY1: 52000, monthlyAmountY2: 61000,
     active: true, accountCode: '4.1.01.02', costCenterId: 'CC 002',
+    costBehavior: 'fixed',
     notes: 'Inclui descarga mecanizada R$ 35/palete e manual R$ 18/vol',
     composition: [
       { id: 'rec-h-in', name: 'Handling inbound', formula: 'R$ 25/vol', monthlyAmountY1: 18000, monthlyAmountY2: 21000 },
@@ -323,6 +337,7 @@ export const INITIAL_GRANULAR_DRE_ITEMS: DreGranularItem[] = [
     name: "Desunitização FCL 40' Heavy",
     monthlyAmountY1: 12600, monthlyAmountY2: 16800,
     active: true, accountCode: '4.1.01.03', costCenterId: 'CC 002',
+    costBehavior: 'fixed',
     notes: '~9 containers/mês × R$ 1.400 (Benchmark SANCO)',
     composition: [
       { id: 'rec-des-fcl', name: 'Desova FCL 40\'', formula: '9 CNTR × R$ 1.400', monthlyAmountY1: 12600, monthlyAmountY2: 14000 },
@@ -335,6 +350,7 @@ export const INITIAL_GRANULAR_DRE_ITEMS: DreGranularItem[] = [
     name: 'Kitting / Pré-montagem / Reversa 24h / Etiquetagem',
     monthlyAmountY1: 26600, monthlyAmountY2: 33450,
     active: true, accountCode: '4.1.02.01', costCenterId: 'CC 002',
+    costBehavior: 'fixed',
     notes: 'VAS técnico P5 + Reversa 24h (diferencial fitness)',
     composition: [
       { id: 'rec-vas-kit', name: 'Kitting / pré-montagem B2C', formula: 'setup SKU', monthlyAmountY1: 12000, monthlyAmountY2: 15000 },
@@ -348,6 +364,7 @@ export const INITIAL_GRANULAR_DRE_ITEMS: DreGranularItem[] = [
     name: 'Ad Valorem Operacional (0,10% s/ NF)',
     monthlyAmountY1: 205, monthlyAmountY2: 243,
     active: true, accountCode: '4.1.01.05', costCenterId: 'CC 002',
+    costBehavior: 'fixed',
     notes: '⚠️ CORRIGIDO: 0,10% sobre NF mensal (~R$ 205k). NÃO é R$ 950k.',
     composition: [
       { id: 'rec-adv-nf', name: '0,10% sobre NF de serviços', formula: 'params.pricing.adValoremPct × NF', monthlyAmountY1: 205, monthlyAmountY2: 243 },
@@ -360,6 +377,7 @@ export const INITIAL_GRANULAR_DRE_ITEMS: DreGranularItem[] = [
     monthlyAmountY1: CLIA_SPINE_M12,
     monthlyAmountY2: CLIA_SPINE_M24,
     active: true, engineLocked: true, accountCode: '4.1.04.01', costCenterId: 'CC 001',
+    costBehavior: 'fixed',
     notes: `Derivado do spine CLIA (engine): M12≈R$ ${CLIA_SPINE_M12.toLocaleString('pt-BR')}, M24≈R$ ${CLIA_SPINE_M24.toLocaleString('pt-BR')}. Upside entreposto Forte — fora do Fator R.`,
     composition: [
       { id: 'rec-clia-tower', name: 'Tower fee (3 clientes)', formula: 'R$ 450 × clientes', monthlyAmountY1: CLIA_TOWER_Y1, monthlyAmountY2: CLIA_TOWER_Y2 },
@@ -376,6 +394,7 @@ export const INITIAL_GRANULAR_DRE_ITEMS: DreGranularItem[] = [
     name: 'Custo Variável por Posição Ocupada',
     monthlyAmountY1: 35505, monthlyAmountY2: 45600,
     active: true, accountCode: '5.1.04.01', costCenterId: 'CC 002',
+    costBehavior: 'variable',
     notes: 'R$ 16,45/posição ocupada. Y2 sobe proporcional à ocupação 88%.',
     composition: [
       { id: 'cst-cv-energia', name: 'Energia trifásica galpão', formula: 'CC 002', monthlyAmountY1: 12000, monthlyAmountY2: 15400 },
@@ -390,6 +409,7 @@ export const INITIAL_GRANULAR_DRE_ITEMS: DreGranularItem[] = [
     name: 'Mão de Obra Terceirizada (Chapa/Desova)',
     monthlyAmountY1: 12000, monthlyAmountY2: 12600,
     active: true, accountCode: '5.1.02.01', costCenterId: 'CC 002',
+    costBehavior: 'variable',
     notes: '⚠️ EXCLUÍDO do numerador do Fator R (correção v3.1).',
     composition: [
       { id: 'cst-mo-chapa', name: 'Chapa de desova FCL', formula: 'excluído Fator R', monthlyAmountY1: 8000, monthlyAmountY2: 8400 },
@@ -402,6 +422,7 @@ export const INITIAL_GRANULAR_DRE_ITEMS: DreGranularItem[] = [
     name: 'OPEX Máquinas (Diesel/Manutenção/Baterias)',
     monthlyAmountY1: 4400, monthlyAmountY2: 4600,
     active: true, accountCode: '5.1.05.01', costCenterId: 'CC 003',
+    costBehavior: 'fixed',
     notes: 'Custo operacional direto das empilhadeiras 2.5t.',
     composition: [
       { id: 'cst-maq-energia', name: 'Diesel / recarga baterias', formula: 'CC 003', monthlyAmountY1: 2400, monthlyAmountY2: 2500 },
@@ -415,6 +436,7 @@ export const INITIAL_GRANULAR_DRE_ITEMS: DreGranularItem[] = [
     name: 'Insumos Embalagem (Stretch/Fitas/Etiquetas/Cantoneiras)',
     monthlyAmountY1: 12000, monthlyAmountY2: 16000,
     active: true, accountCode: '5.1.01.01', costCenterId: 'CC 002',
+    costBehavior: 'variable',
     notes: 'Proporcional à movimentação. Sincronizável com Supplier Quotes — composition por conta analítica.',
     composition: [
       { id: 'cst-ins-stretch', name: 'Filme stretch', formula: '5.1.01.01', monthlyAmountY1: 5500, monthlyAmountY2: 7200 },
@@ -434,6 +456,7 @@ export const INITIAL_GRANULAR_DRE_ITEMS: DreGranularItem[] = [
     name: 'Pessoal CLT + Pró-labore Regular',
     monthlyAmountY1: 49500, monthlyAmountY2: 52000,
     active: true, accountCode: '5.2.01.01', costCenterId: 'CC 001',
+    costBehavior: 'hc',
     notes: 'Folha operacional + administrativa + PL regular. COMPÕE Fator R.',
     composition: [
       { id: 'desp-sal', name: 'Salários CLT admin / supervisor', formula: '5.2.01.01 · Fator R', monthlyAmountY1: 18500, monthlyAmountY2: 20000 },
@@ -448,6 +471,7 @@ export const INITIAL_GRANULAR_DRE_ITEMS: DreGranularItem[] = [
     name: 'Pró-labore Adicional (Fator R Discricionário)',
     monthlyAmountY1: 7000, monthlyAmountY2: 15000,
     active: true, accountCode: '5.2.01.03', costCenterId: 'CC 005',
+    costBehavior: 'hc',
     notes: '🔒 CRÍTICO: M4-11=R$7k | M12=R$11k | M13+=R$15k. Mantém Anexo III 6%.',
     composition: [
       { id: 'desp-pl-m4', name: 'Faixa M4–M11', formula: 'params.fiscal.plAdditional', monthlyAmountY1: 7000, monthlyAmountY2: 0 },
@@ -460,6 +484,7 @@ export const INITIAL_GRANULAR_DRE_ITEMS: DreGranularItem[] = [
     name: 'Depreciação CAPEX (Racks + Equipamentos)',
     monthlyAmountY1: 3704, monthlyAmountY2: 3704,
     active: true, accountCode: '5.2.05.01', costCenterId: 'CC 002',
+    costBehavior: 'fixed',
     notes: 'Fixa desde M1. Base R$ 207.300 / 56 meses vida útil média.',
     composition: [
       { id: 'desp-dep-racks', name: 'Racks porta-paletes KONNEN', formula: '1.2.02 / 56m', monthlyAmountY1: 2200, monthlyAmountY2: 2200 },
@@ -473,6 +498,7 @@ export const INITIAL_GRANULAR_DRE_ITEMS: DreGranularItem[] = [
     name: 'Aluguel Galpão A (2.500 m²)',
     monthlyAmountY1: RENT_Y1, monthlyAmountY2: RENT_Y2,
     active: true, accountCode: '5.2.02.01', costCenterId: 'CC 002',
+    costBehavior: 'fixed',
     notes: `2.500 m² × R$ ${defaultParams.rent.pricePerM2}/m² = R$ ${RENT_Y1.toLocaleString('pt-BR')}/mês. M1–M6 = R$ 0 (Carência Aluguel). M13+ aplica IGPM ${defaultParams.rent.igpmPct * 100}%.`,
     composition: [
       {
@@ -490,6 +516,7 @@ export const INITIAL_GRANULAR_DRE_ITEMS: DreGranularItem[] = [
     name: 'Condomínio Logístico',
     monthlyAmountY1: CONDO_Y1, monthlyAmountY2: CONDO_Y2,
     active: true, accountCode: '5.2.02.02', costCenterId: 'CC 002',
+    costBehavior: 'fixed',
     notes: `R$ ${defaultParams.rent.condominiumPerM2.toFixed(2)}/m² × ${defaultParams.rent.areaM2} m². Independente do aluguel (R$ ${defaultParams.rent.pricePerM2}/m²).`,
     composition: [
       {

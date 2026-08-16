@@ -20,6 +20,15 @@ export interface RoleConfig {
 
 export type DreSection = 'receita' | 'custo' | 'despesa';
 export type DreItemType = 'fixo' | 'variavel' | 'operacional' | 'servico';
+export type CostBehavior = 'variable' | 'fixed' | 'hc';
+
+export interface ScenarioDrivers {
+  occupancyRate: number;
+  rentFactor: number;
+  cogsVariableFactor: number;
+  hcOpexFactor: number;
+  techOpexActive: boolean;
+}
 
 export interface DreCompositionLine {
   id: string;
@@ -48,6 +57,8 @@ export interface DreGranularItem {
   engineLocked?: boolean;
   /** Depois de edição humana, semente de ocupação/tech não sobrescreve. */
   manualOverride?: boolean;
+  /** Omit = fixed. Used by applyScenarioDrivers. */
+  costBehavior?: CostBehavior;
 }
 
 export interface CellData {
@@ -92,6 +103,9 @@ export interface Scenario {
   id: string;
   name: string;
   isBaseline: boolean;
+  /** Source of truth for occupancy + stress factors. */
+  drivers: ScenarioDrivers;
+  /** Mirror of drivers.occupancyRate — keep in sync when writing. */
   occupancyRate: number; // e.g. 0.75 for 75%
   llM7Plus: number;
   capexTotal: number;
