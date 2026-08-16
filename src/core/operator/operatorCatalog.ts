@@ -26,12 +26,17 @@ let sharedPool: PgPool | null = null;
 async function getPool(connectionString: string): Promise<PgPool> {
   if (sharedPool) return sharedPool;
   const pgMod = (await import('pg')) as {
-    default?: { Pool: new (c: { connectionString: string }) => PgPool };
-    Pool?: new (c: { connectionString: string }) => PgPool;
+    default?: { Pool: new (c: Record<string, unknown>) => PgPool };
+    Pool?: new (c: Record<string, unknown>) => PgPool;
   };
   const Pool = pgMod.default?.Pool ?? pgMod.Pool;
   if (!Pool) throw new Error('pg.Pool indisponível');
-  sharedPool = new Pool({ connectionString });
+  sharedPool = new Pool({
+    connectionString,
+    ssl: connectionString.includes('supabase') ? { rejectUnauthorized: false } : undefined,
+    max: 3,
+    connectionTimeoutMillis: 12_000,
+  });
   return sharedPool;
 }
 
@@ -66,7 +71,11 @@ export async function listPriceCategoryItems(): Promise<PriceCategoryItemLike[]>
       category_code: row.category_code == null ? null : String(row.category_code),
       kind_code: row.kind_code == null ? null : String(row.kind_code),
     }));
-  } catch {
+  } catch (err) {
+    console.warn(
+      '[operator] listPriceCategoryItems failed:',
+      err instanceof Error ? err.message : err,
+    );
     return [];
   }
 }
@@ -104,7 +113,8 @@ export async function listContracts(): Promise<OperatorContractRow[]> {
       client_trade_name: row.client_trade_name == null ? null : String(row.client_trade_name),
       is_dogfood: Boolean(row.is_dogfood),
     }));
-  } catch {
+  } catch (err) {
+    console.warn('[operator] listContracts failed:', err instanceof Error ? err.message : err);
     return [];
   }
 }
