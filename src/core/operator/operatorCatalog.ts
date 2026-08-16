@@ -32,9 +32,15 @@ async function getPool(connectionString: string): Promise<PgPool> {
   };
   const Pool = pgMod.default?.Pool ?? pgMod.Pool;
   if (!Pool) throw new Error('pg.Pool indisponível');
+  const isSupabase = /supabase\.co|pooler\.supabase/i.test(connectionString);
+  // sslmode=require in URI overrides rejectUnauthorized and breaks on Supabase chain.
+  const cleaned = connectionString
+    .replace(/([?&])sslmode=[^&]*/gi, '$1')
+    .replace(/[?&]$/, '')
+    .replace(/\?&/, '?');
   sharedPool = new Pool({
-    connectionString,
-    ssl: connectionString.includes('supabase') ? { rejectUnauthorized: false } : undefined,
+    connectionString: cleaned,
+    ssl: isSupabase ? { rejectUnauthorized: false } : undefined,
     max: 3,
     connectionTimeoutMillis: 12_000,
   });
