@@ -18,6 +18,14 @@ import { applyScenarioDrivers, deriveScenarioKpis } from '../core/scenarioDriver
 import { OFFICIAL_TOTALS_24M } from '../core/bpV35Reference';
 import { PLANO_DE_CONTAS_ITEMS, COST_CENTERS, AccountItem, CostCenter } from '../data/planoDeContasData';
 import type { IngestParseResult } from '../ingest';
+import { canEditFinance } from '../core/rbac/moduleEdit';
+import {
+  applyMixPreview,
+  diffMixPreview,
+  isMixRatioDirty,
+  mixRatioFromMc,
+  weightedMcPosFromMix,
+} from '../core/mixPreview';
 
 export const MOCK_BOARD_USERS: Record<string, AuthUser & { pass: string }> = {
   'cfo@hubfitness.com.br': {
@@ -139,7 +147,14 @@ interface PlannerContextType {
   createNewScenario: (name: string, occupancy: number) => void;
   activeMix: ClientMixWeights;
   updateActiveMix: (newMix: Partial<ClientMixWeights>) => void;
+  /** @deprecated Prefer commitMixPreview after updateActiveMix. */
   applyMixToGlobalModel: (mixWeights: ClientMixWeights, weightedMcPos: number) => void;
+  committedMixRatio: number;
+  committedMixWeights: ClientMixWeights;
+  isMixDirty: boolean;
+  previewMixItems: DreGranularItem[];
+  commitMixPreview: (overrideMix?: ClientMixWeights) => void;
+  discardMixPreview: () => void;
   hubParams: HubParams;
   setHubParams: (updater: HubParams | ((prev: HubParams) => HubParams)) => void;
   cliaSpineMonthly: (monthNum: number) => number;
@@ -331,9 +346,33 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const activeDrivers = rawActiveScenario.drivers;
 
+  const blendMixDefault: ClientMixWeights = {
+    p1: 20,
+    p2: 30,
+    p4: 25,
+    p5: 25,
+    presetName: 'Blend Alvo (20/30/25/25)',
+  };
+  const [activeMix, setActiveMix] = useState<ClientMixWeights>(blendMixDefault);
+  const [committedMixRatio, setCommittedMixRatio] = useState(1);
+  const [committedMixWeights, setCommittedMixWeights] = useState<ClientMixWeights>(blendMixDefault);
+
+  const updateActiveMix = (newMix: Partial<ClientMixWeights>) => {
+    setActiveMix((prev) => ({ ...prev, ...newMix }));
+  };
+
+  const activeRatio = mixRatioFromMc(weightedMcPosFromMix(activeMix));
+  const isMixDirty = isMixRatioDirty(activeRatio, committedMixRatio);
+  const mixScale = committedMixRatio === 0 ? 1 : activeRatio / committedMixRatio;
+  const previewMixItems = useMemo(
+    () => applyMixPreview(granularDreItems, mixScale),
+    [granularDreItems, mixScale],
+  );
+  const pipelineBase = isMixDirty ? previewMixItems : granularDreItems;
+
   const occupancyDreItems = useMemo(
-    () => applyOccupancyToDreItems(granularDreItems, hubParams),
-    [granularDreItems, hubParams],
+    () => applyOccupancyToDreItems(pipelineBase, hubParams),
+    [pipelineBase, hubParams],
   );
   const techParams = useMemo(
     () => ({
@@ -356,58 +395,7 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   );
   const cliaSpineMonthly = (monthNum: number) => computeCliaSpineMonthly(monthNum, hubParams);
 
-  const [activeMix, setActiveMix] = useState<ClientMixWeights>({
-    p1: 20,
-    p2: 30,
-    p4: 25,
-    p5: 25,
-    presetName: 'Blend Alvo (20/30/25/25)',
-  });
-
-  const updateActiveMix = (newMix: Partial<ClientMixWeights>) => {
-    setActiveMix((prev) => ({ ...prev, ...newMix }));
-  };
-
-  const applyMixToGlobalModel = (mixWeights: ClientMixWeights, weightedMcPos: number) => {
-    if (pitchMode || activeRole === 'comite' || activeRole === 'comercial') {
-      setBlockedValueAttempt(`Edição restrita: O perfil '${activeRole}' ou modo Pitch Mode ativo previne edições nas premissas de Mix.`);
-      return;
-    }
-
-    setActiveMix(mixWeights);
-
-    // Calculate revenue ratio compared to baseline Blend Alvo (MC/pos = 74.15)
-    const ratio = weightedMcPos / 74.15;
-
-    // Update granular DRE: receitas + custos variáveis (Mix→COGS P2)
-    setGranularDreItems((prev) =>
-      prev.map((item) => {
-        if (item.section === 'receita' && !item.engineLocked && item.id !== 'rec-4pl-ct') {
-          return {
-            ...item,
-            monthlyAmountY1: Math.round(item.monthlyAmountY1 * ratio),
-            monthlyAmountY2: Math.round(item.monthlyAmountY2 * ratio),
-          };
-        }
-        if (item.section === 'custo' && item.costBehavior === 'variable' && !item.engineLocked) {
-          return {
-            ...item,
-            monthlyAmountY1: Math.round(item.monthlyAmountY1 * ratio),
-            monthlyAmountY2: Math.round(item.monthlyAmountY2 * ratio),
-          };
-        }
-        return item;
-      })
-    );
-
-    addAuditLog(
-      'Simulador de Mix',
-      'Mix de Clientes Aplicado',
-      `Novo Mix (P1: ${mixWeights.p1}%, P2: ${mixWeights.p2}%, P4: ${mixWeights.p4}%, P5: ${mixWeights.p5}%) -> MC/pos: R$ ${weightedMcPos.toFixed(2)}`
-    );
-  };
-
-  // Recalculate 24-month DRE reactively from granular DRE items & scenario drivers
+  // Recalculate 24-month DRE reactively from Mix-preview-aware pipeline
   const dreMonths = useMemo<DreMonth[]>(() => {
     return projectDreFromLedger(derivedGranularDreItems, activeDrivers.occupancyRate, hubParams);
   }, [derivedGranularDreItems, activeDrivers.occupancyRate, hubParams]);
@@ -554,6 +542,47 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setBlockedValueAttempt(`Erro de rede ao salvar (${label}).`);
       return false;
     }
+  };
+
+  const commitMixPreview = (overrideMix?: ClientMixWeights) => {
+    if (pitchMode || !canEditFinance(activeRole)) {
+      setBlockedValueAttempt(
+        `Edição restrita: O perfil '${activeRole}' ou modo Pitch Mode ativo previne edições nas premissas de Mix.`,
+      );
+      return;
+    }
+    const mix = overrideMix ?? activeMix;
+    if (overrideMix) setActiveMix(overrideMix);
+    const ratio = mixRatioFromMc(weightedMcPosFromMix(mix));
+    const scale = committedMixRatio === 0 ? 1 : ratio / committedMixRatio;
+    const preview = applyMixPreview(granularDreItems, scale);
+    const changed = diffMixPreview(preview, granularDreItems);
+    setGranularDreItems(preview);
+    setCommittedMixRatio(ratio);
+    setCommittedMixWeights(mix);
+    addAuditLog(
+      'Simulador de Mix',
+      'Mix Aplicado',
+      `${changed.length} linhas; ratio ${ratio.toFixed(4)}; MC/pos R$ ${weightedMcPosFromMix(mix).toFixed(2)}`,
+    );
+    for (const item of changed) {
+      scheduleFinancePersist(`ledger:${item.id}`, () =>
+        persistJson(`ledger ${item.name}`, `/api/operator/finance/ledger/${encodeURIComponent(item.id)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(item),
+        }),
+      );
+    }
+  };
+
+  const discardMixPreview = () => {
+    setActiveMix(committedMixWeights);
+  };
+
+  /** @deprecated Prefer updateActiveMix + commitMixPreview. */
+  const applyMixToGlobalModel = (mixWeights: ClientMixWeights, _weightedMcPos: number) => {
+    commitMixPreview(mixWeights);
   };
 
   const updateVasDriver = (id: string, field: 'price' | 'quantityM7_12' | 'quantityM1_6' | 'quantityM13_24', value: number) => {
@@ -1134,6 +1163,12 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     activeMix,
     updateActiveMix,
     applyMixToGlobalModel,
+    committedMixRatio,
+    committedMixWeights,
+    isMixDirty,
+    previewMixItems,
+    commitMixPreview,
+    discardMixPreview,
     hubParams,
     setHubParams,
     cliaSpineMonthly,
@@ -1170,6 +1205,10 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     activeModule,
     blockedValueAttempt,
     activeMix,
+    committedMixRatio,
+    committedMixWeights,
+    isMixDirty,
+    previewMixItems,
     hubParams,
     chartOfAccounts,
     costCenters,
