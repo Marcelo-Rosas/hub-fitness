@@ -45,6 +45,8 @@ export type LedgerLineRow = {
   cost_behavior: string | null;
   engine_locked: boolean;
   manual_override: boolean;
+  is_fator_r_numerator: boolean;
+  is_fator_r_excluded: boolean;
   composition: unknown;
   notes: string;
 };
@@ -168,6 +170,8 @@ export function ledgerToRow(item: DreGranularItem): LedgerLineRow {
     cost_behavior: item.costBehavior ?? null,
     engine_locked: Boolean(item.engineLocked),
     manual_override: Boolean(item.manualOverride),
+    is_fator_r_numerator: Boolean(item.isFatorRNumerator),
+    is_fator_r_excluded: Boolean(item.isFatorRExcluded),
     composition: item.composition ?? [],
     notes: item.notes ?? '',
   };
@@ -193,6 +197,8 @@ export function rowToLedger(r: LedgerLineRow): DreGranularItem {
     ...(r.cost_behavior ? { costBehavior: r.cost_behavior as CostBehavior } : {}),
     ...(r.engine_locked ? { engineLocked: true } : {}),
     ...(r.manual_override ? { manualOverride: true } : {}),
+    ...(r.is_fator_r_numerator ? { isFatorRNumerator: true } : {}),
+    ...(r.is_fator_r_excluded ? { isFatorRExcluded: true } : {}),
     ...(composition ? { composition } : {}),
     ...(r.notes ? { notes: r.notes } : {}),
   };

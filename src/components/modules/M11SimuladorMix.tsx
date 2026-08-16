@@ -2,6 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { usePlanner } from '../../context/PlannerContext';
 import { RAW_MIX_DATA_JSON, PROFILE_PRESETS } from '../../data/mixSimulatorData';
 import { M11PlanoDeContas } from './M11PlanoDeContas';
+import { fixedOpexMonthlyFromLedger } from '../../core/engine';
+import { INITIAL_GRANULAR_DRE_ITEMS } from '../../data/initialData';
 import {
   Sliders,
   CheckCircle2,
@@ -52,6 +54,7 @@ export const M11SimuladorMix: React.FC = () => {
     applyMixToGlobalModel,
     addAuditLog,
     hubParams,
+    ledgerBaseItems,
   } = usePlanner();
 
   // Navigation tab state
@@ -89,22 +92,27 @@ export const M11SimuladorMix: React.FC = () => {
     const targetOccPct = hubParams.capacity.targetOccupancy * 100;
     const safeMc = weightedMcPos > 0 ? weightedMcPos : 1;
 
-    const bePositionsOriginal = 164000 / safeMc;
-    const bePositionsEnxuto = 120000 / safeMc;
-    const bePositionsRealista = 143000 / safeMc;
+    const ledger = ledgerBaseItems.length ? ledgerBaseItems : INITIAL_GRANULAR_DRE_ITEMS;
+    const custosRealistas = fixedOpexMonthlyFromLedger(ledger);
+    const custosOriginais = Math.round(custosRealistas * 1.15);
+    const custosEnxutos = Math.round(custosRealistas * 0.85);
+
+    const bePositionsOriginal = custosOriginais / safeMc;
+    const bePositionsEnxuto = custosEnxutos / safeMc;
+    const bePositionsRealista = custosRealistas / safeMc;
 
     const bePctOriginal = Number(((bePositionsOriginal / totalCapacity) * 100).toFixed(1));
     const bePctEnxuto = Number(((bePositionsEnxuto / totalCapacity) * 100).toFixed(1));
     const bePctRealista = Number(((bePositionsRealista / totalCapacity) * 100).toFixed(1));
 
-    const ll100Original = Math.round(totalCapacity * weightedMcPos - 164000);
-    const ll100Enxuto = Math.round(totalCapacity * weightedMcPos - 120000);
-    const ll100Realista = Math.round(totalCapacity * weightedMcPos - 143000);
+    const ll100Original = Math.round(totalCapacity * weightedMcPos - custosOriginais);
+    const ll100Enxuto = Math.round(totalCapacity * weightedMcPos - custosEnxutos);
+    const ll100Realista = Math.round(totalCapacity * weightedMcPos - custosRealistas);
 
     const pos88 = Math.round(totalCapacity * hubParams.year3.galpaoAOccupancy);
-    const ll88Original = Math.round(pos88 * weightedMcPos - 164000);
-    const ll88Enxuto = Math.round(pos88 * weightedMcPos - 120000);
-    const ll88Realista = Math.round(pos88 * weightedMcPos - 143000);
+    const ll88Original = Math.round(pos88 * weightedMcPos - custosOriginais);
+    const ll88Enxuto = Math.round(pos88 * weightedMcPos - custosEnxutos);
+    const ll88Realista = Math.round(pos88 * weightedMcPos - custosRealistas);
 
     // Triggers and Warnings
     const triggers: { type: 'danger' | 'warning' | 'info'; text: string }[] = [];
@@ -156,6 +164,9 @@ export const M11SimuladorMix: React.FC = () => {
       totalCapacity,
       targetOccPct,
       pos88,
+      custosOriginais,
+      custosEnxutos,
+      custosRealistas,
       bePctOriginal,
       bePctEnxuto,
       bePctRealista,
@@ -167,7 +178,7 @@ export const M11SimuladorMix: React.FC = () => {
       ll88Realista,
       triggers,
     };
-  }, [mixWeights, hubParams]);
+  }, [mixWeights, hubParams, ledgerBaseItems]);
 
   // Handler to load preset
   const handleSelectPreset = (key: string) => {
@@ -232,7 +243,10 @@ export const M11SimuladorMix: React.FC = () => {
   // Download CSV export handler
   const exportToCsv = () => {
     let csvContent = 'data:text/csv;charset=utf-8,';
-    csvContent += 'Perfil,MC_pos_R$,Ticket_R$,BE_Original_164k_pct,BE_Enxuto_120k_pct,BE_Realista_143k_pct,LL_100pct_Realista,4PL_CT_R$mes,Mix_Recomendado,Cap_Regra,Gatilho\n';
+    const oK = Math.round(calculations.custosOriginais / 1000);
+    const eK = Math.round(calculations.custosEnxutos / 1000);
+    const rK = Math.round(calculations.custosRealistas / 1000);
+    csvContent += `Perfil,MC_pos_R$,Ticket_R$,BE_Original_${oK}k_pct,BE_Enxuto_${eK}k_pct,BE_Realista_${rK}k_pct,LL_100pct_Realista,4PL_CT_R$mes,Mix_Recomendado,Cap_Regra,Gatilho\n`;
     RAW_MIX_DATA_JSON.forEach((row) => {
       csvContent += `"${row.Perfil}","${row['MC_pos_R$']}","${row['Ticket_R$']}","${row['BE_Original_164k_pct']}","${row['BE_Enxuto_120k_pct']}","${row['BE_Realista_143k_pct']}","${row['LL_100pct_Realista']}","${row['4PL_CT_por_cliente_R$mes']}","${row['Mix_recomendado']}","${row['Cap_regra']}","${row['Gatilho']}"\n`;
     });
@@ -623,7 +637,9 @@ export const M11SimuladorMix: React.FC = () => {
                   <div className="text-xl font-black text-emerald-800 font-mono mt-1">
                     R$ {calculations.ll100Realista.toLocaleString('pt-BR')}
                   </div>
-                  <span className="text-[10px] text-slate-500 mt-0.5 block">Custo Realista R$143k</span>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
+                    Custo Realista R${Math.round(calculations.custosRealistas / 1000)}k
+                  </span>
                 </div>
 
                 {/* Lucro Líquido 88% Realista */}
@@ -634,7 +650,9 @@ export const M11SimuladorMix: React.FC = () => {
                   <div className="text-xl font-black text-emerald-900 font-mono mt-1">
                     R$ {calculations.ll88Realista.toLocaleString('pt-BR')}
                   </div>
-                  <span className="text-[10px] text-slate-500 mt-0.5 block">Custo Realista R$143k</span>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
+                    Custo Realista R${Math.round(calculations.custosRealistas / 1000)}k
+                  </span>
                 </div>
 
                 {/* 4PL Revenue */}
@@ -718,9 +736,24 @@ export const M11SimuladorMix: React.FC = () => {
                       contentStyle={{ backgroundColor: '#0F172A', color: '#FFF', borderRadius: '8px' }}
                     />
                     <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                    <Bar dataKey="Original" name="Custo Original (R$164k)" fill="#94A3B8" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="Enxuto" name="Custo Enxuto (R$120k)" fill="#10B981" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="Realista" name="Custo Realista (R$143k)" fill="#1E40AF" radius={[4, 4, 0, 0]} />
+                    <Bar
+                      dataKey="Original"
+                      name={`Custo Original (R$${Math.round(calculations.custosOriginais / 1000)}k)`}
+                      fill="#94A3B8"
+                      radius={[4, 4, 0, 0]}
+                    />
+                    <Bar
+                      dataKey="Enxuto"
+                      name={`Custo Enxuto (R$${Math.round(calculations.custosEnxutos / 1000)}k)`}
+                      fill="#10B981"
+                      radius={[4, 4, 0, 0]}
+                    />
+                    <Bar
+                      dataKey="Realista"
+                      name={`Custo Realista (R$${Math.round(calculations.custosRealistas / 1000)}k)`}
+                      fill="#1E40AF"
+                      radius={[4, 4, 0, 0]}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -794,9 +827,15 @@ export const M11SimuladorMix: React.FC = () => {
                     <th className="py-2.5 px-3">Perfil / Blend</th>
                     <th className="py-2.5 px-3 text-right">MC pos (R$)</th>
                     <th className="py-2.5 px-3 text-right">Ticket (R$)</th>
-                    <th className="py-2.5 px-3 text-right">BE Orig (164k)</th>
-                    <th className="py-2.5 px-3 text-right">BE Enx (120k)</th>
-                    <th className="py-2.5 px-3 text-right">BE Real (143k)</th>
+                    <th className="py-2.5 px-3 text-right">
+                      BE Orig ({Math.round(calculations.custosOriginais / 1000)}k)
+                    </th>
+                    <th className="py-2.5 px-3 text-right">
+                      BE Enx ({Math.round(calculations.custosEnxutos / 1000)}k)
+                    </th>
+                    <th className="py-2.5 px-3 text-right">
+                      BE Real ({Math.round(calculations.custosRealistas / 1000)}k)
+                    </th>
                     <th className="py-2.5 px-3 text-right">LL 100% Realist</th>
                     <th className="py-2.5 px-3 text-right">4PL CT (R$/m)</th>
                     <th className="py-2.5 px-3">Regra Cap</th>
@@ -891,7 +930,9 @@ export const M11SimuladorMix: React.FC = () => {
                     <th className="py-3 px-4 w-36">Perfil</th>
                     <th className="py-3 px-4">Definição Técnica & Critérios de Enquadramento</th>
                     <th className="py-3 px-4 text-right w-24">MC/Pos (R$)</th>
-                    <th className="py-3 px-4 text-right w-28">BE Real (143k)</th>
+                    <th className="py-3 px-4 text-right w-28">
+                      BE Real ({Math.round(calculations.custosRealistas / 1000)}k)
+                    </th>
                     <th className="py-3 px-4 w-72">Gatilho de Risco & Ação Executiva</th>
                   </tr>
                 </thead>
@@ -1138,7 +1179,11 @@ export const M11SimuladorMix: React.FC = () => {
                 <span>1. Matriz de Perfis de Cliente: Viabilidade e Risco</span>
               </h3>
               <p className="text-xs text-slate-600 leading-relaxed">
-                A análise classifica cada perfil não apenas pela margem bruta, mas pela sua capacidade de sustentar a estrutura de custos fixos (especialmente após o término da carência do aluguel em M7, quando inicia a cobrança de R$ 143k realista) e respeitar as travas de governança do BP v3.5.
+                A análise classifica cada perfil não apenas pela margem bruta, mas pela sua capacidade de
+                sustentar a estrutura de custos fixos (especialmente após o término da carência do aluguel
+                em M7, quando inicia a cobrança de R${' '}
+                {Math.round(calculations.custosRealistas / 1000)}k realista) e respeitar as travas de
+                governança do BP v3.5.
               </p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">

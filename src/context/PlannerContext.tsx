@@ -12,6 +12,7 @@ import {
   isAccountInUse,
   computeCliaSpineMonthly,
   plAdditionalForMonth,
+  fatorRFolhaMensalFromLedger,
 } from '../core/engine';
 import { applyScenarioDrivers, deriveScenarioKpis } from '../core/scenarioDrivers';
 import { OFFICIAL_TOTALS_24M } from '../core/bpV35Reference';
@@ -255,11 +256,15 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     financeSourceRef.current = financeSource;
   }, [financeSource]);
 
-  const scheduleFinancePersist = (key: string, run: () => void) => {
+  const scheduleFinancePersist = (key: string, run: () => void | Promise<unknown>) => {
     if (financeSourceRef.current !== 'operator') return;
     const prev = financePersistTimers.current[key];
     if (prev) clearTimeout(prev);
-    financePersistTimers.current[key] = setTimeout(run, 300);
+    financePersistTimers.current[key] = setTimeout(() => {
+      void Promise.resolve(run()).catch(() => {
+        /* network — handled inside run when possible */
+      });
+    }, 300);
   };
 
   useEffect(() => {
@@ -374,10 +379,17 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     // Calculate revenue ratio compared to baseline Blend Alvo (MC/pos = 74.15)
     const ratio = weightedMcPos / 74.15;
 
-    // Update granular DRE receita items
+    // Update granular DRE: receitas + custos variáveis (Mix→COGS P2)
     setGranularDreItems((prev) =>
       prev.map((item) => {
         if (item.section === 'receita' && !item.engineLocked && item.id !== 'rec-4pl-ct') {
+          return {
+            ...item,
+            monthlyAmountY1: Math.round(item.monthlyAmountY1 * ratio),
+            monthlyAmountY2: Math.round(item.monthlyAmountY2 * ratio),
+          };
+        }
+        if (item.section === 'custo' && item.costBehavior === 'variable' && !item.engineLocked) {
           return {
             ...item,
             monthlyAmountY1: Math.round(item.monthlyAmountY1 * ratio),
@@ -400,7 +412,7 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return projectDreFromLedger(derivedGranularDreItems, activeDrivers.occupancyRate, hubParams);
   }, [derivedGranularDreItems, activeDrivers.occupancyRate, hubParams]);
 
-  // Fator R: RBT12 + PL adicional de hubParams.fiscal (sem literais 7k/11k/15k)
+  // Fator R: RBT12 + folha elegível do ledger base (hc + isFatorRNumerator; exclui MO terceirizada)
   const fatorR = useMemo(() => {
     if (!dreMonths || dreMonths.length === 0) return hubParams.fiscal.fatorRMin;
 
@@ -413,15 +425,14 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const monthNum = lastMonth.month;
     const rbt12Start = Math.max(0, activeMonths.length - 12);
     const rbt12 = activeMonths.slice(rbt12Start).reduce((acc, m) => acc + m.receitaServicos, 0);
-    const plAdicional = plAdditionalForMonth(hubParams, monthNum);
-    const avgFolhaMensal = prolaboreMonthly + plAdicional;
+    const avgFolhaMensal = fatorRFolhaMensalFromLedger(granularDreItems, hubParams, monthNum);
     const folhaAcumulada12m = avgFolhaMensal * Math.min(activeMonths.length, 12);
 
     if (rbt12 === 0) return hubParams.fiscal.fatorRFloor;
 
     const ratio = (folhaAcumulada12m / rbt12) * 100;
     return Number(ratio.toFixed(2));
-  }, [dreMonths, prolaboreMonthly, hubParams]);
+  }, [dreMonths, granularDreItems, hubParams]);
 
   const activeScenario = useMemo(() => {
     const kpis = deriveScenarioKpis(dreMonths, hubParams);
@@ -519,6 +530,30 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       timestamp: new Date().toLocaleString('pt-BR'),
     };
     setAuditLogs((prev) => [newLog, ...prev]);
+  };
+
+  const persistJson = async (
+    label: string,
+    url: string,
+    init: RequestInit,
+  ): Promise<boolean> => {
+    try {
+      const res = await fetch(url, init);
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({ error: res.statusText }))) as {
+          error?: string;
+        };
+        const msg = err.error ?? `HTTP ${res.status}`;
+        addAuditLog('Persistência', label, msg);
+        setBlockedValueAttempt(`Erro ao salvar (${label}): ${msg}`);
+        return false;
+      }
+      return true;
+    } catch {
+      addAuditLog('Persistência', label, 'Falha de rede');
+      setBlockedValueAttempt(`Erro de rede ao salvar (${label}).`);
+      return false;
+    }
   };
 
   const updateVasDriver = (id: string, field: 'price' | 'quantityM7_12' | 'quantityM1_6' | 'quantityM13_24', value: number) => {
@@ -647,13 +682,13 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
     setGranularDreItems((prev) => [...prev, newItem]);
     addAuditLog(`DRE Granular (${newItem.section.toUpperCase()})`, '-', `Criado item '${newItem.name}' (R$ ${newItem.monthlyAmountY1.toLocaleString('pt-BR')}/mês)`);
-    scheduleFinancePersist(`ledger:${newItem.id}`, () => {
-      void fetch('/api/operator/finance/ledger', {
+    scheduleFinancePersist(`ledger:${newItem.id}`, () =>
+      persistJson(`ledger ${newItem.name}`, '/api/operator/finance/ledger', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newItem),
-      }).catch(() => {});
-    });
+      }),
+    );
   };
 
   const updateDreGranularItem = (id: string, updated: Partial<DreGranularItem>) => {
@@ -680,26 +715,26 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (!injected) return prev;
         const newItem = { ...injected, ...updated, engineLocked: false, manualOverride: true };
         addAuditLog(`DRE Granular (${newItem.name})`, 'Alteração', `Atualizado R$ ${newItem.monthlyAmountY1.toLocaleString('pt-BR')}/mês Y1`);
-        scheduleFinancePersist(`ledger:${newItem.id}`, () => {
-          void fetch(`/api/operator/finance/ledger/${encodeURIComponent(newItem.id)}`, {
+        scheduleFinancePersist(`ledger:${newItem.id}`, () =>
+          persistJson(`ledger ${newItem.name}`, `/api/operator/finance/ledger/${encodeURIComponent(newItem.id)}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(newItem),
-          }).catch(() => {});
-        });
+          }),
+        );
         return [...prev, newItem];
       }
       return prev.map((item) => {
         if (item.id === id) {
           const newItem = { ...item, ...updated, engineLocked: false, manualOverride: true };
           addAuditLog(`DRE Granular (${item.name})`, 'Alteração', `Atualizado R$ ${newItem.monthlyAmountY1.toLocaleString('pt-BR')}/mês Y1`);
-          scheduleFinancePersist(`ledger:${newItem.id}`, () => {
-            void fetch(`/api/operator/finance/ledger/${encodeURIComponent(newItem.id)}`, {
+          scheduleFinancePersist(`ledger:${newItem.id}`, () =>
+            persistJson(`ledger ${newItem.name}`, `/api/operator/finance/ledger/${encodeURIComponent(newItem.id)}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(newItem),
-            }).catch(() => {});
-          });
+            }),
+          );
           return newItem;
         }
         return item;
@@ -720,9 +755,11 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
     setGranularDreItems((prev) => prev.filter((i) => i.id !== id));
     addAuditLog('DRE Granular', target.name, 'Excluído');
-    scheduleFinancePersist(`ledger-del:${id}`, () => {
-      void fetch(`/api/operator/finance/ledger/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
-    });
+    scheduleFinancePersist(`ledger-del:${id}`, () =>
+      persistJson(`delete ledger ${id}`, `/api/operator/finance/ledger/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      }),
+    );
   };
 
   const toggleDreGranularItem = (id: string) => {
@@ -736,13 +773,13 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
           const newStatus = !item.active;
           addAuditLog(`DRE Granular (${item.name})`, item.active ? 'Ativo' : 'Inativo', newStatus ? 'Ativo' : 'Inativo');
           const next = { ...item, active: newStatus };
-          scheduleFinancePersist(`ledger:${item.id}`, () => {
-            void fetch(`/api/operator/finance/ledger/${encodeURIComponent(item.id)}`, {
+          scheduleFinancePersist(`ledger:${item.id}`, () =>
+            persistJson(`ledger ${item.name}`, `/api/operator/finance/ledger/${encodeURIComponent(item.id)}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(next),
-            }).catch(() => {});
-          });
+            }),
+          );
           return next;
         }
         return item;
@@ -772,13 +809,13 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
     setChartOfAccounts((prev) => [...prev, account]);
     addAuditLog('Plano de contas', '-', `Criada ${account.code} ${account.name}`);
-    scheduleFinancePersist(`account:${account.code}`, () => {
-      void fetch('/api/operator/finance/accounts', {
+    scheduleFinancePersist(`account:${account.code}`, () =>
+      persistJson(`account ${account.code}`, '/api/operator/finance/accounts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(account),
-      }).catch(() => {});
-    });
+      }),
+    );
     return true;
   };
 
@@ -791,13 +828,13 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const next = prev.map((a) => (a.code === code ? { ...a, ...patch, code: a.code } : a));
       const saved = next.find((a) => a.code === code);
       if (saved) {
-        scheduleFinancePersist(`account:${code}`, () => {
-          void fetch(`/api/operator/finance/accounts/${encodeURIComponent(code)}`, {
+        scheduleFinancePersist(`account:${code}`, () =>
+          persistJson(`account ${code}`, `/api/operator/finance/accounts/${encodeURIComponent(code)}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(saved),
-          }).catch(() => {});
-        });
+          }),
+        );
       }
       return next;
     });
@@ -816,15 +853,11 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
     setChartOfAccounts((prev) => prev.filter((a) => a.code !== code));
     addAuditLog('Plano de contas', code, 'Excluída');
-    scheduleFinancePersist(`account-del:${code}`, () => {
-      void fetch(`/api/operator/finance/accounts/${encodeURIComponent(code)}`, { method: 'DELETE' })
-        .then(async (res) => {
-          if (res.status === 409) {
-            setBlockedValueAttempt(`Conta ${code} está em uso no Operator (409).`);
-          }
-        })
-        .catch(() => {});
-    });
+    scheduleFinancePersist(`account-del:${code}`, () =>
+      persistJson(`delete account ${code}`, `/api/operator/finance/accounts/${encodeURIComponent(code)}`, {
+        method: 'DELETE',
+      }),
+    );
     return true;
   };
 
@@ -839,13 +872,13 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
     setCostCenters((prev) => [...prev, cc]);
     addAuditLog('Centro de custo', '-', `Criado ${cc.id} ${cc.name}`);
-    scheduleFinancePersist(`cc:${cc.id}`, () => {
-      void fetch('/api/operator/finance/cost-centers', {
+    scheduleFinancePersist(`cc:${cc.id}`, () =>
+      persistJson(`cc ${cc.id}`, '/api/operator/finance/cost-centers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(cc),
-      }).catch(() => {});
-    });
+      }),
+    );
     return true;
   };
 

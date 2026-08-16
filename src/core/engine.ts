@@ -192,6 +192,43 @@ export function plAdditionalForMonth(params: HubParams, monthNum: number): numbe
   return amount;
 }
 
+/**
+ * Folha mensal elegível ao numerador do Fator R a partir do ledger base.
+ * Usa flags isFatorRNumerator / isFatorRExcluded; fallback: costBehavior=hc sem excluded.
+ * PL adicional usa degrau hubParams (não Y1 flat do ledger).
+ */
+export function fatorRFolhaMensalFromLedger(
+  items: DreGranularItem[],
+  params: HubParams,
+  monthNum: number,
+): number {
+  const baseHc = items
+    .filter(
+      (item) =>
+        item.active &&
+        item.id !== 'cst-pl-adicional' &&
+        item.isFatorRExcluded !== true &&
+        (item.isFatorRNumerator === true ||
+          (item.isFatorRNumerator == null && item.costBehavior === 'hc')),
+    )
+    .reduce((acc, item) => acc + item.monthlyAmountY1, 0);
+  return baseHc + plAdditionalForMonth(params, monthNum);
+}
+
+/** Despesas + custos fixos ativos (break-even Mix). Exclui PL adicional gatilho. */
+export function fixedOpexMonthlyFromLedger(items: DreGranularItem[]): number {
+  return items
+    .filter(
+      (i) =>
+        i.active &&
+        i.id !== 'cst-pl-adicional' &&
+        (i.costBehavior === 'fixed' || i.costBehavior == null) &&
+        (i.section === 'despesa' || i.section === 'custo') &&
+        i.type === 'fixo',
+    )
+    .reduce((acc, i) => acc + i.monthlyAmountY1, 0);
+}
+
 export function projectDreFromLedger(
   items: DreGranularItem[],
   occupancyRate: number,

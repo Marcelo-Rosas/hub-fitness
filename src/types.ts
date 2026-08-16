@@ -59,6 +59,10 @@ export interface DreGranularItem {
   manualOverride?: boolean;
   /** Omit = fixed. Used by applyScenarioDrivers. */
   costBehavior?: CostBehavior;
+  /** Entra no numerador do Fator R (folha CLT + pró-labore + PL adicional). */
+  isFatorRNumerator?: boolean;
+  /** Excluído do numerador do Fator R (ex: MO terceirizada). */
+  isFatorRExcluded?: boolean;
 }
 
 export interface CellData {

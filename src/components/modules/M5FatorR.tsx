@@ -3,9 +3,18 @@ import { usePlanner } from '../../context/PlannerContext';
 import { CheckCircle2, Zap } from 'lucide-react';
 import { ModuleHeader } from '../ModuleHeader';
 import { formatDasPct, formatFatorRBand } from '../../core/governanceMatrix';
+import { fatorRFolhaMensalFromLedger, plAdditionalForMonth } from '../../core/engine';
+import { INITIAL_GRANULAR_DRE_ITEMS } from '../../data/initialData';
 
 export const M5FatorR: React.FC = () => {
-  const { fatorR, prolaboreMonthly, applyFatorRTrigger, dreMonths, hubParams } = usePlanner();
+  const {
+    fatorR,
+    applyFatorRTrigger,
+    dreMonths,
+    hubParams,
+    ledgerBaseItems,
+    prolaboreMonthly,
+  } = usePlanner();
   const [simulateRevenueIncrease, setSimulateRevenueIncrease] = useState<boolean>(false);
 
   const bandMin = hubParams.fiscal.fatorRMin;
@@ -169,9 +178,13 @@ export const M5FatorR: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-200">
               {dreMonths.slice(0, 12).map((m) => {
-                const folha = prolaboreMonthly + 35000;
-                const ratioOriginal = ((folha - 2200) / m.receitaServicos) * 100;
-                const ratioAjustado = (folha / m.receitaServicos) * 100;
+                const ledger = ledgerBaseItems.length ? ledgerBaseItems : INITIAL_GRANULAR_DRE_ITEMS;
+                const folha = fatorRFolhaMensalFromLedger(ledger, hubParams, m.month);
+                const plExtra = plAdditionalForMonth(hubParams, m.month);
+                const ratioOriginal = m.receitaServicos
+                  ? ((folha - plExtra) / m.receitaServicos) * 100
+                  : 0;
+                const ratioAjustado = m.receitaServicos ? (folha / m.receitaServicos) * 100 : 0;
                 const ok =
                   ratioAjustado >= bandMin && ratioAjustado <= bandMax;
 

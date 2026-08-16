@@ -36,6 +36,15 @@ describe('financeMappers', () => {
     expect(rowToLedger(ledgerToRow(item))).toEqual(item);
   });
 
+  it('Fator R flags round-trip on ledger', () => {
+    const hc = INITIAL_GRANULAR_DRE_ITEMS.find((i) => i.id === 'cst-pessoal-clt-pl')!;
+    expect(hc.isFatorRNumerator).toBe(true);
+    expect(rowToLedger(ledgerToRow(hc)).isFatorRNumerator).toBe(true);
+    const mo = INITIAL_GRANULAR_DRE_ITEMS.find((i) => i.id === 'cst-mo-terceirizada')!;
+    expect(mo.isFatorRExcluded).toBe(true);
+    expect(rowToLedger(ledgerToRow(mo)).isFatorRExcluded).toBe(true);
+  });
+
   it('rejects invalid cost_behavior', () => {
     expect(costBehaviorValidationError('semi')).toMatch(/inválido/);
     expect(costBehaviorValidationError('variable')).toBeNull();

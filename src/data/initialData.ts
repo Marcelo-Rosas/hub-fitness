@@ -410,6 +410,7 @@ export const INITIAL_GRANULAR_DRE_ITEMS: DreGranularItem[] = [
     monthlyAmountY1: 12000, monthlyAmountY2: 12600,
     active: true, accountCode: '5.1.02.01', costCenterId: 'CC 002',
     costBehavior: 'variable',
+    isFatorRExcluded: true,
     notes: '⚠️ EXCLUÍDO do numerador do Fator R (correção v3.1).',
     composition: [
       { id: 'cst-mo-chapa', name: 'Chapa de desova FCL', formula: 'excluído Fator R', monthlyAmountY1: 8000, monthlyAmountY2: 8400 },
@@ -457,6 +458,7 @@ export const INITIAL_GRANULAR_DRE_ITEMS: DreGranularItem[] = [
     monthlyAmountY1: 49500, monthlyAmountY2: 52000,
     active: true, accountCode: '5.2.01.01', costCenterId: 'CC 001',
     costBehavior: 'hc',
+    isFatorRNumerator: true,
     notes: 'Folha operacional + administrativa + PL regular. COMPÕE Fator R.',
     composition: [
       { id: 'desp-sal', name: 'Salários CLT admin / supervisor', formula: '5.2.01.01 · Fator R', monthlyAmountY1: 18500, monthlyAmountY2: 20000 },
@@ -472,6 +474,7 @@ export const INITIAL_GRANULAR_DRE_ITEMS: DreGranularItem[] = [
     monthlyAmountY1: 7000, monthlyAmountY2: 15000,
     active: true, accountCode: '5.2.01.03', costCenterId: 'CC 005',
     costBehavior: 'hc',
+    isFatorRNumerator: true,
     notes: '🔒 CRÍTICO: M4-11=R$7k | M12=R$11k | M13+=R$15k. Mantém Anexo III 6%.',
     composition: [
       { id: 'desp-pl-m4', name: 'Faixa M4–M11', formula: 'params.fiscal.plAdditional', monthlyAmountY1: 7000, monthlyAmountY2: 0 },

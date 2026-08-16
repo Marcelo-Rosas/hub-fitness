@@ -109,6 +109,8 @@ function asLedgerRow(row: Record<string, unknown>): LedgerLineRow {
     cost_behavior: row.cost_behavior == null ? null : String(row.cost_behavior),
     engine_locked: Boolean(row.engine_locked),
     manual_override: Boolean(row.manual_override),
+    is_fator_r_numerator: Boolean(row.is_fator_r_numerator),
+    is_fator_r_excluded: Boolean(row.is_fator_r_excluded),
     composition: row.composition ?? [],
     notes: row.notes == null ? '' : String(row.notes),
   };
@@ -175,8 +177,10 @@ async function ensureFinanceSeeded(db: PgPool): Promise<void> {
            monthly_amount_y1, monthly_amount_y2, active,
            is_percentage_of_revenue, percentage_value,
            account_code, cost_center_id, cost_behavior,
-           engine_locked, manual_override, composition, notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17)
+           engine_locked, manual_override,
+           is_fator_r_numerator, is_fator_r_excluded,
+           composition, notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19)
          ON CONFLICT (id) DO NOTHING`,
         [
           row.id,
@@ -194,6 +198,8 @@ async function ensureFinanceSeeded(db: PgPool): Promise<void> {
           row.cost_behavior,
           row.engine_locked,
           row.manual_override,
+          row.is_fator_r_numerator,
+          row.is_fator_r_excluded,
           JSON.stringify(row.composition ?? []),
           row.notes,
         ],
@@ -375,8 +381,10 @@ export async function upsertLedgerLine(
          monthly_amount_y1, monthly_amount_y2, active,
          is_percentage_of_revenue, percentage_value,
          account_code, cost_center_id, cost_behavior,
-         engine_locked, manual_override, composition, notes, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17, now())
+         engine_locked, manual_override,
+         is_fator_r_numerator, is_fator_r_excluded,
+         composition, notes, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19, now())
        ON CONFLICT (id) DO UPDATE SET
          section = EXCLUDED.section,
          item_type = EXCLUDED.item_type,
@@ -392,6 +400,8 @@ export async function upsertLedgerLine(
          cost_behavior = EXCLUDED.cost_behavior,
          engine_locked = EXCLUDED.engine_locked,
          manual_override = EXCLUDED.manual_override,
+         is_fator_r_numerator = EXCLUDED.is_fator_r_numerator,
+         is_fator_r_excluded = EXCLUDED.is_fator_r_excluded,
          composition = EXCLUDED.composition,
          notes = EXCLUDED.notes,
          updated_at = now()`,
@@ -411,6 +421,8 @@ export async function upsertLedgerLine(
         row.cost_behavior,
         row.engine_locked,
         row.manual_override,
+        row.is_fator_r_numerator,
+        row.is_fator_r_excluded,
         JSON.stringify(row.composition ?? []),
         row.notes,
       ],
