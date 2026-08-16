@@ -321,7 +321,11 @@ export const M6Cenarios: React.FC = () => {
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
               <XAxis type="number" tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
               <YAxis type="category" dataKey="factor" tick={{ fontSize: 11, fill: '#334155' }} width={130} />
-              <Tooltip formatter={(val: number) => `R$ ${Number(val).toLocaleString('pt-BR')}`} />
+              <Tooltip
+                formatter={(val) =>
+                  `R$ ${Number(val ?? 0).toLocaleString('pt-BR')}`
+                }
+              />
               <Bar dataKey="downside" name="Downside" fill="#f43f5e" radius={[4, 0, 0, 4]} />
               <Bar dataKey="upside" name="Upside" fill="#10b981" radius={[0, 4, 4, 0]} />
             </BarChart>

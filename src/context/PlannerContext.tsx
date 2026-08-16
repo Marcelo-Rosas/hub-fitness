@@ -391,38 +391,29 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [rawActiveScenario, activeDrivers.occupancyRate, dreMonths, hubParams, fatorR]);
 
   const updateScenarioDrivers = (id: string, partial: Partial<ScenarioDrivers>) => {
-    let nextDrivers: ScenarioDrivers | null = null;
-    let nextMeta: Scenario | null = null;
-    setScenarios((prev) =>
-      prev.map((s) => {
-        if (s.id !== id) return s;
-        nextDrivers = { ...s.drivers, ...partial };
-        nextMeta = {
-          ...s,
-          drivers: nextDrivers,
-          occupancyRate: nextDrivers.occupancyRate,
-        };
-        return nextMeta;
+    const current = scenarios.find((s) => s.id === id);
+    if (!current) return;
+    const nextDrivers: ScenarioDrivers = { ...current.drivers, ...partial };
+    const nextMeta: Scenario = {
+      ...current,
+      drivers: nextDrivers,
+      occupancyRate: nextDrivers.occupancyRate,
+    };
+    setScenarios((prev) => prev.map((s) => (s.id === id ? nextMeta : s)));
+    void fetch(`/api/operator/scenarios/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: nextMeta.name,
+        isBaseline: nextMeta.isBaseline,
+        status: nextMeta.status,
+        drivers: nextDrivers,
+        notes: nextMeta.notes ?? null,
+        mitigationStrategy: nextMeta.mitigationStrategy ?? null,
       }),
-    );
-    if (nextDrivers && nextMeta) {
-      const payload = nextMeta;
-      const drivers = nextDrivers;
-      void fetch(`/api/operator/scenarios/${encodeURIComponent(id)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: payload.name,
-          isBaseline: payload.isBaseline,
-          status: payload.status,
-          drivers,
-          notes: payload.notes ?? null,
-          mitigationStrategy: payload.mitigationStrategy ?? null,
-        }),
-      }).catch(() => {
-        /* offline: local state already updated */
-      });
-    }
+    }).catch(() => {
+      /* offline: local state already updated */
+    });
   };
 
   const governanceChecks = useMemo((): GovernanceCheck[] => {

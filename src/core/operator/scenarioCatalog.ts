@@ -25,7 +25,8 @@ let lastError: string | null = null;
 
 async function getPool(connectionString: string): Promise<PgPool> {
   if (sharedPool) return sharedPool;
-  const pgMod = (await import('pg')) as {
+  // pg ships without bundled types in some installs; cast via unknown.
+  const pgMod = (await import('pg')) as unknown as {
     default?: { Pool: new (c: Record<string, unknown>) => PgPool };
     Pool?: new (c: Record<string, unknown>) => PgPool;
   };
