@@ -1,6 +1,6 @@
 # Phase 5 CoA + Ledger + Cost Centers Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Persist CoA, cost centers, and DRE ledger lines in Operator `finance.*` so M3/M11 edits survive reload and feed ScenarioDrivers.
 
@@ -45,6 +45,8 @@ Reuse patterns from:
 
 ---
 
+> **Status execução (2026-08-16):** Tasks 1–6 **complete** em `main` (`90ba2f1` → `56d5548` → `5d80f25`). Migration Operator aplicada; Railway deploy `5d80f25`. Desvio: flags CoA = `AccountItem` real; badge M11 em `M11PlanoDeContas.tsx`.
+
 ### Task 1: Migration DDL
 
 **Files:**
@@ -53,7 +55,7 @@ Reuse patterns from:
 **Interfaces:**
 - Produces: empty tables `finance.chart_accounts`, `finance.cost_centers`, `finance.ledger_lines` with grants matching `scenario_defs`
 
-- [ ] **Step 1: Write migration**
+- [x] **Step 1: Write migration**
 
 ```sql
 -- finance CoA + cost centers + ledger lines (Phase 5)
@@ -117,7 +119,7 @@ GRANT ALL ON TABLE finance.ledger_lines TO postgres, service_role;
 
 Map `AccountItem` flags exactly — check `src/types.ts` for field names (`isFatorR`, `isDAS`, `isCAPEX`, `group` → column `grp`).
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add supabase/migrations/20260816150000_finance_coa_ledger.sql
@@ -146,7 +148,7 @@ EOF
   - `ledgerToRow` / `rowToLedger`
   - `assertCostBehavior(v: unknown): 'variable'|'fixed'|'hc'|null` throws/returns error string on invalid
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```ts
 import { describe, it, expect } from 'vitest';
@@ -176,13 +178,13 @@ describe('financeMappers', () => {
 });
 ```
 
-- [ ] **Step 2: Run — expect fail**
+- [x] **Step 2: Run — expect fail**
 
 ```bash
 npx vitest run src/core/operator/financeMappers.test.ts
 ```
 
-- [ ] **Step 3: Implement mappers**
+- [x] **Step 3: Implement mappers**
 
 Handle:
 - `group` ↔ `grp`
@@ -190,13 +192,13 @@ Handle:
 - numeric Y1/Y2 → Number
 - omit undefined `costBehavior` ↔ null column
 
-- [ ] **Step 4: Run — expect pass**
+- [x] **Step 4: Run — expect pass**
 
 ```bash
 npx vitest run src/core/operator/financeMappers.test.ts
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/operator/financeMappers.ts src/core/operator/financeMappers.test.ts
@@ -228,7 +230,7 @@ EOF
 
 Pool/getPool: **copy pattern from `scenarioCatalog.ts`** (shared Pool ok per-module or extract later — YAGNI: duplicate thin getPool like scenarios).
 
-- [ ] **Step 1: Implement catalog**
+- [x] **Step 1: Implement catalog**
 
 Seed logic:
 
@@ -252,7 +254,7 @@ SELECT 1 FROM finance.ledger_lines WHERE account_code = $1 LIMIT 1
 
 If hit → respond 409 JSON `{ error: 'ACCOUNT_IN_USE', code }`.
 
-- [ ] **Step 2: Register routes** (same auth/middleware style as `/api/operator/scenarios`)
+- [x] **Step 2: Register routes** (same auth/middleware style as `/api/operator/scenarios`)
 
 ```
 GET    /api/operator/finance/bundle
@@ -267,9 +269,9 @@ PUT    /api/operator/finance/ledger/:id
 DELETE /api/operator/finance/ledger/:id
 ```
 
-- [ ] **Step 3: Smoke locally if Operator URL present** (optional) — or defer to Task 6
+- [x] **Step 3: Smoke locally if Operator URL present** (optional) — or defer to Task 6
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/core/operator/financeCatalog.ts src/core/operator/registerOperatorRoutes.ts
@@ -292,7 +294,7 @@ EOF
 - Consumes: `GET /api/operator/finance/bundle` + mutation endpoints
 - Produces: `financeSource: 'operator' | 'seed'`; chart/CC/ledger state hydrated from bundle
 
-- [ ] **Step 1: Boot effect**
+- [x] **Step 1: Boot effect**
 
 On mount (alongside scenarios):
 1. `fetch('/api/operator/finance/bundle')`
@@ -301,7 +303,7 @@ On mount (alongside scenarios):
 
 Do **not** wipe in-flight local edits if boot races — only apply if still at initial fingerprint OR first load flag.
 
-- [ ] **Step 2: Autosave wrappers**
+- [x] **Step 2: Autosave wrappers**
 
 For each existing mutator (`addAccount`, `updateAccount`, `deleteAccount`, CC CRUD, ledger CRUD):
 1. Update React state (unchanged UX)
@@ -311,11 +313,11 @@ For each existing mutator (`addAccount`, `updateAccount`, `deleteAccount`, CC CR
 
 Gate: reuse `canEditFinance` if present (same as scenarios).
 
-- [ ] **Step 3: Export `financeSource` on context value**
+- [x] **Step 3: Export `financeSource` on context value**
 
-- [ ] **Step 4: Manual sanity** — `npx tsc --noEmit` or project typecheck script
+- [x] **Step 4: Manual sanity** — `npx tsc --noEmit` or project typecheck script
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/context/PlannerContext.tsx
@@ -337,14 +339,14 @@ EOF
 **Interfaces:**
 - Consumes: `financeSource` from `usePlanner()`
 
-- [ ] **Step 1: Add small source chip** next to ModuleHeader title/subtitle (match ScenarioDrivers / M6 pattern if any):
+- [x] **Step 1: Add small source chip** next to ModuleHeader title/subtitle (match ScenarioDrivers / M6 pattern if any):
 
 - `operator` → “Fonte: Operator”
 - `seed` → “Fonte: seed local”
 
 No layout redesign.
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add src/components/modules/M3CadastroFinanceiro.tsx src/components/modules/M11Contabilidade.tsx
@@ -362,11 +364,11 @@ EOF
 **Files:**
 - Modify: `docs/superpowers/plans/2026-08-15-hardcode-db-backlog.md` (check Phase 5)
 
-- [ ] **Step 1: Apply migration on Operator remote**
+- [x] **Step 1: Apply migration on Operator remote**
 
 Prefer Supabase MCP `apply_migration` on project `qrmdgvxrdvapdvmmktkj` with SQL body from Task 1, **or** `supabase db push` if linked. Confirm `list_migrations` / `\dt finance.*`.
 
-- [ ] **Step 2: Push git + Railway deploy** (new commit build)
+- [x] **Step 2: Push git + Railway deploy** (new commit build)
 
 ```bash
 git push origin HEAD
@@ -375,7 +377,7 @@ git push origin HEAD
 
 No Wrangler unless `workers/hub-fitness-proxy/**` changed (should not).
 
-- [ ] **Step 3: Smoke live**
+- [x] **Step 3: Smoke live**
 
 1. `GET https://hub.vectracargo.com.br/api/operator/finance/bundle` → 200 with accounts length ≈ CoA seed
 2. Second GET → same counts (no duplicate)
@@ -384,7 +386,7 @@ No Wrangler unless `workers/hub-fitness-proxy/**` changed (should not).
 5. DELETE used account → 409
 6. M6 cruise still sane (ledger + DEFAULT drivers)
 
-- [ ] **Step 4: Mark backlog Phase 5 done + commit docs**
+- [x] **Step 4: Mark backlog Phase 5 done + commit docs**
 
 ```bash
 git add docs/superpowers/plans/2026-08-15-hardcode-db-backlog.md
