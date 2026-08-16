@@ -1,7 +1,7 @@
 # Spec — Phase 5: CoA + ledger + cost centers em `finance` (M3/M11)
 
 **Data:** 2026-08-16  
-**Status:** draft (aguardando review humano)  
+**Status:** aprovado (2026-08-16)  
 **Contexto:** Backlog hardcode Phase 5. ScenarioDrivers já abriu schema `finance` + `scenario_defs`. M3/M11 CoA e ledger DRE ainda são só memória (`PLANO_DE_CONTAS_ITEMS`, `COST_CENTERS`, `INITIAL_GRANULAR_DRE_ITEMS`) — F5 perde edições.
 
 **Relacionada:** [`2026-08-16-scenario-drivers-design.md`](./2026-08-16-scenario-drivers-design.md) (mesmo schema; `costBehavior` compatível).
