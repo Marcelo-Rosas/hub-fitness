@@ -1,4 +1,5 @@
 import type { MaterialCategory, SupplierCompany, SupplierQuote, SupplierState } from '../types';
+import { heuristicQuoteScore } from '../core/intranet/dossierGaps';
 import type {
   ComexIngestDraft,
   ComprasIngestDraft,
@@ -294,6 +295,7 @@ export function mapComprasPack(
         !(s.freight_covers_itajai_sc === false && state === 'SP');
 
       const sourceNote = (s.sources || []).slice(0, 2).join(' ');
+      const heur = heuristicQuoteScore({ isWinner, supplierUf: state });
       quotes.push({
         id: `q-ingest-${slugify(name)}-${slugify(desc)}-${state.toLowerCase()}`,
         supplierId: company.id,
@@ -309,7 +311,8 @@ export function mapComprasPack(
         shippingCostMonthly: ship,
         totalMonthlyWithFreight: landed,
         deliveryLeadTimeDays: leadDays,
-        score: isWinner ? 92 : state === 'SC' ? 86 : 80,
+        score: heur.score,
+        scoreLabel: heur.label,
         isRecommendedWinner: isWinner,
         notes: [
           s.notes,

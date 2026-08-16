@@ -108,6 +108,10 @@ export const M7Ano3Expansao: React.FC = () => {
 
   const startingCashM24 = include4PLTower ? y3.startingCashM24With4pl : y3.startingCashM24Without4pl;
   const galpaoA = Math.round(hubParams.capacity.totalPositions * y3.galpaoAOccupancy);
+  const galpaoBFinal = YEAR3_EXPANSION_PLAN[YEAR3_EXPANSION_PLAN.length - 1]?.galpaoB ?? 0;
+  const capacityM36 = galpaoA + galpaoBFinal;
+  const expansionCapexTotal = YEAR3_EXPANSION_PLAN.reduce((a, s) => a + s.expansionCapex, 0);
+  const expansionCapexSteps = YEAR3_EXPANSION_PLAN.filter((s) => s.expansionCapex > 0);
 
   const year3Data = useMemo(() => {
     const monthlyDelta = forkliftBaseline - effectiveMonthlyCost;
@@ -181,12 +185,12 @@ export const M7Ano3Expansao: React.FC = () => {
       <ModuleHeader
         moduleId="M7"
         title="Ano 3 & Rampa de Expansão (Galpão B)"
-        subtitle="Simulador de expansão de capacidade (2.612 a 3.812 posições) com rampa de M25 a M36 e impactor de custo de empilhadeiras no fluxo de caixa."
+        subtitle={`Simulador de expansão de capacidade (${galpaoA.toLocaleString('pt-BR')} a ${capacityM36.toLocaleString('pt-BR')} posições) com rampa de M25 a M36 e impactor de custo de empilhadeiras no fluxo de caixa.`}
         kpis={[
           {
             label: 'Capacidade Total M36',
-            value: '3.812 Posições',
-            subtext: 'Galpão A (2.612) + Galpão B (1.200)',
+            value: `${capacityM36.toLocaleString('pt-BR')} Posições`,
+            subtext: `Galpão A (${galpaoA.toLocaleString('pt-BR')}) + Galpão B (${galpaoBFinal.toLocaleString('pt-BR')})`,
             badge: 'GALPÃO B',
             highlightColor: 'emerald',
           },
@@ -206,8 +210,10 @@ export const M7Ano3Expansao: React.FC = () => {
           },
           {
             label: 'CAPEX Expansão Galpão B',
-            value: 'R$ 800.000',
-            subtext: 'Investimento em M29 e M31 (R$ 400k + R$ 400k)',
+            value: `R$ ${expansionCapexTotal.toLocaleString('pt-BR')}`,
+            subtext: expansionCapexSteps
+              .map((s) => `M${s.month} R$ ${(s.expansionCapex / 1000).toFixed(0)}k`)
+              .join(' + '),
             badge: 'CAPEX',
             highlightColor: 'slate',
           },

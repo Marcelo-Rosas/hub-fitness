@@ -1,14 +1,29 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { usePlanner } from '../../context/PlannerContext';
-import { Percent, AlertTriangle, CheckCircle2, Zap, ArrowRight, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react';
+import { CheckCircle2, Zap } from 'lucide-react';
 import { ModuleHeader } from '../ModuleHeader';
+import { formatDasPct, formatFatorRBand } from '../../core/governanceMatrix';
 
 export const M5FatorR: React.FC = () => {
-  const { fatorR, prolaboreMonthly, setProlaboreMonthly, applyFatorRTrigger, dreMonths } = usePlanner();
+  const { fatorR, prolaboreMonthly, applyFatorRTrigger, dreMonths, hubParams } = usePlanner();
   const [simulateRevenueIncrease, setSimulateRevenueIncrease] = useState<boolean>(false);
 
+  const bandMin = hubParams.fiscal.fatorRMin;
+  const bandMax = hubParams.fiscal.fatorRMax;
+  const bandLabel = formatFatorRBand(hubParams);
+  const dasLabel = formatDasPct(hubParams);
+  const anexoVPct = 15.5;
+
   const simulatedFatorR = simulateRevenueIncrease ? Number((fatorR * 0.947).toFixed(1)) : fatorR;
-  const isOptimalBand = simulatedFatorR >= 28.0 && simulatedFatorR <= 28.7;
+  const isOptimalBand = simulatedFatorR >= bandMin && simulatedFatorR <= bandMax;
+
+  const rbt12 = useMemo(
+    () => dreMonths.slice(0, 12).reduce((a, m) => a + m.receitaServicos, 0),
+    [dreMonths],
+  );
+  const economiaAnual = isOptimalBand
+    ? Math.round(rbt12 * (anexoVPct / 100 - hubParams.pricing.dasPct))
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -16,18 +31,18 @@ export const M5FatorR: React.FC = () => {
       <ModuleHeader
         moduleId="M5"
         title="Fator R & Otimização Tributária Simples Nacional"
-        subtitle="Monitoramento contínuo da razão Folha de Pagamento / Receita Bruta acumulada de 12m para garantir tributação reduzida no Anexo III (6,0%)."
+        subtitle={`Monitoramento contínuo da razão Folha de Pagamento / Receita Bruta acumulada de 12m para garantir tributação reduzida no Anexo III (${dasLabel}).`}
         kpis={[
           {
             label: 'Fator R Projetado',
             value: `${simulatedFatorR}%`,
-            subtext: isOptimalBand ? '✓ Dentro da banda (28,0% – 28,7%)' : '⚠️ Fora da margem ideal',
+            subtext: isOptimalBand ? `✓ Dentro da banda (${bandLabel})` : '⚠️ Fora da margem ideal',
             badge: 'TRIBUTÁRIO',
             highlightColor: isOptimalBand ? 'emerald' : 'amber',
           },
           {
             label: 'Alíquota DAS Efetiva',
-            value: isOptimalBand ? '6,0%' : '15,5%',
+            value: isOptimalBand ? dasLabel : `${anexoVPct.toFixed(1).replace('.', ',')}%`,
             subtext: isOptimalBand ? 'Anexo III (Alíquota Mínima)' : 'Anexo V (Sem Fator R)',
             badge: 'TRIBUTO',
             highlightColor: isOptimalBand ? 'emerald' : 'rose',
@@ -41,8 +56,8 @@ export const M5FatorR: React.FC = () => {
           },
           {
             label: 'Economia Tributária Anual',
-            value: isOptimalBand ? 'R$ 68.4k' : 'R$ 0,00',
-            subtext: 'Comparativo Anexo III vs Anexo V',
+            value: isOptimalBand ? `R$ ${(economiaAnual / 1000).toFixed(1)}k` : 'R$ 0,00',
+            subtext: 'Comparativo Anexo III vs Anexo V (sobre RBT12)',
             badge: 'ECONOMIA',
             highlightColor: 'emerald',
           },
@@ -68,11 +83,16 @@ export const M5FatorR: React.FC = () => {
             isOptimalBand ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
           }`}>
             <CheckCircle2 className="w-4 h-4" />
-            <span>{isOptimalBand ? '● Dentro da Banda Alvo (28,0% – 28,7%)' : '⚠ Abaixo da Banda Alvo (<28,0%)'}</span>
+            <span>
+              {isOptimalBand
+                ? `● Dentro da Banda Alvo (${bandLabel})`
+                : `⚠ Fora da Banda Alvo (<${bandMin.toFixed(1).replace('.', ',')}%)`}
+            </span>
           </div>
 
           <p className="text-[11px] text-slate-500 leading-relaxed">
-            Mantendo o Fator R ≥ 28,0%, a empresa permanece no Anexo III do Simples Nacional com DAS efetivo de apenas 6,0%.
+            Mantendo o Fator R ≥ {bandMin.toFixed(1).replace('.', ',')}%, a empresa permanece no Anexo III do
+            Simples Nacional com DAS efetivo de {dasLabel}.
           </p>
         </div>
 
@@ -95,8 +115,11 @@ export const M5FatorR: React.FC = () => {
             <div className="mt-4 space-y-2">
               {simulateRevenueIncrease ? (
                 <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-200 text-xs leading-relaxed">
-                  <div className="font-bold text-amber-300 mb-1">⚠ Alerta de Risco Tributário: Fator R Projetado em 26,9%</div>
-                  Se a receita crescer +15% sem reajuste de prolabore/headcount, o Fator R cairá para 26,9%, migrando para o Anexo V (DAS 15,5%).
+                  <div className="font-bold text-amber-300 mb-1">
+                    ⚠ Alerta de Risco Tributário: Fator R Projetado em {simulatedFatorR}%
+                  </div>
+                  Se a receita crescer +15% sem reajuste de prolabore/headcount, o Fator R cairá para{' '}
+                  {simulatedFatorR}%, migrando para o Anexo V (DAS {anexoVPct.toFixed(1).replace('.', ',')}%).
                 </div>
               ) : (
                 <p className="text-xs text-slate-300 leading-relaxed">
@@ -110,7 +133,7 @@ export const M5FatorR: React.FC = () => {
             <div>
               <div className="text-[11px] text-slate-400 font-semibold">AÇÃO SUGERIDA PELO MODELO:</div>
               <div className="text-xs font-bold text-emerald-400 mt-0.5">
-                +R$ 2.200/mês no Prolabore ou Contratar +2 FTEs
+                Ajuste de Pró-labore (params) ou Contratar +2 FTEs
               </div>
             </div>
 
@@ -129,7 +152,7 @@ export const M5FatorR: React.FC = () => {
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between">
           <h3 className="text-xs font-bold uppercase tracking-wider">Tabela M1–M24: Comparativo Sem Ajuste vs Com Ajuste</h3>
-          <span className="text-xs text-slate-400 font-mono">Banda Segura: 28,0% - 28,7%</span>
+          <span className="text-xs text-slate-400 font-mono">Banda Segura: {bandLabel}</span>
         </div>
 
         <div className="overflow-x-auto">
@@ -149,6 +172,8 @@ export const M5FatorR: React.FC = () => {
                 const folha = prolaboreMonthly + 35000;
                 const ratioOriginal = ((folha - 2200) / m.receitaServicos) * 100;
                 const ratioAjustado = (folha / m.receitaServicos) * 100;
+                const ok =
+                  ratioAjustado >= bandMin && ratioAjustado <= bandMax;
 
                 return (
                   <tr key={m.month} className="hover:bg-slate-50 transition-colors">
@@ -160,8 +185,12 @@ export const M5FatorR: React.FC = () => {
                       {ratioAjustado.toFixed(1)}%
                     </td>
                     <td className="py-2.5 px-4 text-center">
-                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded text-[10px]">
-                        ● OK (Anexo III)
+                      <span
+                        className={`px-2 py-0.5 font-bold rounded text-[10px] ${
+                          ok ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                        }`}
+                      >
+                        {ok ? '● OK (Anexo III)' : '⚠ Ajustar'}
                       </span>
                     </td>
                   </tr>

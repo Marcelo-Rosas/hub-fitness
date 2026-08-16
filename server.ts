@@ -8,6 +8,8 @@ import { buildAdvisorContext } from "./src/core/advisor/context";
 import { bootstrapComexStore, registerPucomexRoutes } from "./src/core/comex/registerPucomexRoutes";
 import { pucomexClient } from "./src/core/comex/pucomexClient";
 import { registerIntranetRoutes } from "./src/core/intranet/registerIntranetRoutes";
+import { registerApproveRoutes } from "./src/core/intranet/registerApproveRoutes";
+import { registerOperatorRoutes } from "./src/core/operator/registerOperatorRoutes";
 import { getIntranetStore } from "./src/core/intranet/intranetStore";
 import { startOutboxDispatcher } from "./src/core/intranet/outboxDispatcher";
 import { accountByCode, buildCoaResearchPrompt, clampComprasResearchPack, materialCategoryHint } from "./src/core/compras/researchFromCoa";
@@ -26,6 +28,12 @@ const VITE_HMR_PORT = Number(process.env.VITE_HMR_PORT || 24678);
 app.use((req, res, next) => {
   if (req.method === "POST" && req.path === "/api/comex/documents/ingest") {
     return next();
+  }
+  if (req.method === "POST" && req.path.startsWith("/approve/")) {
+    return express.urlencoded({ extended: true })(req, res, (err) => {
+      if (err) return next(err);
+      return express.json({ limit: "1mb" })(req, res, next);
+    });
   }
   return express.json({ limit: "5mb" })(req, res, next);
 });
@@ -134,7 +142,7 @@ app.post("/api/auth/login", (req, res) => {
     const { pass, ...userProfile } = mockUser;
     return res.json({
       success: true,
-      token: "bearer-mock-jwt-token-hub-sim-v35",
+      token: `mock-jwt:${userProfile.email}`,
       user: userProfile,
     });
   }
@@ -145,16 +153,46 @@ app.post("/api/auth/login", (req, res) => {
   });
 });
 
-// ROTA DE USUÁRIO ATUAL (/api/auth/me)
+function resolveSessionEmail(req: { headers: Record<string, unknown> }): string | null {
+  const headerEmail = String(req.headers["x-user-email"] || "")
+    .toLowerCase()
+    .trim();
+  if (headerEmail && MOCK_BOARD_USERS[headerEmail]) return headerEmail;
+
+  const authHeader = String(req.headers["authorization"] || "");
+  if (!authHeader) return null;
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+
+  const emailMatch = token.match(/^mock-jwt:(.+)$/i);
+  if (emailMatch) {
+    const email = emailMatch[1].toLowerCase().trim();
+    if (MOCK_BOARD_USERS[email]) return email;
+  }
+
+  const roleMatch = token.match(/^mock-jwt-(\w+)-v35$/i);
+  if (roleMatch) {
+    const role = roleMatch[1].toLowerCase();
+    const found = Object.values(MOCK_BOARD_USERS).find((u) => u.role === role);
+    if (found) return found.email;
+  }
+
+  return null;
+}
+
+// ROTA DE USUÁRIO ATUAL (/api/auth/me) — espelha sessão (e-mail), não CFO fixo
 app.get("/api/auth/me", (req, res) => {
   const authHeader = req.headers["authorization"];
-  if (!authHeader) {
+  if (!authHeader && !req.headers["x-user-email"]) {
     return res.status(401).json({ success: false, error: "Não autenticado." });
   }
 
-  // Retorna perfil do CFO por padrão ou conforme header mockado
-  const defaultUser = MOCK_BOARD_USERS["cfo@hubfitness.com.br"];
-  const { pass, ...userProfile } = defaultUser;
+  const email = resolveSessionEmail(req as { headers: Record<string, unknown> });
+  if (!email) {
+    return res.status(401).json({ success: false, error: "Sessão inválida ou e-mail não reconhecido." });
+  }
+
+  const mockUser = MOCK_BOARD_USERS[email];
+  const { pass, ...userProfile } = mockUser;
 
   return res.json({
     success: true,
@@ -227,6 +265,8 @@ Contexto do Sistema: ${JSON.stringify(context, null, 2)}`;
 // =========================================================
 registerPucomexRoutes(app);
 registerIntranetRoutes(app);
+registerApproveRoutes(app);
+registerOperatorRoutes(app);
 
 app.post("/api/gemini/comex-ai", async (req, res) => {
   const {
@@ -246,17 +286,17 @@ app.post("/api/gemini/comex-ai", async (req, res) => {
     portalNcm = null;
   }
 
+  const hasPortal = portalNcm != null;
+  // Sem Portal: não inventar alíquotas como se fossem do Siscomex
   const fallback = {
-    productCategory: "Aparelhos de ginástica / NCM 9506",
-    siscomexChannelRisk: "Verde",
-    auditSummary: `Parecer HUB-FITNESS: ${operationType} de "${productDescription}" (NCM ${ncmCode}) com origem/destino ${country}, FOB USD ${Number(fobValueUsd).toLocaleString("pt-BR")}. Densidade/CIF alimentam pitch e CLIA; Ad Valorem do DRE permanece 0,10% sobre NF de serviço.`,
-    estimatedTaxes: {
-      iiRatePercent: 20,
-      ipiRatePercent: 0,
-      pisRatePercent: 2.1,
-      cofinsRatePercent: 9.65,
-    },
-    lpcoRequirements: ["MAPA — isento típico para 9506 (verificar caso a caso)", "INMETRO — selo quando aplicável a eletrofitness"],
+    productCategory: `Aparelhos de ginástica / NCM ${ncmCode}`,
+    siscomexChannelRisk: hasPortal ? "Verde" : "Indeterminado",
+    auditSummary: hasPortal
+      ? `Parecer HUB-FITNESS: ${operationType} de "${productDescription}" (NCM ${ncmCode}) com origem/destino ${country}, FOB USD ${Number(fobValueUsd).toLocaleString("pt-BR")}. Densidade/CIF alimentam pitch e CLIA; Ad Valorem do DRE permanece 0,10% sobre NF de serviço.`
+      : `Portal Único indisponível para NCM ${ncmCode}. Alíquotas II/IPI/PIS/COFINS não foram inventadas — use consulta live PUCOMEX ou tax_rates no Operator. Ad Valorem do DRE permanece 0,10% sobre NF de serviço.`,
+    estimatedTaxes: null as null | Record<string, number>,
+    taxesSource: hasPortal ? "portal" : "unavailable",
+    lpcoRequirements: ["Verificar MAPA/INMETRO caso a caso (sem Portal não há isenção assumida)"],
     requiredDocuments: ["Invoice comercial", "Packing list", "BL / conhecimento de embarque", "DI/DUIMP"],
     portalNcm,
     portalMode: pucomexClient.getStatus().liveModeEnabled ? "live-capable" : "demo",
@@ -269,7 +309,8 @@ app.post("/api/gemini/comex-ai", async (req, res) => {
   try {
     const response = await ai.models.generateContent({
       model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
-      contents: `Você é auditor Comex BR para 3PL fitness. Responda APENAS JSON válido com campos: productCategory, siscomexChannelRisk, auditSummary, estimatedTaxes{iiRatePercent,ipiRatePercent,pisRatePercent,cofinsRatePercent}, lpcoRequirements[], requiredDocuments[].
+      contents: `Você é auditor Comex BR para 3PL fitness. Responda APENAS JSON válido com campos: productCategory, siscomexChannelRisk, auditSummary, estimatedTaxes (objeto ou null), lpcoRequirements[], requiredDocuments[], taxesSource ("portal"|"unavailable").
+Regra: se Dados Portal for null/ausente, estimatedTaxes DEVE ser null, taxesSource="unavailable", siscomexChannelRisk="Indeterminado". NÃO invente alíquotas II/PIS/COFINS como se fossem do Portal.
 NCM: ${ncmCode}
 Produto: ${productDescription}
 Operação: ${operationType}
@@ -280,7 +321,18 @@ Dados Portal (se houver): ${JSON.stringify(portalNcm)?.slice(0, 2000)}`,
     });
     const text = response.text || "";
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    const data = jsonMatch ? { ...JSON.parse(jsonMatch[0]), portalNcm } : fallback;
+    if (!jsonMatch) {
+      return res.json({ success: true, isSimulated: false, data: fallback });
+    }
+    const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+    if (!hasPortal) {
+      parsed.estimatedTaxes = null;
+      parsed.taxesSource = "unavailable";
+      if (!parsed.siscomexChannelRisk || parsed.siscomexChannelRisk === "Verde") {
+        parsed.siscomexChannelRisk = "Indeterminado";
+      }
+    }
+    const data = { ...parsed, portalNcm, taxesSource: hasPortal ? (parsed.taxesSource || "portal") : "unavailable" };
     return res.json({ success: true, isSimulated: false, data });
   } catch (error: any) {
     return res.json({ success: true, isSimulated: true, data: fallback, warning: error.message });

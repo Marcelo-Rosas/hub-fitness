@@ -208,7 +208,8 @@ export const M10AssistenteCompras: React.FC = () => {
       totalMonthlyCost: totalCost,
       shippingCostMonthly: newFreightCost,
       totalMonthlyWithFreight: totalWithFreight,
-      score: 85,
+      score: 80,
+      scoreLabel: 'heurística: demais UF',
       isRecommendedWinner: false,
       notes: newNotes || 'Cotação inserida manualmente via Assistente de Compras.',
     });
@@ -327,8 +328,10 @@ export const M10AssistenteCompras: React.FC = () => {
                   ? company.deliveryLeadTimeDays
                   : null,
             score: quote.score,
+            score_label: quote.scoreLabel || 'heurística UI',
             supplier_state: quote.supplierState,
             product_description: quote.productDescription,
+            price_type: 'rfq_fornecedor',
           },
         }),
       });
@@ -613,7 +616,7 @@ export const M10AssistenteCompras: React.FC = () => {
             setSelectedAccountFilter(accountCode);
             setActiveTab('cotacoes');
           }}
-          onApply={(parsed) => {
+          onApply={async (parsed) => {
             const code =
               parsed.compras?.quotes.find((q) => q.accountCode)?.accountCode ||
               parsed.compras?.quotes[0]?.accountCode;
@@ -621,6 +624,36 @@ export const M10AssistenteCompras: React.FC = () => {
               parsed,
               code ? { replaceAccountCode: code } : undefined,
             );
+            const quotes = parsed.compras?.quotes || [];
+            if (quotes.length && user?.email) {
+              try {
+                await fetch('/api/intranet/quotes/from-ingest', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-email': user.email,
+                  },
+                  body: JSON.stringify({
+                    quotes: quotes.map((q) => ({
+                      supplierName: q.supplierName,
+                      supplierState: q.supplierState,
+                      accountCode: q.accountCode,
+                      materialCategory: q.materialCategory,
+                      productDescription: q.productDescription,
+                      unitPrice: q.unitPrice,
+                      shippingCostMonthly: q.shippingCostMonthly,
+                      totalMonthlyWithFreight: q.totalMonthlyWithFreight,
+                      monthlyVolumeUnit: q.monthlyVolumeUnit,
+                      deliveryLeadTimeDays: q.deliveryLeadTimeDays,
+                      isRecommendedWinner: q.isRecommendedWinner,
+                      notes: q.notes,
+                    })),
+                  }),
+                });
+              } catch {
+                /* ledger opcional — Comparador já tem draft em memória */
+              }
+            }
           }}
         />
       )}
@@ -786,6 +819,9 @@ export const M10AssistenteCompras: React.FC = () => {
                                 </span>
                                 <span className="text-xs text-gray-500 font-semibold">
                                   Score: <strong className="text-gray-900">{quote.score}/100</strong>
+                                  {quote.scoreLabel ? (
+                                    <span className="text-gray-500"> · {quote.scoreLabel}</span>
+                                  ) : null}
                                 </span>
                               </div>
 
@@ -1280,33 +1316,76 @@ export const M10AssistenteCompras: React.FC = () => {
         </div>
       )}
 
-      {/* TAB CONTENT 5: IA AVALIADOR TRIBUTÁRIO & FRETES */}
+      {/* TAB CONTENT 5: AVALIADOR TRIBUTÁRIO & FRETES */}
       {activeTab === 'ia' && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4">
           <div className="flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-purple-600" />
             <h3 className="text-lg font-bold text-gray-900">
-              Avaliador Tributário & Logístico Gemini (Eixo SP - PR - SC)
+              Avaliador Tributário & Logístico (Eixo SP - PR - SC)
             </h3>
           </div>
           <p className="text-xs text-gray-600">
-            A inteligência artificial analisa incentivos de ICMS interestadual, rotas do corredor logístico (BR-116/BR-376) e impacto do frete CIF/FOB nas cotações de materiais do HUB-FITNESS.
+            Parecer gerado a partir das cotações no Comparador (landed até Itajaí/SC). Sem textos fixos inventados.
           </p>
 
           <div className="bg-purple-50 rounded-xl p-5 border border-purple-200 text-purple-950 space-y-3 text-xs leading-relaxed">
             <div className="font-bold text-purple-900 flex items-center gap-2 text-sm">
               <Award className="w-4 h-4 text-purple-700" />
-              Parecer Técnico de Suprimentos (SP · PR · SC):
+              Parecer técnico a partir do Comparador:
             </div>
-            <p>
-              • <strong>Paletes PBR HT de Madeira:</strong> A compra no Paraná (Ecopack PR - R$ 52,00) reduz o custo unitário em 10,3% em relação a fornecedores de SP (R$ 58,00), aproveitando a menor alíquota de ICMS interestadual (12%) e proximidade do polo florestal de Curitiba/Ponta Grossa.
-            </p>
-            <p>
-              • <strong>Filme Stretch Manual/Automático:</strong> Destino = Galpão A (Itajaí/Navegantes · SC). O CIF gratuito da MBB/Polycamp (Sumaré/SP · R$ 42,50) vale só para entregas em SP e <em>não se aplica</em> ao hub. Landed cost no corredor BR-376: Scheffer/Bela Máquina (PR · R$ 39,90 + FOB R$ 450 ≈ R$ 6.036/mês) ou IW8/Polymer (Brusque/SC · R$ 41,00 + frete local R$ 200 ≈ R$ 6.350/mês, lead time 3 dias). ICMS interestadual 12% (PR/SC) vs 18% (SP).
-            </p>
-            <p>
-              • <strong>Locação de Empilhadeiras Elétricas:</strong> A cotação da Transpotech STILL (PR/SC - R$ 2.175,00/un) gera uma economia acumulada de R$ 10.800 em 24 meses em comparação às locadoras paulistas, mantendo atendimento técnico remoto em até 4 horas com bateria de Lítio.
-            </p>
+            {(() => {
+              const byAccount = new Map<string, typeof supplierQuotes>();
+              for (const q of supplierQuotes) {
+                const code = resolveQuoteAccountCode(q) || q.materialCategory;
+                const list = byAccount.get(code) || [];
+                list.push(q);
+                byAccount.set(code, list);
+              }
+              const bullets = Array.from(byAccount.entries())
+                .map(([code, list]) => {
+                  if (list.length < 2) return null;
+                  const sorted = [...list].sort(
+                    (a, b) => a.totalMonthlyWithFreight - b.totalMonthlyWithFreight,
+                  );
+                  const best = sorted[0];
+                  const worst = sorted[sorted.length - 1];
+                  if (best.totalMonthlyWithFreight >= worst.totalMonthlyWithFreight) return null;
+                  const pct =
+                    ((worst.unitPrice - best.unitPrice) / Math.max(worst.unitPrice, 0.01)) * 100;
+                  return (
+                    <p key={code}>
+                      • <strong>{best.materialCategory}</strong> ({code}): melhor landed{' '}
+                      {best.supplierName} —{' '}
+                      {best.totalMonthlyWithFreight.toLocaleString('pt-BR', {
+                        style: 'currency',
+                        currency: 'BRL',
+                      })}
+                      /mês vs{' '}
+                      {worst.supplierName} —{' '}
+                      {worst.totalMonthlyWithFreight.toLocaleString('pt-BR', {
+                        style: 'currency',
+                        currency: 'BRL',
+                      })}
+                      /mês
+                      {Number.isFinite(pct) && pct > 0
+                        ? ` (unitário ~${pct.toFixed(1)}% abaixo do mais caro).`
+                        : '.'}{' '}
+                      Score: {best.scoreLabel || `heurística ${best.score}/100`}.
+                    </p>
+                  );
+                })
+                .filter(Boolean);
+              if (bullets.length === 0) {
+                return (
+                  <p className="text-purple-800">
+                    Sem pares comparáveis no Comparador. Rode a pesquisa (aba 1) ou cadastre ≥2
+                    cotações na mesma conta CoA.
+                  </p>
+                );
+              }
+              return bullets;
+            })()}
           </div>
         </div>
       )}

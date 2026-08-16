@@ -29,7 +29,7 @@ import {
 import { SearchableSelect } from '../ui/SearchableSelect';
 
 export const M11PlanoDeContas: React.FC = () => {
-  const { dreMonths, activeScenario, chartOfAccounts, costCenters } = usePlanner();
+  const { dreMonths, activeScenario, chartOfAccounts, costCenters, hubParams } = usePlanner();
 
   const [activeTab, setActiveTab] = useState<'plan' | 'rules' | 'fatorRValidator' | 'export'>('plan');
   const [searchTerm, setSearchTerm] = useState('');
@@ -59,7 +59,9 @@ export const M11PlanoDeContas: React.FC = () => {
   // Simulator State for Fator R Validator
   const [simulatedRbt12, setSimulatedRbt12] = useState<number>(2450000);
   const [simulatedSalarios, setSimulatedSalarios] = useState<number>(35000);
-  const [simulatedProLaboreRegular, setSimulatedProLaboreRegular] = useState<number>(18500);
+  const [simulatedProLaboreRegular, setSimulatedProLaboreRegular] = useState<number>(
+    hubParams.fiscal.plBaseMonthly,
+  );
   const [simulatedProLaboreAdicional, setSimulatedProLaboreAdicional] = useState<number>(3820);
   const [simulatedFgtsInss, setSimulatedFgtsInss] = useState<number>(4500);
   const [simulatedTerceirizados, setSimulatedTerceirizados] = useState<number>(12000);
@@ -207,7 +209,10 @@ export const M11PlanoDeContas: React.FC = () => {
               <span>Plano de Contas Referencial Contábil</span>
             </h1>
             <p className="text-xs text-blue-100 max-w-3xl mt-1 leading-relaxed">
-              Estruturação codificada em decimais (1.1.01...) para integração com Domínio, Questor e Conta Azul. Mapeamento analítico de **Centros de Custos (CC 001 a CC 005)**, **Ativação CAPEX (R$ 207.300)** e **Regra do Fator R (28,4%)**.
+              Estruturação codificada em decimais (1.1.01...) para integração com Domínio, Questor e Conta Azul.
+              Mapeamento analítico de **Centros de Custos (CC 001 a CC 005)**, **Ativação CAPEX (R${' '}
+              {hubParams.capex.total.toLocaleString('pt-BR')})** e **Regra do Fator R (
+              {hubParams.fiscal.fatorRFloor.toFixed(1).replace('.', ',')}%)**.
             </p>
           </div>
 
@@ -574,7 +579,9 @@ export const M11PlanoDeContas: React.FC = () => {
               <span>Centros de Custos Globais (Taggeamento de Lançamentos CC 001 a CC 005)</span>
             </h2>
             <p className="text-xs text-gray-500 mb-5">
-              Conforme definido no plano de contas, os lançamentos financeiros devem utilizar centros de custos analíticos para permitir apurar o custo exato por posição palete ocupada (R$ 16,45/posição alvo).
+              Conforme definido no plano de contas, os lançamentos financeiros devem utilizar centros de custos
+              analíticos para permitir apurar o custo exato por posição palete ocupada (alvo do ledger CV /
+              conta 5.1.04.01).
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

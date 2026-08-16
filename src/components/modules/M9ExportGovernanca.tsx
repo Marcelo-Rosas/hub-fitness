@@ -21,6 +21,17 @@ import {
 } from 'lucide-react';
 import { ModuleHeader } from '../ModuleHeader';
 import { StructuredPdfReportModal } from '../StructuredPdfReportModal';
+import {
+  buildConsistencyMatrix,
+  buildPreErpChecklist,
+  formatDasPct,
+  formatFatorRBand,
+  m7RevenueCeiling,
+  plPhaseBands,
+} from '../../core/governanceMatrix';
+import { plAdditionalForMonth } from '../../core/engine';
+import { deriveCashMilestones } from '../../core/cashMilestones';
+import { parseOfficialCSVs } from '../../data/officialData';
 
 export const M9ExportGovernanca: React.FC = () => {
   const {
@@ -34,6 +45,8 @@ export const M9ExportGovernanca: React.FC = () => {
     addAuditLog,
     vasDrivers,
     activeMix,
+    hubParams,
+    granularDreItems,
   } = usePlanner();
 
   const [driveExportStatus, setDriveExportStatus] = useState<string | null>(null);
@@ -43,98 +56,49 @@ export const M9ExportGovernanca: React.FC = () => {
 
   const totalRev24m = dreMonths.reduce((a, b) => a + b.receitaServicos, 0);
   const totalLL24m = dreMonths.reduce((a, b) => a + b.lucroLiquido, 0);
+  const plBands = plPhaseBands(hubParams);
+  const plM7 = plAdditionalForMonth(hubParams, 7);
+  const plM12 = plAdditionalForMonth(hubParams, 12);
+  const band = formatFatorRBand(hubParams);
+  const dasLabel = formatDasPct(hubParams);
+  const cap = hubParams.capacity.totalPositions;
+  const m7Ceiling = m7RevenueCeiling(hubParams);
 
-  // DYNAMIC CONSISTENCY MATRIX EVALUATION (EVALUATES LIVE PLANNER STATE)
-  const consistencyMatrix = useMemo(() => {
-    const m7Rev = dreMonths[6]?.receitaServicos || 0;
-    const m7AdVal = dreMonths[6]?.das6Percent || 0; // or Ad Valorem proxy
-    const m13Rent = dreMonths[12]?.custosOperacionais || 0;
-
-    const isM7RevOk = Math.abs(m7Rev - 205200) < 5000 || m7Rev <= 210000;
-    const isM7AdValOk = true; // Ad Valorem normalized to R$ 205/mês in v3.5
-    const isCvOk = activeScenario.custoVariavelPos === 16.45 || dreMonths[6]?.custosOperacionais > 0;
-    const isFatorROk = fatorR >= 28.01 && fatorR <= 28.70;
-    const isMoTerceirizadaOk = true; // MO Terceirizada 5.1.02.01 excluded from Fator R
-    const isAluguelM13Ok = true; // R$ 63.000 contratual
-    const isVasCoreOk = vasDrivers.some(
-      (v) => v.service.toLowerCase().includes('handling') || v.service.toLowerCase().includes('descarga') || v.service.toLowerCase().includes('reversa')
+  const cashMilestones = useMemo(() => {
+    const { cashflowSeries } = parseOfficialCSVs();
+    return deriveCashMilestones(
+      cashflowSeries.map((c) => ({
+        month: c.month,
+        monthNum: c.monthNum,
+        saldo: c.saldoAcumuladoCarenciaAluguel,
+        fluxo: c.fluxoLiquidoCarenciaAluguel,
+      })),
+      { rentOnMonthNum: hubParams.rent.carenciaAluguelMeses + 1 },
     );
-    const is4PLOk = true; // Account 4.1.04.01 created as Não-Base
+  }, [hubParams.rent.carenciaAluguelMeses]);
 
-    const rows = [
-      {
-        id: 'm7-rev',
-        dimension: 'Receita Base M7',
-        reference: 'R$ 205.200 (teto 2.968 pos)',
-        systemValue: `R$ ${m7Rev.toLocaleString('pt-BR')} ${isM7RevOk ? '(Conforme)' : '(Inconsistente)'}`,
-        status: isM7RevOk ? 'passed' : 'critical',
-        action: isM7RevOk
-          ? 'Conforme teto físico de 2.968 posições x R$ 74,15.'
-          : 'Recalcular Dashboard. Usar R$ 205.200 como teto físico.',
-      },
-      {
-        id: 'm7-adval',
-        dimension: 'Ad Valorem M7',
-        reference: '0,10% s/ NF (~R$ 205/mês)',
-        systemValue: 'R$ 205,00 / mês (Normalizado)',
-        status: isM7AdValOk ? 'passed' : 'critical',
-        action: 'Conforme apólice real de seguro R$ 205/mês (sem distorção).',
-      },
-      {
-        id: 'm7-cv',
-        dimension: 'Custo Variável M7',
-        reference: 'R$ 35.505 (R$ 16,45/pos)',
-        systemValue: `R$ ${(activeScenario.custoVariavelPos || 16.45).toFixed(2)} / posição`,
-        status: isCvOk ? 'passed' : 'warning',
-        action: 'Classificado no Plano de Contas conta 5.1.04.01 (CV por Posição).',
-      },
-      {
-        id: 'fator-r-num',
-        dimension: 'Fator R Numerador',
-        reference: 'CLT + PL Reg + PL Adic (28,0%–28,7%)',
-        systemValue: `Fator R ${fatorR}% (${isFatorROk ? 'Banda Segura' : 'Ajustar'})`,
-        status: isFatorROk ? 'passed' : 'critical',
-        action: isFatorROk
-          ? 'Numerador estrito (5.2.01.01+02+03) sem encargos nem terceirizados.'
-          : 'Ajustar Pró-labore Adicional para banda de 28,0%–28,7%.',
-      },
-      {
-        id: 'mo-terceirizada',
-        dimension: 'MO Terceirizada',
-        reference: 'Excluída do Fator R (v3.1)',
-        systemValue: 'Conta 5.1.02.01 (COGS/Custos)',
-        status: isMoTerceirizadaOk ? 'passed' : 'passed',
-        action: 'Mão de Obra Terceirizada mantida acima do Lucro Bruto.',
-      },
-      {
-        id: 'aluguel-m13',
-        dimension: 'Aluguel M13+',
-        reference: 'R$ 63.000 (IGPM +5%)',
-        systemValue: 'R$ 63.000 / mês contratual',
-        status: isAluguelM13Ok ? 'passed' : 'warning',
-        action: 'Reajuste contratual em M13 parametrizado no modelo.',
-      },
-      {
-        id: 'vas-core',
-        dimension: 'Serviços VAS Core',
-        reference: 'Descarga Mec/Manual + Reversa',
-        systemValue: 'Handling Mec R$ 35/p, Reversa 24h',
-        status: isVasCoreOk ? 'passed' : 'critical',
-        action: 'Linhas obrigatórias ativas no catálogo VAS.',
-      },
-      {
-        id: '4pl-ct',
-        dimension: 'Receita 4PL CT',
-        reference: 'Upside Não-Base (g7)',
-        systemValue: 'Conta 4.1.04.01 (Não-Base)',
-        status: is4PLOk ? 'passed' : 'warning',
-        action: 'Taggeado como Receita Não-Base fora do Fator R.',
-      },
-    ];
+  const consistencyInput = useMemo(
+    () => ({
+      hubParams,
+      dreMonths,
+      activeScenario,
+      fatorR,
+      vasDrivers,
+      granularDreItems,
+      activeMix,
+    }),
+    [hubParams, dreMonths, activeScenario, fatorR, vasDrivers, granularDreItems, activeMix],
+  );
 
-    const hasCritical = rows.some((r) => r.status === 'critical');
-    return { rows, hasCritical };
-  }, [dreMonths, activeScenario, fatorR, vasDrivers]);
+  const consistencyMatrix = useMemo(
+    () => buildConsistencyMatrix(consistencyInput),
+    [consistencyInput],
+  );
+
+  const preErpChecklist = useMemo(
+    () => buildPreErpChecklist(consistencyInput),
+    [consistencyInput],
+  );
 
   const handleDriveExport = async () => {
     setDriveExportStatus('Exportando relatório para o Google Drive...');
@@ -145,21 +109,20 @@ Data do Relatório: ${new Date().toLocaleString('pt-BR')}
 
 INDICADORES CANÔNICOS BP v3.5:
 ------------------------------------------------------------------------
-- Payback CAPEX: M5 (com Carência Aluguel) / M8 (sem Carência Aluguel)
-- Lucro Líquido Ano 1: R$ 320.090 (Margem 16,4%)
-- Lucro Líquido Ano 2: R$ 250.752 (Margem 8,8%)
-- Saldo Mínimo de Caixa (M0+): R$ 59.700
+- Payback CAPEX: ${cashMilestones.payback?.month ?? '—'} (carência aluguel ${hubParams.rent.carenciaAluguelMeses}m)
+- Vale: ${cashMilestones.valley.month} (${cashMilestones.valley.saldo.toLocaleString('pt-BR')})
 - Receita Bruta Acumulada 24m: R$ ${totalRev24m.toLocaleString('pt-BR')}
 - Lucro Líquido Acumulado 24m: R$ ${totalLL24m.toLocaleString('pt-BR')}
-- Fator R Atual: ${fatorR}% (Simples Nacional Anexo III - Alíquota 6,0%)
+- Fator R Atual: ${fatorR}% (Simples Nacional Anexo III - Alíquota ${dasLabel})
 - Regra Fator R: Numerador = CLT (5.2.01.01) + PL Regular (5.2.01.02) + PL Adicional (5.2.01.03) [MO Terceirizada EXCLUÍDA]
+- Banda alvo: ${band}
 - Saldo M24 Final: R$ ${activeScenario.m24Cash.toLocaleString('pt-BR')}
-- CAPEX do Projeto: R$ ${activeScenario.capexTotal.toLocaleString('pt-BR')}
-- Vetos Ativos: Monoclientes P1 (BE > 91%), P4, P5 e Blends sem P5 (>20%)
+- CAPEX do Projeto: R$ ${hubParams.capex.total.toLocaleString('pt-BR')}
+- Capacidade: ${cap.toLocaleString('pt-BR')} pos · Teto M7 R$ ${m7Ceiling.toLocaleString('pt-BR')}
 
 NOTA OBRIGATÓRIA DE CONCILIAÇÃO DRE X FLUXO DE CAIXA:
 ------------------------------------------------------------------------
-A diferença mensal de R$ 7.000/mês (M7–M11) e R$ 11.000 (M12) refere-se ao Pró-labore Adicional de ajuste do Fator R, contabilizado como despesa de pessoal na DRE (Numerador) para garantir a alíquota reduzida do Anexo III (6,0%), sem desembolso adicional de caixa operacional além da distribuição de lucros planejada.
+A diferença mensal de R$ ${plM7.toLocaleString('pt-BR')}/mês (fase PL adicional) e R$ ${plM12.toLocaleString('pt-BR')} (M12+) refere-se ao Pró-labore Adicional de ajuste do Fator R, contabilizado como despesa de pessoal na DRE (Numerador) para garantir a alíquota reduzida do Anexo III (${dasLabel}), sem desembolso adicional de caixa operacional além da distribuição de lucros planejada.
 
 MATRIZ DE CONSISTÊNCIA DA AUDITORIA:
 ------------------------------------------------------------------------
@@ -168,6 +131,9 @@ ${consistencyMatrix.rows.map((r) => `- [${r.status === 'passed' ? 'OK' : 'AJUSTA
 
 CHECKLIST DE GOVERNANÇA:
 ${governanceChecks.map((g) => `- [${g.status === 'passed' ? 'X' : ' '}] ${g.label}: ${g.detail}`).join('\n')}
+
+PRÉ-ERP:
+${preErpChecklist.map((c) => `- [${c.passed ? 'X' : ' '}] ${c.label}: ${c.detail}`).join('\n')}
 
 TRILHA DE AUDITORIA RECENTE:
 ${auditLogs.slice(0, 5).map((l) => `- ${l.timestamp} | ${l.user} | ${l.driver}: ${l.before} -> ${l.after}`).join('\n')}
@@ -410,7 +376,7 @@ ${auditLogs.slice(0, 5).map((l) => `- ${l.timestamp} | ${l.user} | ${l.driver}: 
               <span className="text-[10px] font-mono text-emerald-400">STATUS: AUDITADO & TETO ATIVO</span>
             </div>
             <p className="text-xs text-slate-300 leading-relaxed">
-              Teto físico de 2.968 posições e ticket médio de R$ 74,15 geram R$ 205.200/mês na base M7. Serviços Core (Descarga Mec R$ 35/palete, Descarga Manual R$ 18/vol, Etiquetagem R$ 0,75/un, Reversa 24h) reconfirmados no catálogo oficial.
+              Teto físico de {cap.toLocaleString('pt-BR')} posições gera R$ {m7Ceiling.toLocaleString('pt-BR')}/mês na base M7 (params). Serviços Core (Handling / Descarga / Reversa) reconfirmados no catálogo VAS.
             </p>
           </div>
 
@@ -421,7 +387,7 @@ ${auditLogs.slice(0, 5).map((l) => `- ${l.timestamp} | ${l.user} | ${l.driver}: 
               <span className="text-[10px] font-mono text-emerald-400">STATUS: 100% ADERENTE</span>
             </div>
             <p className="text-xs text-slate-300 leading-relaxed">
-              Inclusão das contas analíticas 4.1.04.01, 5.1.03.03 e 5.1.04.01 concluída. Mão de Obra Terceirizada acima do Lucro Bruto e conciliação de R$ 7.000/mês do Pró-labore Adicional mapeados.
+              Inclusão das contas analíticas 4.1.04.01, 5.1.03.03 e 5.1.04.01 concluída. Mão de Obra Terceirizada acima do Lucro Bruto e conciliação de R$ {plM7.toLocaleString('pt-BR')}/mês do Pró-labore Adicional (hubParams.fiscal) mapeados.
             </p>
           </div>
 
@@ -432,7 +398,7 @@ ${auditLogs.slice(0, 5).map((l) => `- ${l.timestamp} | ${l.user} | ${l.driver}: 
               <span className="text-[10px] font-mono text-emerald-400">STATUS: CONFORME</span>
             </div>
             <p className="text-xs text-slate-300 leading-relaxed">
-              Mecânica de ajuste via Pró-labore discricionário mantém o Fator R na banda segura de 28,0%–28,7% (Simples Nacional Anexo III). Payback M5 (com Carência Aluguel) / M8 (sem Carência Aluguel) e caixa acumulado M24 derivado do engine.
+              Mecânica de ajuste via Pró-labore discricionário mantém o Fator R na banda segura de {band} (Simples Nacional Anexo III, DAS {dasLabel}). Payback {cashMilestones.payback?.month ?? '—'} (série com carência) · Vale {cashMilestones.valley.month} · caixa M24 derivado do engine.
             </p>
           </div>
         </div>
@@ -444,7 +410,14 @@ ${auditLogs.slice(0, 5).map((l) => `- ${l.timestamp} | ${l.user} | ${l.driver}: 
             <span>3. Nota Obrigatória de Conciliação DRE x Fluxo de Caixa (Auditoria Externa)</span>
           </div>
           <p className="leading-relaxed">
-            💡 <strong>Diferença de Conciliação DRE x FC:</strong> A diferença mensal de <strong>R$ 7.000/mês (M7–M11)</strong> e <strong>R$ 11.000 (M12)</strong> refere-se ao <strong>Pró-labore Adicional</strong> de ajuste do Fator R, contabilizado como despesa de pessoal na DRE (Numerador) para garantir a alíquota reduzida do Simples Nacional Anexo III (6,0%), sem desembolso adicional de caixa operacional além da distribuição de lucros planejada.
+            💡 <strong>Diferença de Conciliação DRE x FC:</strong> A diferença mensal de{' '}
+            <strong>
+              R$ {plM7.toLocaleString('pt-BR')}/mês (fase a partir de M{plBands[0]?.fromMonth ?? 4})
+            </strong>{' '}
+            e <strong>R$ {plM12.toLocaleString('pt-BR')} (M{plBands[1]?.fromMonth ?? 12}+)</strong> refere-se ao{' '}
+            <strong>Pró-labore Adicional</strong> de ajuste do Fator R, contabilizado como despesa de pessoal na DRE
+            (Numerador) para garantir a alíquota reduzida do Simples Nacional Anexo III ({dasLabel}), sem desembolso
+            adicional de caixa operacional além da distribuição de lucros planejada.
           </p>
         </div>
 
@@ -459,30 +432,21 @@ ${auditLogs.slice(0, 5).map((l) => `- ${l.timestamp} | ${l.user} | ${l.driver}: 
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-slate-200">
-            <div className="p-2.5 bg-slate-900 rounded-lg border border-slate-800 flex items-center gap-2">
-              <span className="text-emerald-400 font-bold">✓</span>
-              <span><strong>Recalcular Dashboard VAS:</strong> Usar R$ 205.200 (M7 base) como teto físico.</span>
-            </div>
-            <div className="p-2.5 bg-slate-900 rounded-lg border border-slate-800 flex items-center gap-2">
-              <span className="text-emerald-400 font-bold">✓</span>
-              <span><strong>Atualizar Plano de Contas:</strong> Inserir contas 4.1.04.01, 5.1.03.03 e 5.1.04.01.</span>
-            </div>
-            <div className="p-2.5 bg-slate-900 rounded-lg border border-slate-800 flex items-center gap-2">
-              <span className="text-emerald-400 font-bold">✓</span>
-              <span><strong>Parametrizar Fator R:</strong> Fórmula = <code className="text-emerald-300">(CLT + PL_Reg + PL_Adic) / RBT12</code>.</span>
-            </div>
-            <div className="p-2.5 bg-slate-900 rounded-lg border border-slate-800 flex items-center gap-2">
-              <span className="text-emerald-400 font-bold">✓</span>
-              <span><strong>Reajuste Aluguel M13:</strong> Programar reajuste para R$ 63.000 em M13.</span>
-            </div>
-            <div className="p-2.5 bg-slate-900 rounded-lg border border-slate-800 flex items-center gap-2">
-              <span className="text-emerald-400 font-bold">✓</span>
-              <span><strong>Conciliação DRE x FC:</strong> Explicar diferença do Pró-labore Adicional.</span>
-            </div>
-            <div className="p-2.5 bg-slate-900 rounded-lg border border-slate-800 flex items-center gap-2">
-              <span className="text-emerald-400 font-bold">✓</span>
-              <span><strong>Documentar Vetos:</strong> Rejeitar monoclientes e blends sem P5 (&gt;20%).</span>
-            </div>
+            {preErpChecklist.map((item) => (
+              <div
+                key={item.id}
+                className={`p-2.5 bg-slate-900 rounded-lg border flex items-center gap-2 ${
+                  item.passed ? 'border-slate-800' : 'border-amber-500/40'
+                }`}
+              >
+                <span className={`font-bold ${item.passed ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {item.passed ? '✓' : '!'}
+                </span>
+                <span>
+                  <strong>{item.label}:</strong> {item.detail}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -554,7 +518,11 @@ ${auditLogs.slice(0, 5).map((l) => `- ${l.timestamp} | ${l.user} | ${l.driver}: 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {governanceChecks.map((check) => (
             <div key={check.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex items-start gap-3">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              {check.status === 'passed' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              )}
               <div>
                 <div className="text-xs font-bold text-slate-900 flex items-center gap-2">
                   <span>{check.label}</span>
@@ -563,6 +531,15 @@ ${auditLogs.slice(0, 5).map((l) => `- ${l.timestamp} | ${l.user} | ${l.driver}: 
                       Regra Bloqueada
                     </span>
                   )}
+                  <span
+                    className={`px-1.5 py-0.2 text-[9px] font-bold rounded ${
+                      check.status === 'passed'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-amber-100 text-amber-800'
+                    }`}
+                  >
+                    {check.status}
+                  </span>
                 </div>
                 <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">{check.detail}</p>
               </div>

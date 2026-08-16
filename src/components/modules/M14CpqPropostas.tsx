@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { usePlanner } from '../../context/PlannerContext';
 import { exportModulePDF, exportModuleCSV, exportToPDF, exportToCSV } from '../../utils/exportHandlers';
 import {
@@ -23,19 +23,22 @@ import { CRM_LEAD_CATALOG } from '../../data/formCatalogs';
 import { ModuleHeader } from '../ModuleHeader';
 import { HubFitnessLogo } from '../HubFitnessLogo';
 import { M3ReceitaVas } from './M3ReceitaVas';
+import type { FloorBundle } from '../../core/operator/resolvePriceFloors';
 
 export const M14CpqPropostas: React.FC = () => {
   const { activeRole, pitchMode, dreMonths, addAuditLog, hubParams } = usePlanner();
 
   const [isPreviewProposalOpen, setIsPreviewProposalOpen] = useState(false);
+  const [floorSource, setFloorSource] = useState<'operator' | 'params'>('params');
 
-  const SANCO_FLOORS = {
-    storagePerPallet: hubParams.pricing.floors.storage,
-    handlingPerPallet: hubParams.pricing.floors.handling,
-    unloadContainer40: hubParams.pricing.floors.deunitization,
-    labelingPerUnit: hubParams.pricing.floors.labeling,
-    adValoremRate: hubParams.pricing.floors.adValoremPct,
-  };
+  const paramsFloors = hubParams.pricing.floors;
+  const [SANCO_FLOORS, setSancoFloors] = useState({
+    storagePerPallet: paramsFloors.storage,
+    handlingPerPallet: paramsFloors.handling,
+    unloadContainer40: paramsFloors.deunitization,
+    labelingPerUnit: paramsFloors.labeling,
+    adValoremRate: paramsFloors.adValoremPct,
+  });
 
   // Lead Proposal Inputs
   const [prospectName, setProspectName] = useState<string>('MaxFitness Importadora Ltda');
@@ -50,15 +53,52 @@ export const M14CpqPropostas: React.FC = () => {
   const [quotedDeclaredValue, setQuotedDeclaredValue] = useState<number>(500000);
 
   // Custom Offered Prices (Subject to Floor Validation)
-  const [offeredStoragePrice, setOfferedStoragePrice] = useState<number>(hubParams.pricing.floors.storage);
-  const [offeredHandlingPrice, setOfferedHandlingPrice] = useState<number>(hubParams.pricing.floors.handling);
-  const [offeredUnloadPrice, setOfferedUnloadPrice] = useState<number>(hubParams.pricing.floors.deunitization);
-  const [offeredLabelingPrice, setOfferedLabelingPrice] = useState<number>(hubParams.pricing.floors.labeling);
+  const [offeredStoragePrice, setOfferedStoragePrice] = useState<number>(paramsFloors.storage);
+  const [offeredHandlingPrice, setOfferedHandlingPrice] = useState<number>(paramsFloors.handling);
+  const [offeredUnloadPrice, setOfferedUnloadPrice] = useState<number>(paramsFloors.deunitization);
+  const [offeredLabelingPrice, setOfferedLabelingPrice] = useState<number>(paramsFloors.labeling);
 
   // CFO Approval Password override state
   const [cfoPasswordInput, setCfoPasswordInput] = useState<string>('');
   const [cfoApprovedOverride, setCfoApprovedOverride] = useState<boolean>(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const q = new URLSearchParams({
+      storage: String(paramsFloors.storage),
+      handling: String(paramsFloors.handling),
+      deunitization: String(paramsFloors.deunitization),
+      labeling: String(paramsFloors.labeling),
+      adValoremPct: String(paramsFloors.adValoremPct),
+    });
+    void fetch(`/api/operator/price-floors?${q}`)
+      .then((r) => r.json())
+      .then((json: { success?: boolean; floors?: FloorBundle }) => {
+        if (cancelled || !json?.success || !json.floors) return;
+        const f = json.floors;
+        setFloorSource(f.source);
+        setSancoFloors({
+          storagePerPallet: f.storage,
+          handlingPerPallet: f.handling,
+          unloadContainer40: f.deunitization,
+          labelingPerUnit: f.labeling,
+          adValoremRate: f.adValoremPct,
+        });
+        if (f.source === 'operator') {
+          setOfferedStoragePrice(f.storage);
+          setOfferedHandlingPrice(f.handling);
+          setOfferedUnloadPrice(f.deunitization);
+          setOfferedLabelingPrice(f.labeling);
+        }
+      })
+      .catch(() => {
+        /* fallback params já carregado */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [paramsFloors.storage, paramsFloors.handling, paramsFloors.deunitization, paramsFloors.labeling, paramsFloors.adValoremPct]);
 
   // Check discount violations
   const isStorageViolated = offeredStoragePrice < SANCO_FLOORS.storagePerPallet;
@@ -82,11 +122,13 @@ export const M14CpqPropostas: React.FC = () => {
   const targetRevenueM7 = dreMonths[6]?.receitaServicos || 205200;
   const percentOfTargetM7 = (totalMonthlyQuoteRevenue / targetRevenueM7) * 100;
 
-  // KONNEN Occupancy Impact
-  const totalCapacityKonnen = 2968;
-  const currentOccupiedPositions = 2226; // 75% baseline occupancy
-  const remainingCapacityPositions = Math.max(0, totalCapacityKonnen - currentOccupiedPositions);
-  const newOccupancyWithQuote = ((currentOccupiedPositions + quotedPositions) / totalCapacityKonnen) * 100;
+  // Capacidade do hub (params) — não “Konnen”
+  const hubRackBudget = hubParams.capacity.totalPositions;
+  const currentOccupiedPositions = Math.round(hubRackBudget * hubParams.capacity.targetOccupancy);
+  const remainingCapacityPositions = Math.max(0, hubRackBudget - currentOccupiedPositions);
+  const newOccupancyWithQuote = hubRackBudget > 0
+    ? ((currentOccupiedPositions + quotedPositions) / hubRackBudget) * 100
+    : 0;
 
   const handleCfoPasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,7 +147,7 @@ export const M14CpqPropostas: React.FC = () => {
       <ModuleHeader
         moduleId="M14"
         title="Propostas CPQ & Precificação Comercial"
-        subtitle="Gerador de propostas com validação automática de pisos tarifários invioláveis SANCO (BP v3.5), catálogo VAS e cálculo de impacto na meta M7 e capacidade KONNEN."
+        subtitle="Gerador de propostas com validação de pisos tarifários SANCO (Operator price_* ou params), catálogo VAS e impacto na meta M7 e capacidade do hub."
         kpis={[
           {
             label: 'Cotação Mensal Lead',
@@ -116,15 +158,15 @@ export const M14CpqPropostas: React.FC = () => {
           },
           {
             label: 'Pisos Tarifários SANCO',
-            value: 'R$ 22,50 / R$ 25,00',
-            subtext: 'Armazenagem (P1) e Handling (P2)',
+            value: `R$ ${SANCO_FLOORS.storagePerPallet.toFixed(2)} / R$ ${SANCO_FLOORS.handlingPerPallet.toFixed(2)}`,
+            subtext: floorSource === 'operator' ? 'Fonte: Operator price_category_items' : 'Fonte: hubParams (fallback)',
             badge: 'SANCO OK',
             highlightColor: 'amber',
           },
           {
-            label: 'Ocupação Galpão KONNEN',
+            label: 'Ocupação Galpão HUB',
             value: `${newOccupancyWithQuote.toFixed(1)}%`,
-            subtext: `+${quotedPositions} pos. (Teto 2.968 pos.)`,
+            subtext: `+${quotedPositions} pos. (Teto ${hubRackBudget.toLocaleString('pt-BR')} pos.)`,
             badge: 'LOGÍSTICA',
             highlightColor: 'slate',
           },
@@ -404,7 +446,7 @@ export const M14CpqPropostas: React.FC = () => {
             {/* Capacity Impact Gauge */}
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2 text-xs">
               <div className="flex justify-between font-bold text-slate-900">
-                <span>Ocupação KONNEN pós-Contrato:</span>
+                <span>Ocupação hub pós-Contrato:</span>
                 <span className="font-mono text-blue-900 font-extrabold">{newOccupancyWithQuote.toFixed(1)}%</span>
               </div>
               <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">

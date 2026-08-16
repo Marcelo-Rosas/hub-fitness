@@ -195,7 +195,9 @@ export interface SupplierQuote {
   totalMonthlyWithFreight: number;
   /** Prazo até Itajaí/SC (dias). Se ausente, UI tenta company ou mostra — */
   deliveryLeadTimeDays?: number;
-  score: number; // 0 to 100
+  score: number; // 0 to 100 — heurística UI, não confiança de modelo
+  /** Rótulo explícito da heurística (ex.: "heurística: vencedor matriz"). */
+  scoreLabel?: string;
   isRecommendedWinner?: boolean;
   notes: string;
 }

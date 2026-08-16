@@ -15,9 +15,10 @@ import { ModuleHeader } from '../ModuleHeader';
 import { parseOfficialCSVs } from '../../data/officialData';
 import { SANCO_TCO_BREAKDOWN } from '../../data/benchmarkData';
 import { deriveCashMilestones, formatBrlSigned } from '../../core/cashMilestones';
-import { defaultParams } from '../../core/params';
+import { usePlanner } from '../../context/PlannerContext';
 
 export const M1Dashboard: React.FC = () => {
+  const { hubParams } = usePlanner();
   const { dreMonths, cashflowSeries, totals24M } = parseOfficialCSVs();
   const [cashTimeframe, setCashTimeframe] = useState<'24m'>('24m');
 
@@ -27,7 +28,7 @@ export const M1Dashboard: React.FC = () => {
   const margemLiquidaPercent = totals24M.margemLiquidaPercent; // 11.878% ~ 11.9%
   const saldoCaixaM24CarenciaAluguel = totals24M.saldoCaixaM24CarenciaAluguel;
   const saldoCaixaM24Puro = totals24M.saldoCaixaM24Puro; // R$ 663.342
-  const capacidadePaletes = totals24M.capacidadePaletes; // 2.968 posições
+  const capacidadePaletes = hubParams.capacity.totalPositions;
 
   const milestones = deriveCashMilestones(
     cashflowSeries.map((item) => ({
@@ -36,8 +37,14 @@ export const M1Dashboard: React.FC = () => {
       saldo: item.saldoAcumuladoCarenciaAluguel,
       fluxo: item.fluxoLiquidoCarenciaAluguel,
     })),
-    { rentOnMonthNum: defaultParams.rent.carenciaAluguelMeses + 1 },
+    { rentOnMonthNum: hubParams.rent.carenciaAluguelMeses + 1 },
   );
+
+  const sancoTco = hubParams.benchmarks.sancoTcoInhouseMonthly;
+  const tplTco = hubParams.benchmarks.tplFitnessMonthly;
+  const tcoReductionPct = sancoTco > 0 ? ((sancoTco - tplTco) / sancoTco) * 100 : 0;
+  const fmtTcoK = (n: number) =>
+    `R$ ${(n / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}k/mês`;
 
   // Map cashflow series for AreaChart (M0 to M24)
   const chartData = cashflowSeries.map((item) => ({
@@ -327,7 +334,7 @@ export const M1Dashboard: React.FC = () => {
             <p className="text-xs text-slate-500">Comparativo de custos mensais em SC (Gestão Própria vs Hub Terceirizado)</p>
           </div>
           <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-md text-xs font-black uppercase">
-            Economia TCO: -48,4%
+            Economia TCO: -{tcoReductionPct.toFixed(1).replace('.', ',')}%
           </span>
         </div>
 
@@ -351,13 +358,18 @@ export const M1Dashboard: React.FC = () => {
           <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200 flex flex-col justify-between">
             <div className="flex items-start justify-between">
               <div>
-                <div className="text-3xl font-black text-emerald-800 font-mono">-48,4%</div>
+                <div className="text-3xl font-black text-emerald-800 font-mono">
+                  -{tcoReductionPct.toFixed(1).replace('.', ',')}%
+                </div>
                 <div className="text-xs font-bold text-emerald-950 mt-1">Redução Efetiva de Custo Operacional</div>
               </div>
               <Award className="w-8 h-8 text-emerald-600 opacity-80" />
             </div>
             <p className="text-xs text-emerald-800/90 leading-relaxed mt-2">
-              A operação terceirizada 3PL reduz o custo fixo do galpão de <strong>R$ 83,8k/mês</strong> para <strong>R$ 43,2k/mês</strong>, liberando margem operacional direta sem exposição de CAPEX predial.
+              A operação terceirizada 3PL reduz o custo fixo do galpão de{' '}
+              <strong>{fmtTcoK(sancoTco)}</strong> para <strong>{fmtTcoK(tplTco)}</strong>, liberando
+              margem operacional direta sem exposição de CAPEX predial (CAPEX ops R${' '}
+              {hubParams.capex.total.toLocaleString('pt-BR')} via params).
             </p>
           </div>
         </div>

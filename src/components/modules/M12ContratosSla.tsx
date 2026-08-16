@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { usePlanner } from '../../context/PlannerContext';
 import {
   ShieldCheck,
@@ -18,11 +18,26 @@ import {
 } from 'lucide-react';
 import { ModuleHeader } from '../ModuleHeader';
 
+type OperatorContract = {
+  id: string;
+  code: string;
+  status: string;
+  starts_on: string;
+  ends_on: string | null;
+  currency: string;
+  client_slug?: string | null;
+  client_trade_name?: string | null;
+  is_dogfood?: boolean | null;
+};
+
 export const M12ContratosSla: React.FC = () => {
   const { activeRole, pitchMode, activeScenario, addAuditLog } = usePlanner();
 
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
+  const [operatorContracts, setOperatorContracts] = useState<OperatorContract[]>([]);
+  const [contractsLoaded, setContractsLoaded] = useState(false);
+  const [contractsEmpty, setContractsEmpty] = useState(true);
 
   // SLA Operational Status State
   const [b2cCutoffHour, setB2cCutoffHour] = useState<number>(11); // Target <= 11h
@@ -44,6 +59,30 @@ export const M12ContratosSla: React.FC = () => {
     impactSensors: true,
     insuranceActive: true,
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch('/api/operator/contracts')
+      .then((r) => r.json())
+      .then((json: { success?: boolean; contracts?: OperatorContract[]; empty?: boolean }) => {
+        if (cancelled) return;
+        setContractsLoaded(true);
+        const rows = Array.isArray(json?.contracts) ? json.contracts : [];
+        // Comercial: não listar dogfood como contrato pitch
+        const commercial = rows.filter((c) => !c.is_dogfood);
+        setOperatorContracts(commercial);
+        setContractsEmpty(commercial.length === 0);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setContractsLoaded(true);
+        setOperatorContracts([]);
+        setContractsEmpty(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const calculatedLossPercent = clientNfValue > 0 ? (clientSimulatedLoss / clientNfValue) * 100 : 0;
   const isLossBlocked = calculatedLossPercent >= 1.0; // 1% threshold from BP v3.5
@@ -88,14 +127,63 @@ export const M12ContratosSla: React.FC = () => {
             highlightColor: allKonnenPassed ? 'emerald' : 'amber',
           },
           {
-            label: 'SLA de Corte B2C',
-            value: `${b2cCutoffHour}:00h`,
-            subtext: 'Despacho no mesmo dia',
-            badge: 'OPERACIONAL',
-            highlightColor: 'indigo',
+            label: 'Contratos Operator',
+            value: contractsLoaded ? String(operatorContracts.length) : '…',
+            subtext: contractsEmpty ? 'Nenhum contrato no Operator' : 'Fonte: public.contracts',
+            badge: 'OPERATOR',
+            highlightColor: contractsEmpty ? 'slate' : 'indigo',
           },
         ]}
       />
+
+      {/* Operator contracts — read-only; empty = sem inventar */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3 shadow-xs">
+        <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+          <FileText className="w-5 h-5 text-blue-900" />
+          <div>
+            <h3 className="text-sm font-black text-slate-900 uppercase tracking-wide">
+              Contratos comerciais (Operator)
+            </h3>
+            <p className="text-[11px] text-slate-500">
+              Leitura de <code className="font-mono">public.contracts</code> — sem seed inventado na UI
+            </p>
+          </div>
+        </div>
+        {!contractsLoaded && (
+          <p className="text-xs text-slate-500">Carregando contratos…</p>
+        )}
+        {contractsLoaded && operatorContracts.length === 0 && (
+          <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5">
+            Nenhum contrato ativo no Operator. Cadastre em <code className="font-mono">public.contracts</code> (ou via Control Tower) — o painel de SLA abaixo continua operacional com defaults de simulação.
+          </p>
+        )}
+        {operatorContracts.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-slate-500 border-b border-slate-100">
+                  <th className="py-2 pr-3 font-semibold">Código</th>
+                  <th className="py-2 pr-3 font-semibold">Cliente</th>
+                  <th className="py-2 pr-3 font-semibold">Status</th>
+                  <th className="py-2 pr-3 font-semibold">Início</th>
+                  <th className="py-2 font-semibold">Fim</th>
+                </tr>
+              </thead>
+              <tbody>
+                {operatorContracts.map((c) => (
+                  <tr key={c.id} className="border-b border-slate-50 text-slate-800">
+                    <td className="py-2 pr-3 font-mono font-bold">{c.code}</td>
+                    <td className="py-2 pr-3">{c.client_trade_name || c.client_slug || '—'}</td>
+                    <td className="py-2 pr-3 uppercase font-semibold">{c.status}</td>
+                    <td className="py-2 pr-3 font-mono">{c.starts_on}</td>
+                    <td className="py-2 font-mono">{c.ends_on || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* SECTION 1: SLA MONITORING PANEL */}
       <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4 shadow-xs">

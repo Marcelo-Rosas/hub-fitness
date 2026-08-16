@@ -51,6 +51,7 @@ export const M11SimuladorMix: React.FC = () => {
     updateActiveMix,
     applyMixToGlobalModel,
     addAuditLog,
+    hubParams,
   } = usePlanner();
 
   // Navigation tab state
@@ -84,8 +85,8 @@ export const M11SimuladorMix: React.FC = () => {
     const ct4plM12 = w1 * 0 + w2 * 2000 + w4 * 1500 + w5 * 2500;
     const ct4plM24 = ct4plM12 * 2; // Scales at M24
 
-    // Break-Even Pallet Positions (Capacity = 2,968 positions)
-    const totalCapacity = 2968;
+    const totalCapacity = hubParams.capacity.totalPositions;
+    const targetOccPct = hubParams.capacity.targetOccupancy * 100;
     const safeMc = weightedMcPos > 0 ? weightedMcPos : 1;
 
     const bePositionsOriginal = 164000 / safeMc;
@@ -96,13 +97,11 @@ export const M11SimuladorMix: React.FC = () => {
     const bePctEnxuto = Number(((bePositionsEnxuto / totalCapacity) * 100).toFixed(1));
     const bePctRealista = Number(((bePositionsRealista / totalCapacity) * 100).toFixed(1));
 
-    // Net Profit at 100% occupancy (2,968 positions)
     const ll100Original = Math.round(totalCapacity * weightedMcPos - 164000);
     const ll100Enxuto = Math.round(totalCapacity * weightedMcPos - 120000);
     const ll100Realista = Math.round(totalCapacity * weightedMcPos - 143000);
 
-    // Net Profit at 88% occupancy (2,612 positions)
-    const pos88 = 2612;
+    const pos88 = Math.round(totalCapacity * hubParams.year3.galpaoAOccupancy);
     const ll88Original = Math.round(pos88 * weightedMcPos - 164000);
     const ll88Enxuto = Math.round(pos88 * weightedMcPos - 120000);
     const ll88Realista = Math.round(pos88 * weightedMcPos - 143000);
@@ -134,10 +133,10 @@ export const M11SimuladorMix: React.FC = () => {
         text: '🚨 P5 Premium < 20%: Perda de margem estrutural do armazém.',
       });
     }
-    if (bePctRealista > 75) {
+    if (bePctRealista > targetOccPct) {
       triggers.push({
         type: 'danger',
-        text: `🚨 BE Realista (${bePctRealista}%) acima da meta limite de 75% de ocupação!`,
+        text: `🚨 BE Realista (${bePctRealista}%) acima da meta limite de ${targetOccPct}% de ocupação!`,
       });
     }
 
@@ -154,6 +153,9 @@ export const M11SimuladorMix: React.FC = () => {
       weightedTicket: Number(weightedTicket.toFixed(2)),
       ct4plM12: Math.round(ct4plM12),
       ct4plM24: Math.round(ct4plM24),
+      totalCapacity,
+      targetOccPct,
+      pos88,
       bePctOriginal,
       bePctEnxuto,
       bePctRealista,
@@ -165,7 +167,7 @@ export const M11SimuladorMix: React.FC = () => {
       ll88Realista,
       triggers,
     };
-  }, [mixWeights]);
+  }, [mixWeights, hubParams]);
 
   // Handler to load preset
   const handleSelectPreset = (key: string) => {
@@ -609,7 +611,7 @@ export const M11SimuladorMix: React.FC = () => {
                     {calculations.bePctRealista}%
                   </div>
                   <span className="text-[10px] text-slate-500 mt-0.5 block">
-                    meta safe &lt;= 75% ({Math.round((2968 * calculations.bePctRealista) / 100)} pos)
+                    meta safe &lt;= {calculations.targetOccPct}% ({Math.round((calculations.totalCapacity * calculations.bePctRealista) / 100)} pos)
                   </span>
                 </div>
 
@@ -700,7 +702,9 @@ export const M11SimuladorMix: React.FC = () => {
                     Ponto de Equilíbrio (Break-Even %) por Perfil & Mix
                   </h3>
                 </div>
-                <span className="text-[10px] text-slate-500 font-mono">Capacidade = 2.968 pos.</span>
+                <span className="text-[10px] text-slate-500 font-mono">
+                  Capacidade = {calculations.totalCapacity.toLocaleString('pt-BR')} pos.
+                </span>
               </div>
 
               <div className="h-64 w-full text-xs font-sans">
@@ -1184,7 +1188,10 @@ export const M11SimuladorMix: React.FC = () => {
             <div className="space-y-3 pt-2 border-t border-slate-200">
               <h3 className="text-sm font-black uppercase tracking-wider text-slate-900 flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-emerald-700" />
-                <span>2. Análise dos Blends Estratégicos vs. Meta do BP v3.5 (2.968 Posições)</span>
+                <span>
+                  2. Análise dos Blends Estratégicos vs. Meta do BP v3.5 (
+                  {calculations.totalCapacity.toLocaleString('pt-BR')} Posições)
+                </span>
               </h3>
 
               <div className="space-y-2 text-xs text-slate-700 leading-relaxed">

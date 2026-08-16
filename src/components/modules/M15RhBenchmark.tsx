@@ -8,6 +8,9 @@ import {
   Briefcase,
   BookOpen,
 } from 'lucide-react';
+import { usePlanner } from '../../context/PlannerContext';
+import { formatDasPct, formatFatorRBand, plPhaseBands } from '../../core/governanceMatrix';
+import { plAdditionalForMonth } from '../../core/engine';
 
 type ChargeCell = number | null | 'isento';
 
@@ -151,6 +154,16 @@ const ccBadge = (tone: RoleRow['ccTone']) => {
 };
 
 export const M15RhBenchmark: React.FC = () => {
+  const { hubParams } = usePlanner();
+  const band = formatFatorRBand(hubParams);
+  const dasLabel = formatDasPct(hubParams);
+  const plBands = plPhaseBands(hubParams);
+  const plM4 = plAdditionalForMonth(hubParams, 4);
+  const plM12 = plAdditionalForMonth(hubParams, 12);
+  const plM13 = plAdditionalForMonth(hubParams, 13);
+  const plBase = hubParams.fiscal.plBaseMonthly;
+  const capacity = hubParams.capacity.totalPositions;
+
   return (
     <div className="space-[#1F3864] space-y-6">
       {/* HEADER BANNER */}
@@ -245,7 +258,7 @@ export const M15RhBenchmark: React.FC = () => {
               R$ 51.276 <span className="text-xs font-normal text-slate-500">/mês</span>
             </div>
             <p className="text-[11px] text-slate-500 mt-1 leading-snug">
-              Capacidade máxima de 2.968 posições ativas. 8 operacionais + 2 Pró-labore.
+              Capacidade máxima de {capacity.toLocaleString('pt-BR')} posições ativas. 8 operacionais + 2 Pró-labore.
             </p>
           </div>
         </div>
@@ -283,7 +296,7 @@ export const M15RhBenchmark: React.FC = () => {
                 Governança Fator R: Pró-Labore Adicional Discricionário (Conta 5.2.01.03)
               </h3>
               <span className="px-2.5 py-1 bg-amber-200 text-amber-900 text-xs font-mono font-bold rounded-full w-fit">
-                Banda Alvo Safe: 28,01% a 28,70%
+                Banda Alvo Safe: {band}
               </span>
             </div>
             <p className="text-xs text-amber-900 leading-relaxed">
@@ -296,29 +309,46 @@ export const M15RhBenchmark: React.FC = () => {
               <div className="bg-white/80 p-2.5 rounded-lg border border-amber-200 text-xs">
                 <span className="text-[10px] text-amber-800 font-bold uppercase block">M1 a M3</span>
                 <span className="text-sm font-black font-mono text-slate-900">+R$ 0 /mês</span>
-                <span className="text-[10px] text-slate-500 block">Fator R Natural (~28,3%)</span>
+                <span className="text-[10px] text-slate-500 block">
+                  PL base R$ {plBase.toLocaleString('pt-BR')}
+                </span>
               </div>
               <div className="bg-white/80 p-2.5 rounded-lg border border-amber-200 text-xs">
-                <span className="text-[10px] text-amber-800 font-bold uppercase block">M4 a M11</span>
-                <span className="text-sm font-black font-mono text-slate-900">+R$ 7.000/mês</span>
-                <span className="text-[10px] text-slate-500 block">(Total PL: R$ 25.500)</span>
+                <span className="text-[10px] text-amber-800 font-bold uppercase block">
+                  M{plBands[0]?.fromMonth ?? 4}+
+                </span>
+                <span className="text-sm font-black font-mono text-slate-900">
+                  +R$ {plM4.toLocaleString('pt-BR')}/mês
+                </span>
+                <span className="text-[10px] text-slate-500 block">
+                  (Total PL: R$ {(plBase + plM4).toLocaleString('pt-BR')})
+                </span>
               </div>
               <div className="bg-white/80 p-2.5 rounded-lg border border-amber-200 text-xs">
-                <span className="text-[10px] text-amber-800 font-bold uppercase block">M12 (Ajuste)</span>
-                <span className="text-sm font-black font-mono text-slate-900">+R$ 11.000</span>
+                <span className="text-[10px] text-amber-800 font-bold uppercase block">
+                  M{plBands[1]?.fromMonth ?? 12} (Ajuste)
+                </span>
+                <span className="text-sm font-black font-mono text-slate-900">
+                  +R$ {plM12.toLocaleString('pt-BR')}
+                </span>
                 <span className="text-[10px] text-slate-500 block">One-shot Balanço 12m</span>
               </div>
               <div className="bg-white/80 p-2.5 rounded-lg border border-amber-200 text-xs">
-                <span className="text-[10px] text-amber-800 font-bold uppercase block">M13 a M24</span>
-                <span className="text-sm font-black font-mono text-slate-900">+R$ 15.000/mês</span>
-                <span className="text-[10px] text-slate-500 block">(Total PL: R$ 33.500)</span>
+                <span className="text-[10px] text-amber-800 font-bold uppercase block">
+                  M{plBands[2]?.fromMonth ?? 13}+
+                </span>
+                <span className="text-sm font-black font-mono text-slate-900">
+                  +R$ {plM13.toLocaleString('pt-BR')}/mês
+                </span>
+                <span className="text-[10px] text-slate-500 block">
+                  (Total PL: R$ {(plBase + plM13).toLocaleString('pt-BR')})
+                </span>
               </div>
             </div>
 
             <div className="text-[11px] text-amber-950 font-medium bg-amber-100/80 p-2.5 rounded border border-amber-300 mt-2">
               💡 <strong>Blindagem Fiscal:</strong> Ao injetar esse adicional, a alíquota efetiva do DAS
-              permanece em <strong>6,0% (Anexo III)</strong>, garantindo uma economia de{' '}
-              <strong>~R$ 270 mil/ano</strong> (9,5 p.p. Anexo V → III).
+              permanece em <strong>{dasLabel} (Anexo III)</strong> enquanto o Fator R fica na banda {band}.
             </div>
           </div>
         </div>

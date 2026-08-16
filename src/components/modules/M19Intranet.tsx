@@ -4,6 +4,7 @@ import { usePlanner } from '../../context/PlannerContext';
 import { ModuleHeader } from '../ModuleHeader';
 import { SearchableSelect } from '../ui/SearchableSelect';
 import { cadastroCoaOptions } from '../../core/compras/researchFromCoa';
+import { dossierGaps } from '../../core/intranet/dossierGaps';
 import { canManageOrg } from '../../core/rbac/moduleEdit';
 import type {
   ApprovalStatus,
@@ -15,6 +16,7 @@ import type {
 } from '../../types/intranet';
 
 type Tab = 'fila' | 'arvore' | 'cargos' | 'funcionarios' | 'cadastro';
+type OpsFlags = { ops_real_started: boolean; ops_real_started_at: string | null };
 
 function headers(email?: string) {
   return {
@@ -37,6 +39,10 @@ export const M19Intranet: React.FC = () => {
   const [msg, setMsg] = useState<string | null>(null);
   const [versionBanner, setVersionBanner] = useState(false);
   const [reasonById, setReasonById] = useState<Record<string, string>>({});
+  const [opsFlags, setOpsFlags] = useState<OpsFlags>({
+    ops_real_started: false,
+    ops_real_started_at: null,
+  });
 
   const loadOrg = useCallback(async () => {
     try {
@@ -51,6 +57,41 @@ export const M19Intranet: React.FC = () => {
       setMsg('API intranet indisponível — reinicie npm run dev.');
     }
   }, []);
+
+  const loadOpsFlags = useCallback(async () => {
+    try {
+      const res = await fetch('/api/intranet/ops-flags');
+      const json = await res.json();
+      if (json.success) setOpsFlags(json.data);
+    } catch {
+      /* ignore — gaps sem volume até API subir */
+    }
+  }, []);
+
+  const setOpsReal = async (started: boolean) => {
+    if (!manageOrg) return;
+    setMsg(null);
+    try {
+      const res = await fetch('/api/intranet/ops-flags', {
+        method: 'PATCH',
+        headers: headers(user?.email),
+        body: JSON.stringify({
+          ops_real_started: started,
+          ops_real_started_at: started ? new Date().toISOString() : null,
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || 'Falha ops flag');
+      setOpsFlags(json.data);
+      setMsg(
+        started
+          ? 'Ops real marcada. Gap de volume entra a partir do 3º mês.'
+          : 'Ops real desmarcada. Gap de volume fica inativo.',
+      );
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : 'Falha ops flag');
+    }
+  };
 
   const loadCadastro = useCallback(async () => {
     try {
@@ -80,7 +121,8 @@ export const M19Intranet: React.FC = () => {
     void loadOrg();
     void loadInbox();
     void loadCadastro();
-  }, [loadOrg, loadInbox, loadCadastro]);
+    void loadOpsFlags();
+  }, [loadOrg, loadInbox, loadCadastro, loadOpsFlags]);
 
   const decide = async (id: string, action: 'approve' | 'reject' | 'request-changes', version: number) => {
     setBusyId(id);
@@ -103,7 +145,14 @@ export const M19Intranet: React.FC = () => {
         setVersionBanner(true);
         throw new Error('Pedido atualizado por outro usuário. Recarregue a fila.');
       }
-      if (!json.success) throw new Error(json.error || 'Falha na decisão');
+      if (!json.success) {
+        const err = String(json.error || 'Falha na decisão');
+        throw new Error(
+          err === 'PRECO_INCOMPLETO'
+            ? 'Aprovar bloqueado: falta preço unitário ou landed mensal. Peça correção.'
+            : err,
+        );
+      }
       setMsg(
         action === 'approve'
           ? 'Aprovado. O e-mail ao fornecedor sai pelo outbox (simulado sem INTRANET_EMAIL_LIVE).'
@@ -169,6 +218,22 @@ export const M19Intranet: React.FC = () => {
       ) : null}
       {msg ? <p className="text-xs text-teal-800 font-medium">{msg}</p> : null}
 
+      {manageOrg ? (
+        <div className="flex flex-wrap items-center gap-3 text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+          <span className="font-semibold text-slate-700">Ops real (Sócio):</span>
+          <label className="inline-flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={opsFlags.ops_real_started}
+              onChange={(e) => void setOpsReal(e.target.checked)}
+            />
+            {opsFlags.ops_real_started
+              ? `ativa desde ${opsFlags.ops_real_started_at ? new Date(opsFlags.ops_real_started_at).toLocaleDateString('pt-BR') : '—'}`
+              : 'inativa — volume não entra no dossiê'}
+          </label>
+        </div>
+      ) : null}
+
       {tab === 'fila' && (
         <Fila
           rows={rows}
@@ -176,6 +241,7 @@ export const M19Intranet: React.FC = () => {
           reasonById={reasonById}
           setReasonById={setReasonById}
           onDecide={decide}
+          opsFlags={opsFlags}
         />
       )}
       {tab === 'arvore' && manageOrg && (
@@ -217,12 +283,14 @@ function Fila({
   reasonById,
   setReasonById,
   onDecide,
+  opsFlags,
 }: {
   rows: IntranetRequestRecord[];
   busyId: string | null;
   reasonById: Record<string, string>;
   setReasonById: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   onDecide: (id: string, action: 'approve' | 'reject' | 'request-changes', version: number) => void;
+  opsFlags: OpsFlags;
 }) {
   if (rows.length === 0) {
     return (
@@ -256,7 +324,7 @@ function Fila({
               <Info label="E-mail" value={r.supplier_email || '—'} />
               <Info label="Item" value={String(r.payload.item || '—')} />
             </div>
-            <RfqCommercialBrief payload={r.payload} />
+            <RfqCommercialBrief payload={r.payload} opsFlags={opsFlags} />
             {r.status === 'APPROVED' && (
               <div className="text-[11px] text-slate-600">
                 {r.email_status === 'sent'
@@ -794,7 +862,13 @@ function moneyBrl(n: unknown): string | null {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-function RfqCommercialBrief({ payload }: { payload: Record<string, unknown> }) {
+function RfqCommercialBrief({
+  payload,
+  opsFlags,
+}: {
+  payload: Record<string, unknown>;
+  opsFlags: { ops_real_started: boolean; ops_real_started_at: string | null };
+}) {
   const unit = moneyBrl(payload.unit_price);
   const freight = moneyBrl(payload.freight_monthly);
   const landed = moneyBrl(payload.landed_monthly);
@@ -812,17 +886,16 @@ function RfqCommercialBrief({ payload }: { payload: Record<string, unknown> }) {
       : payload.warehouse_code != null
         ? String(payload.warehouse_code)
         : null;
-  const score =
-    payload.score != null && Number.isFinite(Number(payload.score))
-      ? `${Number(payload.score)}/100`
-      : null;
+  const scoreLabel =
+    payload.score_label != null
+      ? String(payload.score_label)
+      : payload.score != null && Number.isFinite(Number(payload.score))
+        ? `heurística ${Number(payload.score)}/100`
+        : null;
+  const priceType = payload.price_type != null ? String(payload.price_type) : null;
   const category = payload.category != null ? String(payload.category) : null;
 
-  const gaps: string[] = [];
-  if (!unit) gaps.push('preço unitário');
-  if (!landed) gaps.push('landed mensal');
-  if (!lead) gaps.push('prazo de entrega');
-  if (!volume || /(?:^|\s)1\s*un/i.test(volume)) gaps.push('volume operacional');
+  const gaps = dossierGaps(payload, opsFlags);
 
   return (
     <div className="space-y-2">
@@ -836,7 +909,8 @@ function RfqCommercialBrief({ payload }: { payload: Record<string, unknown> }) {
         <Info label="Landed / mês" value={landed || '—'} />
         <Info label="Prazo → hub SC" value={lead || '—'} />
         <Info label="Destino" value={dest || '—'} />
-        <Info label="Score" value={score || '—'} />
+        <Info label="Score (heurística)" value={scoreLabel || '—'} />
+        <Info label="Tipo preço" value={priceType || '—'} />
       </div>
       {gaps.length > 0 ? (
         <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-100 rounded px-2 py-1.5">

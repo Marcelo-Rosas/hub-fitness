@@ -113,6 +113,53 @@ CREATE TABLE IF NOT EXISTS cadastro_contatos (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS cadastro_contatos_email_account
   ON cadastro_contatos(email, account_code);
+CREATE TABLE IF NOT EXISTS suppliers (
+  id TEXT PRIMARY KEY,
+  trade_name TEXT NOT NULL,
+  email TEXT NOT NULL DEFAULT '',
+  city TEXT NOT NULL DEFAULT '',
+  uf TEXT NOT NULL DEFAULT '',
+  source TEXT NOT NULL DEFAULT 'ingest',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS quotes (
+  id TEXT PRIMARY KEY,
+  supplier_id TEXT NOT NULL REFERENCES suppliers(id),
+  account_code TEXT NOT NULL DEFAULT '',
+  category TEXT NOT NULL DEFAULT '',
+  item_description TEXT NOT NULL,
+  unit_price_brl REAL NOT NULL DEFAULT 0,
+  freight_monthly_brl REAL NOT NULL DEFAULT 0,
+  landed_monthly_brl REAL NOT NULL DEFAULT 0,
+  volume_label TEXT NOT NULL DEFAULT '',
+  lead_time_days INTEGER,
+  payment_terms TEXT NOT NULL DEFAULT '',
+  price_type TEXT NOT NULL,
+  price_date TEXT NOT NULL DEFAULT '',
+  sources_json TEXT NOT NULL DEFAULT '[]',
+  matrix_id TEXT NOT NULL DEFAULT '',
+  score_display REAL,
+  score_label TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS quotes_matrix_idx ON quotes(matrix_id);
+CREATE TABLE IF NOT EXISTS ops_flags (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS approval_tokens (
+  id TEXT PRIMARY KEY,
+  token_hash TEXT NOT NULL UNIQUE,
+  request_id TEXT NOT NULL REFERENCES requests(id),
+  assignment_id TEXT NOT NULL REFERENCES assignments(id),
+  assignee_employee_id TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS approval_tokens_request_idx ON approval_tokens(request_id);
 `;
 
 export const ORG_IDS = {
@@ -537,13 +584,15 @@ export class SqliteIntranetStore {
     assigned_employee_id: string;
     assigned_sector_id: string;
     step_number: number;
-  }): void {
+  }): { id: string } {
+    const id = randomUUID();
     this.db
       .prepare(
         `INSERT INTO assignments (id, request_id, assigned_employee_id, assigned_sector_id, step_number, is_active, created_at)
          VALUES (?, ?, ?, ?, ?, 1, ?)`,
       )
-      .run(randomUUID(), input.request_id, input.assigned_employee_id, input.assigned_sector_id, input.step_number, nowIso());
+      .run(id, input.request_id, input.assigned_employee_id, input.assigned_sector_id, input.step_number, nowIso());
+    return { id };
   }
 
   deactivateAssignments(requestId: string): void {
@@ -753,6 +802,333 @@ export class SqliteIntranetStore {
     const result = this.db.prepare('DELETE FROM cadastro_contatos WHERE id = ?').run(id);
     return Number(result.changes) > 0;
   }
+
+  private ensureQuoteLedgerTables(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS suppliers (
+        id TEXT PRIMARY KEY,
+        trade_name TEXT NOT NULL,
+        email TEXT NOT NULL DEFAULT '',
+        city TEXT NOT NULL DEFAULT '',
+        uf TEXT NOT NULL DEFAULT '',
+        source TEXT NOT NULL DEFAULT 'ingest',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS quotes (
+        id TEXT PRIMARY KEY,
+        supplier_id TEXT NOT NULL REFERENCES suppliers(id),
+        account_code TEXT NOT NULL DEFAULT '',
+        category TEXT NOT NULL DEFAULT '',
+        item_description TEXT NOT NULL,
+        unit_price_brl REAL NOT NULL DEFAULT 0,
+        freight_monthly_brl REAL NOT NULL DEFAULT 0,
+        landed_monthly_brl REAL NOT NULL DEFAULT 0,
+        volume_label TEXT NOT NULL DEFAULT '',
+        lead_time_days INTEGER,
+        payment_terms TEXT NOT NULL DEFAULT '',
+        price_type TEXT NOT NULL,
+        price_date TEXT NOT NULL DEFAULT '',
+        sources_json TEXT NOT NULL DEFAULT '[]',
+        matrix_id TEXT NOT NULL DEFAULT '',
+        score_display REAL,
+        score_label TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS quotes_matrix_idx ON quotes(matrix_id);
+      CREATE TABLE IF NOT EXISTS ops_flags (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+  }
+
+  getOpsRealFlags(): { ops_real_started: boolean; ops_real_started_at: string | null } {
+    this.ensureQuoteLedgerTables();
+    const started = this.db.prepare('SELECT value FROM ops_flags WHERE key = ?').get('ops_real_started') as
+      | { value: string }
+      | undefined;
+    const at = this.db.prepare('SELECT value FROM ops_flags WHERE key = ?').get('ops_real_started_at') as
+      | { value: string }
+      | undefined;
+    return {
+      ops_real_started: started?.value === '1' || started?.value === 'true',
+      ops_real_started_at: at?.value || null,
+    };
+  }
+
+  setOpsRealStarted(started: boolean, atIso?: string | null): void {
+    this.ensureQuoteLedgerTables();
+    const now = nowIso();
+    this.db
+      .prepare(
+        `INSERT INTO ops_flags(key, value, updated_at) VALUES(?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      )
+      .run('ops_real_started', started ? '1' : '0', now);
+    if (started) {
+      const stamp = atIso || now;
+      this.db
+        .prepare(
+          `INSERT INTO ops_flags(key, value, updated_at) VALUES(?, ?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+        )
+        .run('ops_real_started_at', stamp, now);
+    } else {
+      this.db.prepare('DELETE FROM ops_flags WHERE key = ?').run('ops_real_started_at');
+    }
+  }
+
+  upsertSupplier(input: {
+    id?: string;
+    trade_name: string;
+    email?: string;
+    city?: string;
+    uf?: string;
+    source?: string;
+  }): { id: string; trade_name: string } {
+    this.ensureQuoteLedgerTables();
+    const now = nowIso();
+    const email = (input.email || '').toLowerCase().trim();
+    const trade = input.trade_name.trim();
+    const existing = email
+      ? (this.db.prepare('SELECT id FROM suppliers WHERE email = ? AND email != ?').get(email, '') as
+          | { id: string }
+          | undefined)
+      : (this.db
+          .prepare('SELECT id FROM suppliers WHERE lower(trade_name) = lower(?) AND uf = ?')
+          .get(trade, (input.uf || '').toUpperCase()) as { id: string } | undefined);
+    const id = input.id || existing?.id || randomUUID();
+    const row = this.db.prepare('SELECT id, created_at FROM suppliers WHERE id = ?').get(id) as
+      | { id: string; created_at: string }
+      | undefined;
+    if (row) {
+      this.db
+        .prepare(
+          `UPDATE suppliers SET trade_name = ?, email = ?, city = ?, uf = ?, source = ?, updated_at = ?
+           WHERE id = ?`,
+        )
+        .run(
+          trade,
+          email,
+          input.city || '',
+          (input.uf || '').toUpperCase(),
+          input.source || 'ingest',
+          now,
+          id,
+        );
+    } else {
+      this.db
+        .prepare(
+          `INSERT INTO suppliers (id, trade_name, email, city, uf, source, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          id,
+          trade,
+          email,
+          input.city || '',
+          (input.uf || '').toUpperCase(),
+          input.source || 'ingest',
+          now,
+          now,
+        );
+    }
+    return { id, trade_name: trade };
+  }
+
+  upsertQuote(input: {
+    id: string;
+    supplier_id: string;
+    account_code?: string;
+    category?: string;
+    item_description: string;
+    unit_price_brl: number;
+    freight_monthly_brl: number;
+    landed_monthly_brl: number;
+    volume_label?: string;
+    lead_time_days?: number | null;
+    payment_terms?: string;
+    price_type: string;
+    price_date?: string;
+    sources_json?: string;
+    matrix_id?: string;
+    score_display?: number | null;
+    score_label?: string | null;
+  }): void {
+    this.ensureQuoteLedgerTables();
+    const now = nowIso();
+    const existing = this.db.prepare('SELECT id FROM quotes WHERE id = ?').get(input.id);
+    if (existing) {
+      this.db
+        .prepare(
+          `UPDATE quotes SET
+            supplier_id = ?, account_code = ?, category = ?, item_description = ?,
+            unit_price_brl = ?, freight_monthly_brl = ?, landed_monthly_brl = ?,
+            volume_label = ?, lead_time_days = ?, payment_terms = ?, price_type = ?,
+            price_date = ?, sources_json = ?, matrix_id = ?, score_display = ?, score_label = ?
+           WHERE id = ?`,
+        )
+        .run(
+          input.supplier_id,
+          input.account_code || '',
+          input.category || '',
+          input.item_description,
+          input.unit_price_brl,
+          input.freight_monthly_brl,
+          input.landed_monthly_brl,
+          input.volume_label || '',
+          input.lead_time_days ?? null,
+          input.payment_terms || '',
+          input.price_type,
+          input.price_date || '',
+          input.sources_json || '[]',
+          input.matrix_id || '',
+          input.score_display ?? null,
+          input.score_label ?? null,
+          input.id,
+        );
+    } else {
+      this.db
+        .prepare(
+          `INSERT INTO quotes (
+            id, supplier_id, account_code, category, item_description,
+            unit_price_brl, freight_monthly_brl, landed_monthly_brl,
+            volume_label, lead_time_days, payment_terms, price_type,
+            price_date, sources_json, matrix_id, score_display, score_label, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          input.id,
+          input.supplier_id,
+          input.account_code || '',
+          input.category || '',
+          input.item_description,
+          input.unit_price_brl,
+          input.freight_monthly_brl,
+          input.landed_monthly_brl,
+          input.volume_label || '',
+          input.lead_time_days ?? null,
+          input.payment_terms || '',
+          input.price_type,
+          input.price_date || '',
+          input.sources_json || '[]',
+          input.matrix_id || '',
+          input.score_display ?? null,
+          input.score_label ?? null,
+          now,
+        );
+    }
+  }
+
+  getQuote(id: string): Record<string, unknown> | null {
+    this.ensureQuoteLedgerTables();
+    const row = this.db.prepare('SELECT * FROM quotes WHERE id = ?').get(id) as
+      | Record<string, unknown>
+      | undefined;
+    return row || null;
+  }
+
+  private ensureApprovalTokensTable(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS approval_tokens (
+        id TEXT PRIMARY KEY,
+        token_hash TEXT NOT NULL UNIQUE,
+        request_id TEXT NOT NULL REFERENCES requests(id),
+        assignment_id TEXT NOT NULL REFERENCES assignments(id),
+        assignee_employee_id TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        used_at TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS approval_tokens_request_idx ON approval_tokens(request_id);
+    `);
+  }
+
+  insertApprovalToken(input: {
+    token_hash: string;
+    request_id: string;
+    assignment_id: string;
+    assignee_employee_id: string;
+    expires_at: string;
+  }): { id: string } {
+    this.ensureApprovalTokensTable();
+    const id = randomUUID();
+    this.db
+      .prepare(
+        `INSERT INTO approval_tokens
+          (id, token_hash, request_id, assignment_id, assignee_employee_id, expires_at, used_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`,
+      )
+      .run(
+        id,
+        input.token_hash,
+        input.request_id,
+        input.assignment_id,
+        input.assignee_employee_id,
+        input.expires_at,
+        nowIso(),
+      );
+    return { id };
+  }
+
+  getApprovalTokenByHash(tokenHash: string): ApprovalTokenRecord | null {
+    this.ensureApprovalTokensTable();
+    const row = this.db
+      .prepare('SELECT * FROM approval_tokens WHERE token_hash = ?')
+      .get(tokenHash) as Record<string, unknown> | undefined;
+    return row ? hydrateApprovalToken(row) : null;
+  }
+
+  listApprovalTokensForRequest(requestId: string): ApprovalTokenRecord[] {
+    this.ensureApprovalTokensTable();
+    const rows = this.db
+      .prepare('SELECT * FROM approval_tokens WHERE request_id = ? ORDER BY created_at')
+      .all(requestId) as Record<string, unknown>[];
+    return rows.map(hydrateApprovalToken);
+  }
+
+  markApprovalTokenUsed(id: string, usedAt?: string): void {
+    this.ensureApprovalTokensTable();
+    this.db
+      .prepare('UPDATE approval_tokens SET used_at = ? WHERE id = ? AND used_at IS NULL')
+      .run(usedAt || nowIso(), id);
+  }
+
+  /** Invalidates unused tokens (RESUBMIT / force expire). */
+  invalidateApprovalTokensForRequest(requestId: string): void {
+    this.ensureApprovalTokensTable();
+    this.db
+      .prepare(
+        `UPDATE approval_tokens SET used_at = COALESCE(used_at, ?) WHERE request_id = ? AND used_at IS NULL`,
+      )
+      .run(nowIso(), requestId);
+  }
+}
+
+export type ApprovalTokenRecord = {
+  id: string;
+  token_hash: string;
+  request_id: string;
+  assignment_id: string;
+  assignee_employee_id: string;
+  expires_at: string;
+  used_at: string | null;
+  created_at: string;
+};
+
+function hydrateApprovalToken(row: Record<string, unknown>): ApprovalTokenRecord {
+  return {
+    id: String(row.id),
+    token_hash: String(row.token_hash),
+    request_id: String(row.request_id),
+    assignment_id: String(row.assignment_id),
+    assignee_employee_id: String(row.assignee_employee_id),
+    expires_at: String(row.expires_at),
+    used_at: row.used_at ? String(row.used_at) : null,
+    created_at: String(row.created_at),
+  };
 }
 
 let singleton: SqliteIntranetStore | null = null;
@@ -767,4 +1143,9 @@ export function getIntranetStore(): SqliteIntranetStore {
 
 export function resetIntranetStoreForTests(): void {
   singleton = null;
+}
+
+/** Vitest: bind routes to an in-memory store. */
+export function setIntranetStoreForTests(store: SqliteIntranetStore): void {
+  singleton = store;
 }

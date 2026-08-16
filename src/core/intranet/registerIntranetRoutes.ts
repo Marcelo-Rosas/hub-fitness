@@ -10,6 +10,7 @@ import {
 import type { DecisionAction } from '../../types/intranet';
 import { accountByCode, cadastroCoaOptions } from '../compras/researchFromCoa';
 import { ORG_IDS } from './intranetStore';
+import { persistIngestQuotes } from './quoteLedger';
 
 function actorEmail(req: Request): string {
   const fromHeader = req.header('x-user-email');
@@ -227,6 +228,53 @@ export function registerIntranetRoutes(app: Express): void {
     const ok = getIntranetStore().deleteCadastroContato(req.params.id);
     if (!ok) return fail(res, 'NOT_FOUND');
     res.json({ success: true });
+  });
+
+  app.get('/api/intranet/ops-flags', (_req, res) => {
+    res.json({ success: true, data: getIntranetStore().getOpsRealFlags() });
+  });
+
+  app.patch('/api/intranet/ops-flags', (req, res) => {
+    if (!requireSocio(req, res)) return;
+    const started = Boolean(req.body?.ops_real_started);
+    const at =
+      typeof req.body?.ops_real_started_at === 'string' ? req.body.ops_real_started_at : undefined;
+    getIntranetStore().setOpsRealStarted(started, at);
+    res.json({ success: true, data: getIntranetStore().getOpsRealFlags() });
+  });
+
+  app.post('/api/intranet/quotes/from-ingest', (req, res) => {
+    const email = actorEmail(req);
+    if (!email) return fail(res, 'SEM_PERMISSAO');
+    const rows = Array.isArray(req.body?.quotes) ? req.body.quotes : [];
+    if (!rows.length) return fail(res, 'PAYLOAD_INVALIDO');
+    try {
+      const ids = persistIngestQuotes(
+        getIntranetStore(),
+        rows.map((q: Record<string, unknown>) => ({
+          supplierName: String(q.supplierName || ''),
+          supplierState: String(q.supplierState || ''),
+          contactEmail: q.contactEmail != null ? String(q.contactEmail) : undefined,
+          accountCode: q.accountCode != null ? String(q.accountCode) : undefined,
+          materialCategory: q.materialCategory != null ? String(q.materialCategory) : undefined,
+          productDescription: String(q.productDescription || ''),
+          unitPrice: Number(q.unitPrice) || 0,
+          shippingCostMonthly: Number(q.shippingCostMonthly) || 0,
+          totalMonthlyWithFreight: Number(q.totalMonthlyWithFreight) || 0,
+          monthlyVolumeUnit:
+            q.monthlyVolumeUnit != null ? Number(q.monthlyVolumeUnit) : undefined,
+          deliveryLeadTimeDays:
+            q.deliveryLeadTimeDays != null ? Number(q.deliveryLeadTimeDays) : undefined,
+          paymentTerms: q.paymentTerms != null ? String(q.paymentTerms) : undefined,
+          isRecommendedWinner: Boolean(q.isRecommendedWinner),
+          notes: q.notes != null ? String(q.notes) : undefined,
+          matrixId: q.matrixId != null ? String(q.matrixId) : undefined,
+        })),
+      );
+      res.json({ success: true, data: { quoteIds: ids } });
+    } catch (err) {
+      return fail(res, err instanceof Error ? err.message : 'FALHA_INGEST');
+    }
   });
 
   app.get('/api/intranet/requests', (req, res) => {

@@ -1,7 +1,8 @@
 import type { SqliteIntranetStore } from './intranetStore';
+import { sendAssigneeNotifyEmail, type AssigneeNotifyInput } from './sendAssigneeNotifyEmail';
 import { sendSupplierRfqEmail, type SupplierEmailResult } from './sendSupplierEmail';
 
-type SendFn = (input: {
+type SendSupplierFn = (input: {
   to: string;
   supplierName: string;
   code: string;
@@ -12,18 +13,43 @@ type SendFn = (input: {
   notes?: string;
 }) => Promise<SupplierEmailResult>;
 
+type SendAssigneeFn = (input: AssigneeNotifyInput) => Promise<SupplierEmailResult>;
+
 export async function dispatchOutboxOnce(
   store: SqliteIntranetStore,
-  send: SendFn = sendSupplierRfqEmail,
+  sendSupplier: SendSupplierFn = sendSupplierRfqEmail,
+  sendAssignee: SendAssigneeFn = sendAssigneeNotifyEmail,
 ): Promise<boolean> {
   const event = store.claimPendingOutbox();
   if (!event) return false;
+
+  if (event.event_type === 'ASSIGNMENT.NOTIFY') {
+    const p = event.payload;
+    const result = await sendAssignee({
+      to: String(p.to || ''),
+      assigneeName: String(p.assigneeName || 'Aprovador'),
+      code: String(p.code || ''),
+      title: String(p.title || ''),
+      item: String(p.item || ''),
+      volume: String(p.volume || ''),
+      approveUrl: String(p.approveUrl || ''),
+      supplierName: p.supplierName ? String(p.supplierName) : undefined,
+    });
+    if (!result.ok) {
+      store.finishOutbox(event.id, false, result.error);
+      return true;
+    }
+    store.finishOutbox(event.id, true);
+    return true;
+  }
+
   if (event.event_type !== 'WORKFLOW.APPROVED') {
     store.finishOutbox(event.id, true);
     return true;
   }
+
   const p = event.payload;
-  const result = await send({
+  const result = await sendSupplier({
     to: String(p.to || ''),
     supplierName: String(p.supplierName || 'Fornecedor'),
     code: String(p.code || ''),

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { parseOfficialCSVs } from '../../data/officialData';
-import { computeTechOpexMonthly } from '../../core/engine';
+import { computeTechOpexMonthly, plAdditionalForMonth } from '../../core/engine';
 import { M2DreVarianceChart } from '../M2DreVarianceChart';
 import { usePlanner } from '../../context/PlannerContext';
 import { DreSection } from '../../types';
@@ -64,11 +64,15 @@ const AccountHint: React.FC<{ text?: string }> = ({ text }) => {
 };
 
 export const M2Dre: React.FC = () => {
-  const { granularDreItems, hubParams, dreMonths } = usePlanner();
+  const { granularDreItems, hubParams, dreMonths, activeScenario } = usePlanner();
   const { totals24M } = parseOfficialCSVs();
   const condoY1 = Math.round(hubParams.rent.areaM2 * hubParams.rent.condominiumPerM2);
   const rentY1 = Math.round(hubParams.rent.areaM2 * hubParams.rent.pricePerM2);
   const techOpexY1 = computeTechOpexMonthly(hubParams);
+  const plAdicM7 = plAdditionalForMonth(hubParams, 7);
+  const depreciacaoY1 =
+    granularDreItems.find((i) => i.id === 'cst-depreciacao')?.monthlyAmountY1 ??
+    Math.round(hubParams.capex.total / 56);
 
   const [activeTab, setActiveTab] = useState<'sintetico' | 'granular' | 'variancia'>('sintetico');
   const [searchTerm, setSearchTerm] = useState('');
@@ -88,8 +92,8 @@ export const M2Dre: React.FC = () => {
   ];
   const m7DespesaBreakdown = [
     { category: 'Pessoal CLT + Pró-labore Regular', value: 49500 },
-    { category: 'Pró-labore Adicional (Fator R)', value: 7000 },
-    { category: 'Depreciação CAPEX', value: 3704 },
+    { category: 'Pró-labore Adicional (Fator R)', value: plAdicM7 },
+    { category: 'Depreciação CAPEX', value: depreciacaoY1 },
     { category: `Aluguel Galpão A (pós-carência)`, value: rentY1 },
     { category: `Condomínio logístico (R$ ${hubParams.rent.condominiumPerM2.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/m² × ${hubParams.rent.areaM2.toLocaleString('pt-BR')} m²)`, value: condoY1 },
     ...(techOpexY1 > 0
@@ -609,7 +613,7 @@ export const M2Dre: React.FC = () => {
 
           <M2DreVarianceChart
             granularDreItems={granularDreItems}
-            activeScenario={{ name: 'Realista v3.5 (Oficial)', capexTotal: 207300 }}
+            activeScenario={activeScenario}
           />
         </div>
       )}

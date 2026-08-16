@@ -1,7 +1,88 @@
 import { canTransition, nextStatus } from './fsm';
+import { missingCommercialForApprove } from './dossierGaps';
+import { mintApprovalToken } from './approvalTokens';
 import { effectivePerms, resolveApprover } from './orgResolver';
+import { upsertQuote, upsertSupplier } from './quoteLedger';
 import type { SqliteIntranetStore } from './intranetStore';
 import type { DecisionAction, IntranetRequestRecord } from '../../types/intranet';
+
+function enqueueAssignmentNotify(
+  store: SqliteIntranetStore,
+  input: {
+    request: IntranetRequestRecord;
+    assignmentId: string;
+    assigneeEmployeeId: string;
+  },
+): void {
+  const assignee = store.getEmployee(input.assigneeEmployeeId);
+  const minted = mintApprovalToken(store, {
+    request_id: input.request.id,
+    assignment_id: input.assignmentId,
+    assignee_employee_id: input.assigneeEmployeeId,
+  });
+  store.insertOutbox({
+    request_id: input.request.id,
+    event_type: 'ASSIGNMENT.NOTIFY',
+    payload: {
+      to: assignee?.email || '',
+      assigneeName: assignee?.full_name || 'Aprovador',
+      code: input.request.code,
+      title: input.request.title,
+      item: String(input.request.payload.item || input.request.title),
+      volume: String(input.request.payload.volume || ''),
+      supplierName: input.request.supplier_name || undefined,
+      approveUrl: minted.approveUrl,
+      // raw only in outbox payload for simulated/debug — never listed in GET inbox
+      _debugApprovePath: `/approve/${minted.rawToken}`,
+    },
+  });
+}
+
+function ensureQuoteIdOnPayload(
+  store: SqliteIntranetStore,
+  input: {
+    title: string;
+    payload: Record<string, unknown>;
+    supplier_name?: string | null;
+    supplier_email?: string | null;
+  },
+): Record<string, unknown> {
+  const payload = { ...input.payload };
+  if (payload.quote_id) return payload;
+
+  const unit = Number(payload.unit_price ?? payload.unit_price_brl ?? 0);
+  const freight = Number(payload.freight_monthly ?? payload.freight_monthly_brl ?? 0);
+  const landed = Number(payload.landed_monthly ?? payload.landed_cost_monthly_brl ?? 0);
+  const supplier = upsertSupplier(store, {
+    trade_name: String(input.supplier_name || 'Fornecedor'),
+    email: String(input.supplier_email || ''),
+    uf: String(payload.supplier_state || payload.state || ''),
+    source: 'rfq',
+  });
+  const q = upsertQuote(store, {
+    supplier_id: supplier.id,
+    account_code: String(payload.account_code || ''),
+    category: String(payload.category || ''),
+    item_description: String(payload.item || payload.product_description || input.title),
+    unit_price_brl: Number.isFinite(unit) ? unit : 0,
+    freight_monthly_brl: Number.isFinite(freight) ? freight : 0,
+    landed_monthly_brl: Number.isFinite(landed) ? landed : 0,
+    volume_label: String(payload.volume || ''),
+    lead_time_days:
+      payload.lead_time_days != null && Number.isFinite(Number(payload.lead_time_days))
+        ? Number(payload.lead_time_days)
+        : undefined,
+    payment_terms: String(payload.payment || ''),
+    price_type: unit > 0 ? 'rfq_fornecedor' : 'manual',
+    score_display:
+      payload.score != null && Number.isFinite(Number(payload.score))
+        ? Number(payload.score)
+        : null,
+    score_label: payload.score_label != null ? String(payload.score_label) : null,
+  });
+  payload.quote_id = q.id;
+  return payload;
+}
 
 export async function submit(
   store: SqliteIntranetStore,
@@ -25,17 +106,18 @@ export async function submit(
 
   try {
     const request = store.withTx(() => {
+      const payload = ensureQuoteIdOnPayload(store, input);
       const rec = store.insertRequest({
         requester_employee_id: requester.id,
         from_sector_id: requester.sector_id,
         to_sector_id: resolved.sectorId,
         title: input.title,
-        payload: input.payload,
+        payload,
         supplier_name: input.supplier_name,
         supplier_email: input.supplier_email,
         status: 'IN_REVIEW',
       });
-      store.insertAssignment({
+      const assignment = store.insertAssignment({
         request_id: rec.id,
         assigned_employee_id: resolved.employeeId,
         assigned_sector_id: resolved.sectorId,
@@ -47,7 +129,13 @@ export async function submit(
         event: 'SUBMIT',
         detail: { approver: resolved.employeeId },
       });
-      return store.getRequest(rec.id)!;
+      const full = store.getRequest(rec.id)!;
+      enqueueAssignmentNotify(store, {
+        request: full,
+        assignmentId: assignment.id,
+        assigneeEmployeeId: resolved.employeeId,
+      });
+      return full;
     });
     return { request };
   } catch (err) {
@@ -63,6 +151,8 @@ export async function executeStepDecision(
     action: DecisionAction;
     reason: string;
     expectedVersion: number;
+    /** Audit meta — e.g. email_token when decided via /approve/:token */
+    channel?: string;
   },
 ): Promise<{ request: IntranetRequestRecord } | { error: string }> {
   const actor = store.getEmployeeByEmail(input.actorEmail);
@@ -79,6 +169,10 @@ export async function executeStepDecision(
 
   if (!canTransition(current.status, input.action)) {
     return { error: `TRANSICAO_INVALIDA: ${current.status} + ${input.action}` };
+  }
+
+  if (input.action === 'APPROVE' && missingCommercialForApprove(current.payload)) {
+    return { error: 'PRECO_INCOMPLETO' };
   }
 
   const isLastStep = current.current_step >= current.total_steps;
@@ -123,7 +217,11 @@ export async function executeStepDecision(
         request_id: current.id,
         actor_employee_id: actor.id,
         event: input.action,
-        detail: { reason: input.reason, next: status },
+        detail: {
+          reason: input.reason,
+          next: status,
+          ...(input.channel ? { channel: input.channel } : {}),
+        },
       });
       return store.getRequest(current.id)!;
     });
@@ -153,8 +251,9 @@ export async function resubmit(
   });
   if ('error' in resolved) return { error: resolved.error };
   const request = store.withTx(() => {
+    store.invalidateApprovalTokensForRequest(current.id);
     store.deactivateAssignments(current.id);
-    store.insertAssignment({
+    const assignment = store.insertAssignment({
       request_id: current.id,
       assigned_employee_id: resolved.employeeId,
       assigned_sector_id: resolved.sectorId,
@@ -166,7 +265,13 @@ export async function resubmit(
       actor_employee_id: actor.id,
       event: 'RESUBMIT',
     });
-    return store.getRequest(current.id)!;
+    const full = store.getRequest(current.id)!;
+    enqueueAssignmentNotify(store, {
+      request: full,
+      assignmentId: assignment.id,
+      assigneeEmployeeId: resolved.employeeId,
+    });
+    return full;
   });
   return { request };
 }

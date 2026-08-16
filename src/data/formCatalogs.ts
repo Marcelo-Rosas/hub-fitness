@@ -146,6 +146,7 @@ export const DECISION_ROLE_CATALOG: CatalogOption[] = [
   { value: 'socio', label: 'Sócio / Board — Diretoria' },
 ];
 
+/** Leads comerciais CRM/CPQ — Konnen dogfood fica fora (só calibração / Comex). */
 export const CRM_LEAD_CATALOG: CatalogOption[] = [
   { value: 'MaxFitness Importadora Ltda', label: 'MaxFitness Importadora Ltda' },
   { value: 'MaxFitness Equipamentos', label: 'MaxFitness Equipamentos' },
@@ -153,8 +154,11 @@ export const CRM_LEAD_CATALOG: CatalogOption[] = [
   { value: 'Rede Academias PowerFit', label: 'Rede Academias PowerFit' },
   { value: 'Importadora Suplementos SC', label: 'Importadora Suplementos SC' },
   { value: 'Impulse Fitness', label: 'Impulse Fitness' },
-  { value: 'Konnen (dogfood)', label: 'Konnen (dogfood — calibração)' },
 ];
+
+export function isDogfoodLead(value: string): boolean {
+  return /konnen|dogfood/i.test(value);
+}
 
 export const MATERIAL_CATEGORY_CATALOG: CatalogOption[] = [
   { value: 'Filme Stretch', label: 'Filme Stretch' },

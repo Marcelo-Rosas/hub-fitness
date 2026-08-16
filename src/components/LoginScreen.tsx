@@ -8,8 +8,10 @@ interface LoginScreenProps {
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
   const { login } = usePlanner();
-  const [email, setEmail] = useState('cfo@hubfitness.com.br');
-  const [password, setPassword] = useState('hub2026');
+  // Prefill só em build de desenvolvimento (produção: campos vazios)
+  const isDev = process.env.NODE_ENV !== 'production';
+  const [email, setEmail] = useState(isDev ? 'cfo@hubfitness.com.br' : '');
+  const [password, setPassword] = useState(isDev ? 'hub2026' : '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,7 +36,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
 
   const handleQuickSelect = (quickEmail: string, quickPass: string) => {
     setEmail(quickEmail);
-    setPassword(quickPass);
+    setPassword(isDev ? quickPass : '');
     setError(null);
   };
 

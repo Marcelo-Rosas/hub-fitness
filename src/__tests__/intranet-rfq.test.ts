@@ -144,7 +144,9 @@ describe('approvalService', () => {
     expect(result.request.status).toBe('IN_REVIEW');
     expect(result.request.code.startsWith('RFQ-')).toBe(true);
     expect(result.request.assigned_employee_email).toBe('cfo@hubfitness.com.br');
-    expect(store.listOutbox()).toHaveLength(0);
+    const outbox = store.listOutbox();
+    expect(outbox).toHaveLength(1);
+    expect(outbox[0]!.event_type).toBe('ASSIGNMENT.NOTIFY');
   });
 
   it('APPROVE com expectedVersion velha falha', async () => {
@@ -175,7 +177,16 @@ describe('approvalService', () => {
     const created = await submit(store, {
       requesterEmail: 'compras@hubfitness.com.br',
       title: 'RFQ',
-      payload: { item: 'Filme Stretch 500mm', volume: '150 un / mês', state: 'SC', payment: '30/60' },
+      payload: {
+        item: 'Filme Stretch 500mm',
+        volume: '150 un / mês',
+        state: 'SC',
+        payment: '30/60',
+        unit_price: 41,
+        freight_monthly: 200,
+        landed_monthly: 6350,
+        lead_time_days: 3,
+      },
       supplier_name: 'Ecopack Madeiras',
       supplier_email: 'contato@ecopackmadeiras.com.br',
     });
@@ -191,11 +202,36 @@ describe('approvalService', () => {
     if ('error' in decided) throw new Error(decided.error);
     expect(decided.request.status).toBe('APPROVED');
     const outbox = store.listOutbox();
-    expect(outbox).toHaveLength(1);
-    expect(outbox[0].event_type).toBe('WORKFLOW.APPROVED');
-    expect(outbox[0].status).toBe('PENDING');
+    expect(outbox.map((e) => e.event_type).sort()).toEqual([
+      'ASSIGNMENT.NOTIFY',
+      'WORKFLOW.APPROVED',
+    ]);
+    expect(outbox.every((e) => e.status === 'PENDING')).toBe(true);
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
+  });
+
+  it('APPROVE sem preço/landed → PRECO_INCOMPLETO', async () => {
+    const store = new SqliteIntranetStore(':memory:');
+    const created = await submit(store, {
+      requesterEmail: 'compras@hubfitness.com.br',
+      title: 'RFQ',
+      payload: { item: 'X', volume: '1 un / mês', unit_price: null, landed_monthly: null },
+      supplier_name: 'Ecopack',
+      supplier_email: 'contato@ecopackmadeiras.com.br',
+    });
+    if ('error' in created) throw new Error(created.error);
+    expect(created.request.payload.quote_id).toBeTruthy();
+
+    const decided = await executeStepDecision(store, {
+      requestId: created.request.id,
+      actorEmail: 'cfo@hubfitness.com.br',
+      action: 'APPROVE',
+      reason: '',
+      expectedVersion: created.request.version,
+    });
+    expect(decided).toEqual({ error: 'PRECO_INCOMPLETO' });
+    expect(store.getRequest(created.request.id)?.status).toBe('IN_REVIEW');
   });
 
   it('dispatcher consome WORKFLOW.APPROVED e não vive no service', async () => {
@@ -203,7 +239,15 @@ describe('approvalService', () => {
     const created = await submit(store, {
       requesterEmail: 'compras@hubfitness.com.br',
       title: 'RFQ',
-      payload: { item: 'Filme Stretch 500mm', volume: '150 un / mês', state: 'SC', payment: '30/60' },
+      payload: {
+        item: 'Filme Stretch 500mm',
+        volume: '150 un / mês',
+        state: 'SC',
+        payment: '30/60',
+        unit_price: 41,
+        freight_monthly: 200,
+        landed_monthly: 6350,
+      },
       supplier_name: 'Ecopack Madeiras',
       supplier_email: 'contato@ecopackmadeiras.com.br',
     });
@@ -218,9 +262,14 @@ describe('approvalService', () => {
     if ('error' in decided) throw new Error(decided.error);
 
     const send = vi.fn(async () => ({ ok: true, mode: 'simulated' as const }));
-    await dispatchOutboxOnce(store, send);
+    const sendAssignee = vi.fn(async () => ({ ok: true, mode: 'simulated' as const }));
+    // NOTIFY first (FIFO), then supplier APPROVED
+    await dispatchOutboxOnce(store, send, sendAssignee);
+    expect(sendAssignee).toHaveBeenCalledTimes(1);
+    expect(send).not.toHaveBeenCalled();
+    await dispatchOutboxOnce(store, send, sendAssignee);
     expect(send).toHaveBeenCalledTimes(1);
-    expect(store.listOutbox()[0].status).toBe('PROCESSED');
+    expect(store.listOutbox().every((e) => e.status === 'PROCESSED')).toBe(true);
     expect(store.getRequest(created.request.id)?.email_status).toBe('simulated');
   });
 });

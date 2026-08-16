@@ -207,7 +207,7 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const { pass: _, ...cleanUser } = mockUser;
       setUser(cleanUser);
       localStorage.setItem('hub_sim_user_v35', JSON.stringify(cleanUser));
-      localStorage.setItem('hub_sim_token_v35', 'mock-jwt-token-v35');
+      localStorage.setItem('hub_sim_token_v35', `mock-jwt:${cleanUser.email}`);
       return { success: true };
     }
 
@@ -231,7 +231,6 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [supplierCompanies, setSupplierCompanies] = useState<SupplierCompany[]>(INITIAL_SUPPLIER_COMPANIES);
   const [supplierQuotes, setSupplierQuotes] = useState<SupplierQuote[]>(INITIAL_SUPPLIER_QUOTES);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(INITIAL_AUDIT_LOGS);
-  const [governanceChecks] = useState<GovernanceCheck[]>(INITIAL_GOVERNANCE_CHECKS);
   const [activeModule, setActiveModule] = useState<string>('M1');
   const [inspectorCell, setInspectorCell] = useState<InspectorCellInfo | null>(null);
   const [spinOffActive, setSpinOffActive] = useState<boolean>(false);
@@ -337,6 +336,50 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const ratio = (folhaAcumulada12m / rbt12) * 100;
     return Number(ratio.toFixed(2));
   }, [dreMonths, prolaboreMonthly, hubParams]);
+
+  const governanceChecks = useMemo((): GovernanceCheck[] => {
+    const fatorOk = fatorR >= hubParams.fiscal.fatorRMin && fatorR <= hubParams.fiscal.fatorRMax;
+    const capexOk = hubParams.capex.total === defaultParams.capex.total;
+    const dasOk = Math.abs(hubParams.pricing.dasPct - defaultParams.pricing.dasPct) < 1e-9;
+    const rbt12 = dreMonths.slice(-12).reduce((a, m) => a + m.receitaServicos, 0);
+    const tetoOk = rbt12 <= 4_800_000;
+
+    return INITIAL_GOVERNANCE_CHECKS.map((c) => {
+      if (c.id === 'gov-1') {
+        return {
+          ...c,
+          status: capexOk ? 'passed' : 'warning',
+          detail: capexOk
+            ? `CAPEX ancorado em R$ ${hubParams.capex.total.toLocaleString('pt-BR')} (params).`
+            : `CAPEX divergente do BP canônico (atual R$ ${hubParams.capex.total.toLocaleString('pt-BR')}).`,
+        };
+      }
+      if (c.id === 'gov-3') {
+        return {
+          ...c,
+          status: dasOk ? 'passed' : 'warning',
+          detail: dasOk
+            ? `DAS ${(hubParams.pricing.dasPct * 100).toFixed(2)}% Anexo III com Fator R na banda params.`
+            : `DAS divergente: ${(hubParams.pricing.dasPct * 100).toFixed(2)}%.`,
+        };
+      }
+      if (c.id === 'gov-5') {
+        return {
+          ...c,
+          status: fatorOk ? 'passed' : 'warning',
+          detail: `Fator R live ${fatorR}% · banda ${hubParams.fiscal.fatorRMin}–${hubParams.fiscal.fatorRMax}%.`,
+        };
+      }
+      if (c.id === 'gov-6') {
+        return {
+          ...c,
+          status: tetoOk ? 'passed' : 'warning',
+          detail: `RBT12 atual R$ ${rbt12.toLocaleString('pt-BR')} · teto R$ 4,80M.`,
+        };
+      }
+      return c;
+    });
+  }, [fatorR, hubParams, dreMonths]);
 
   const addAuditLog = (driver: string, before: string, after: string) => {
     const currentRoleName = USER_ROLES.find((r) => r.id === activeRole)?.name || 'Usuário';
