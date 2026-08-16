@@ -71,7 +71,7 @@ export const M5FatorR: React.FC = () => {
           <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">Gauge Fator R Atual</div>
 
           <div className="relative w-40 h-24 flex items-end justify-center overflow-hidden">
-            <div className="w-40 h-40 rounded-full border-[12px] border-slate-100 border-t-emerald-500 border-r-emerald-500 transform -rotate-45"></div>
+            <div className="w-40 h-40 rounded-full border-12 border-slate-100 border-t-emerald-500 border-r-emerald-500 transform -rotate-45"></div>
             <div className="absolute bottom-0 text-center">
               <span className={`text-3xl font-black font-mono ${isOptimalBand ? 'text-emerald-600' : 'text-amber-600'}`}>
                 {simulatedFatorR}%
@@ -97,7 +97,7 @@ export const M5FatorR: React.FC = () => {
         </div>
 
         {/* Trigger Simulation Card */}
-        <div className="md:col-span-2 bg-gradient-to-br from-slate-900 to-slate-800 text-white p-6 rounded-xl shadow-md border border-slate-700 flex flex-col justify-between space-y-4">
+        <div className="md:col-span-2 bg-linear-to-br from-slate-900 to-slate-800 text-white p-6 rounded-xl shadow-md border border-slate-700 flex flex-col justify-between space-y-4">
           <div>
             <div className="flex items-center justify-between">
               <span className="px-2.5 py-1 bg-amber-500/20 text-amber-300 font-bold text-xs rounded border border-amber-500/40 flex items-center gap-1.5">

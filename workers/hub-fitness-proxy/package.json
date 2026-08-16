@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "deploy": "wrangler deploy",
-    "dev": "wrangler dev"
+    "dev": "wrangler dev",
+    "tail": "wrangler tail",
+    "types": "wrangler types"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260430.1"
+    "@cloudflare/workers-types": "^4.20260430.1",
+    "wrangler": "^4.20.0"
   }
 }

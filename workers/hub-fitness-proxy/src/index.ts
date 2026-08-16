@@ -1,3 +1,8 @@
+/**
+ * Reverse proxy: hub.vectracargo.com.br → Railway ORIGIN_URL
+ * Streaming duplex for POST/PUT/PATCH bodies (approve forms, APIs).
+ */
+
 interface Env {
   ORIGIN_URL: string;
 }
@@ -33,6 +38,13 @@ function buildUpstreamHeaders(request: Request): Headers {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    if (!env.ORIGIN_URL) {
+      return Response.json(
+        { error: "misconfigured", message: "ORIGIN_URL binding missing" },
+        { status: 500 },
+      );
+    }
+
     try {
       const incoming = new URL(request.url);
       const originBase = env.ORIGIN_URL.replace(/\/$/, "");
