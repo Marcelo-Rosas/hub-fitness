@@ -1,0 +1,34 @@
+---
+description: HUB-FITNESS canonical rules — ship discipline (commit/push/wrangler/migrations), ADR-003, alçada, números travados
+alwaysApply: true
+---
+
+# HUB-FITNESS (always)
+
+Full canon: `hub-fitness.md` at repo root. Read it when shipping or touching schema/Worker.
+
+## Ship — do not accumulate
+
+When work lands in a session / PR, **close the loop**:
+
+1. **git** — commit + push (+ merge to `main` if on a branch)
+2. **Railway** — deploy the **new** commit (fresh build; not old-build redeploy alone)
+3. **Wrangler** — if `workers/hub-fitness-proxy/**` changed → `cd workers/hub-fitness-proxy && npm run deploy`
+4. **Supabase** — if `supabase/migrations/**` changed → apply on Operator remote **same delivery** (keep file + remote in sync)
+
+Forbidden: push without Wrangler when Worker changed; migration only in git or only remote; stacking shippable work “for later”.
+
+## Hard locks
+
+- CAPEX R$ 207.300 — no invent
+- Ad Valorem 0.10% on **service NF only**
+- No `tenant_id` on Client DB (ADR-003)
+- RFQ `APPROVE` blocked without unit/landed
+- Score = heuristic label, never “IA confidence”
+
+## Pointers
+
+- Skill: `.agents/skills/hub-fitness/SKILL.md`
+- Worker: `workers/hub-fitness-proxy/wrangler.jsonc`
+- Migrations: `supabase/migrations/`
+- Live: `https://hub.vectracargo.com.br`

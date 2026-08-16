@@ -34,6 +34,7 @@ Leia **somente** o arquivo do domínio da tarefa:
 
 ## Convenções (não perguntar)
 
+- **Canônico vivo:** `hub-fitness.md` (raiz) + `.cursor/rules/hub-fitness.mdc` — ship = commit/push + Wrangler + migrations, sem acumular
 - Módulos: `src/components/modules/M*.tsx` + `App.tsx` switch + `Shell.tsx` grupos
 - Estado planner: `src/context/PlannerContext.tsx`
 - Core: `src/core/` (regimes, capacityLedger, advisor)
@@ -48,3 +49,4 @@ Leia **somente** o arquivo do domínio da tarefa:
 - Não inventar market share sem dwell
 - Não aplicar Ad Valorem sobre CIF de carga no DRE
 - Não introduzir `tenant_id` em Client DB
+- Não acumular: código sem push, Worker sem Wrangler, SQL sem apply remoto
