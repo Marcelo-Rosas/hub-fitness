@@ -22,6 +22,7 @@ type PgPool = {
 };
 
 let sharedPool: PgPool | null = null;
+let lastOperatorError: string | null = null;
 
 async function getPool(connectionString: string): Promise<PgPool> {
   if (sharedPool) return sharedPool;
@@ -72,12 +73,22 @@ export async function listPriceCategoryItems(): Promise<PriceCategoryItemLike[]>
       kind_code: row.kind_code == null ? null : String(row.kind_code),
     }));
   } catch (err) {
-    console.warn(
-      '[operator] listPriceCategoryItems failed:',
-      err instanceof Error ? err.message : err,
-    );
+    lastOperatorError = err instanceof Error ? err.message : String(err);
+    console.warn('[operator] listPriceCategoryItems failed:', lastOperatorError);
     return [];
   }
+}
+
+export function operatorConnectionProbe(): {
+  configured: boolean;
+  usingOperatorKey: boolean;
+  lastError: string | null;
+} {
+  return {
+    configured: Boolean(connectionString()),
+    usingOperatorKey: Boolean(process.env.OPERATOR_DATABASE_URL?.trim()),
+    lastError: lastOperatorError,
+  };
 }
 
 export async function listContracts(): Promise<OperatorContractRow[]> {

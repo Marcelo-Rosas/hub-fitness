@@ -1,5 +1,9 @@
 import type { Express } from 'express';
-import { listContracts, listPriceCategoryItems } from './operatorCatalog';
+import {
+  listContracts,
+  listPriceCategoryItems,
+  operatorConnectionProbe,
+} from './operatorCatalog';
 import { resolvePriceFloors, type FloorFallback } from './resolvePriceFloors';
 
 const DEFAULT_FALLBACK: FloorFallback = {
@@ -26,6 +30,7 @@ export function registerOperatorRoutes(app: Express): void {
       success: true,
       itemsCount: items.length,
       floors,
+      operator: operatorConnectionProbe(),
     });
   });
 
@@ -35,6 +40,7 @@ export function registerOperatorRoutes(app: Express): void {
       success: true,
       contracts,
       empty: contracts.length === 0,
+      operator: operatorConnectionProbe(),
     });
   });
 }
