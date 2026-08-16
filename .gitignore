@@ -12,3 +12,4 @@ supabase/scripts/clients.json
 data/*.sqlite
 data/*.sqlite-wal
 data/*.sqlite-shm
+workers/**/.wrangler/
