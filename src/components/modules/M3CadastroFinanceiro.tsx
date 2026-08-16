@@ -59,6 +59,7 @@ export const M3CadastroFinanceiro: React.FC = () => {
     addCostCenter,
     activeRole,
     pitchMode,
+    financeSource,
   } = usePlanner();
 
   const canEdit = canEditFinance(activeRole) && !pitchMode;
@@ -184,12 +185,17 @@ export const M3CadastroFinanceiro: React.FC = () => {
       <ModuleHeader
         moduleId="M3"
         title="Cadastro financeiro"
-        subtitle="Única tela de edição. Receita, Custo e Despesa com Ano 1 / Ano 2 (R$/mês). M2 permanece somente leitura."
+        subtitle={`Única tela de edição. Receita, Custo e Despesa com Ano 1 / Ano 2 (R$/mês). Fonte: ${financeSource === 'operator' ? 'Operator' : 'seed local'}.`}
         kpis={[
           { label: 'Receita Y1 / mês', value: `R$ ${fmt(kpis.rec)}`, highlightColor: 'emerald', badge: 'RECEITA' },
           { label: 'Custo Y1 / mês', value: `R$ ${fmt(kpis.cst)}`, highlightColor: 'rose', badge: 'COGS' },
           { label: 'Despesa Y1 / mês', value: `R$ ${fmt(kpis.desp)}`, highlightColor: 'amber', badge: 'OPEX' },
-          { label: 'Resultado Y1 / mês', value: `R$ ${fmt(kpis.res)}`, highlightColor: 'indigo', badge: 'Y1' },
+          {
+            label: 'Fonte',
+            value: financeSource === 'operator' ? 'Operator' : 'seed',
+            highlightColor: 'indigo',
+            badge: financeSource === 'operator' ? 'OPERATOR' : 'SEED',
+          },
         ]}
         actions={
           canEdit ? (

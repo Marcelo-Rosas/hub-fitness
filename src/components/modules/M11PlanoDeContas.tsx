@@ -29,7 +29,7 @@ import {
 import { SearchableSelect } from '../ui/SearchableSelect';
 
 export const M11PlanoDeContas: React.FC = () => {
-  const { dreMonths, activeScenario, chartOfAccounts, costCenters, hubParams } = usePlanner();
+  const { dreMonths, activeScenario, chartOfAccounts, costCenters, hubParams, financeSource } = usePlanner();
 
   const [activeTab, setActiveTab] = useState<'plan' | 'rules' | 'fatorRValidator' | 'export'>('plan');
   const [searchTerm, setSearchTerm] = useState('');
@@ -202,6 +202,15 @@ export const M11PlanoDeContas: React.FC = () => {
               </span>
               <span className="bg-blue-500/20 text-blue-200 border border-blue-400/30 text-[10px] font-semibold px-2 py-0.5 rounded">
                 HUB-SIM v3.5
+              </span>
+              <span
+                className={`${
+                  financeSource === 'operator'
+                    ? 'bg-emerald-500/20 text-emerald-200 border-emerald-400/30'
+                    : 'bg-slate-500/20 text-slate-200 border-slate-400/30'
+                } border text-[10px] font-semibold px-2 py-0.5 rounded`}
+              >
+                Fonte: {financeSource === 'operator' ? 'Operator' : 'seed local'}
               </span>
             </div>
             <h1 className="text-xl md:text-2xl font-black tracking-tight text-white flex items-center gap-2">

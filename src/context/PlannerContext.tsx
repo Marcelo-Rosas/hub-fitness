@@ -91,6 +91,7 @@ interface PlannerContextType {
   setPitchMode: (pitch: boolean) => void;
   scenarios: Scenario[];
   scenariosSource: 'seed' | 'operator';
+  financeSource: 'seed' | 'operator';
   activeScenarioId: string;
   setActiveScenarioId: (id: string) => void;
   activeScenario: Scenario;
@@ -228,9 +229,14 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [pitchMode, setPitchMode] = useState<boolean>(false);
   const [scenarios, setScenarios] = useState<Scenario[]>(INITIAL_SCENARIOS);
   const [scenariosSource, setScenariosSource] = useState<'seed' | 'operator'>('seed');
+  const [financeSource, setFinanceSource] = useState<'seed' | 'operator'>('seed');
+  const financeSourceRef = React.useRef<'seed' | 'operator'>('seed');
+  const financePersistTimers = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const [activeScenarioId, setActiveScenarioId] = useState<string>('sc-baseline');
   const [vasDrivers, setVasDrivers] = useState<VasDriver[]>(INITIAL_VAS_DRIVERS);
   const [granularDreItems, setGranularDreItems] = useState<DreGranularItem[]>(INITIAL_GRANULAR_DRE_ITEMS);
+  const [chartOfAccounts, setChartOfAccounts] = useState<AccountItem[]>(PLANO_DE_CONTAS_ITEMS);
+  const [costCenters, setCostCenters] = useState<CostCenter[]>(COST_CENTERS);
   const [mappedVsImplementedCosts, setMappedVsImplementedCosts] = useState<MappedVsImplementedCostItem[]>(INITIAL_MAPPED_VS_IMPLEMENTED_COSTS);
   const [supplierCompanies, setSupplierCompanies] = useState<SupplierCompany[]>(INITIAL_SUPPLIER_COMPANIES);
   const [supplierQuotes, setSupplierQuotes] = useState<SupplierQuote[]>(INITIAL_SUPPLIER_QUOTES);
@@ -243,6 +249,17 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [hubParams, setHubParamsState] = useState<HubParams>(defaultParams);
   const setHubParams = (updater: HubParams | ((prev: HubParams) => HubParams)) => {
     setHubParamsState((prev) => (typeof updater === 'function' ? updater(prev) : updater));
+  };
+
+  useEffect(() => {
+    financeSourceRef.current = financeSource;
+  }, [financeSource]);
+
+  const scheduleFinancePersist = (key: string, run: () => void) => {
+    if (financeSourceRef.current !== 'operator') return;
+    const prev = financePersistTimers.current[key];
+    if (prev) clearTimeout(prev);
+    financePersistTimers.current[key] = setTimeout(run, 300);
   };
 
   useEffect(() => {
@@ -263,6 +280,37 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
           })),
         );
         setScenariosSource('operator');
+      } catch {
+        /* keep seed */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/operator/finance/bundle');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (
+          cancelled ||
+          !data?.success ||
+          !Array.isArray(data.accounts) ||
+          !Array.isArray(data.costCenters) ||
+          !Array.isArray(data.ledger) ||
+          data.accounts.length === 0 ||
+          data.ledger.length === 0
+        ) {
+          return;
+        }
+        setChartOfAccounts(data.accounts);
+        setCostCenters(data.costCenters);
+        setGranularDreItems(data.ledger);
+        setFinanceSource('operator');
       } catch {
         /* keep seed */
       }
@@ -302,9 +350,6 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     [cliaDreItems, activeDrivers],
   );
   const cliaSpineMonthly = (monthNum: number) => computeCliaSpineMonthly(monthNum, hubParams);
-
-  const [chartOfAccounts, setChartOfAccounts] = useState<AccountItem[]>(PLANO_DE_CONTAS_ITEMS);
-  const [costCenters, setCostCenters] = useState<CostCenter[]>(COST_CENTERS);
 
   const [activeMix, setActiveMix] = useState<ClientMixWeights>({
     p1: 20,
@@ -602,6 +647,13 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
     setGranularDreItems((prev) => [...prev, newItem]);
     addAuditLog(`DRE Granular (${newItem.section.toUpperCase()})`, '-', `Criado item '${newItem.name}' (R$ ${newItem.monthlyAmountY1.toLocaleString('pt-BR')}/mês)`);
+    scheduleFinancePersist(`ledger:${newItem.id}`, () => {
+      void fetch('/api/operator/finance/ledger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newItem),
+      }).catch(() => {});
+    });
   };
 
   const updateDreGranularItem = (id: string, updated: Partial<DreGranularItem>) => {
@@ -628,12 +680,26 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (!injected) return prev;
         const newItem = { ...injected, ...updated, engineLocked: false, manualOverride: true };
         addAuditLog(`DRE Granular (${newItem.name})`, 'Alteração', `Atualizado R$ ${newItem.monthlyAmountY1.toLocaleString('pt-BR')}/mês Y1`);
+        scheduleFinancePersist(`ledger:${newItem.id}`, () => {
+          void fetch(`/api/operator/finance/ledger/${encodeURIComponent(newItem.id)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newItem),
+          }).catch(() => {});
+        });
         return [...prev, newItem];
       }
       return prev.map((item) => {
         if (item.id === id) {
           const newItem = { ...item, ...updated, engineLocked: false, manualOverride: true };
           addAuditLog(`DRE Granular (${item.name})`, 'Alteração', `Atualizado R$ ${newItem.monthlyAmountY1.toLocaleString('pt-BR')}/mês Y1`);
+          scheduleFinancePersist(`ledger:${newItem.id}`, () => {
+            void fetch(`/api/operator/finance/ledger/${encodeURIComponent(newItem.id)}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(newItem),
+            }).catch(() => {});
+          });
           return newItem;
         }
         return item;
@@ -654,6 +720,9 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
     setGranularDreItems((prev) => prev.filter((i) => i.id !== id));
     addAuditLog('DRE Granular', target.name, 'Excluído');
+    scheduleFinancePersist(`ledger-del:${id}`, () => {
+      void fetch(`/api/operator/finance/ledger/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {});
+    });
   };
 
   const toggleDreGranularItem = (id: string) => {
@@ -666,7 +735,15 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (item.id === id) {
           const newStatus = !item.active;
           addAuditLog(`DRE Granular (${item.name})`, item.active ? 'Ativo' : 'Inativo', newStatus ? 'Ativo' : 'Inativo');
-          return { ...item, active: newStatus };
+          const next = { ...item, active: newStatus };
+          scheduleFinancePersist(`ledger:${item.id}`, () => {
+            void fetch(`/api/operator/finance/ledger/${encodeURIComponent(item.id)}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(next),
+            }).catch(() => {});
+          });
+          return next;
         }
         return item;
       })
@@ -695,6 +772,13 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
     setChartOfAccounts((prev) => [...prev, account]);
     addAuditLog('Plano de contas', '-', `Criada ${account.code} ${account.name}`);
+    scheduleFinancePersist(`account:${account.code}`, () => {
+      void fetch('/api/operator/finance/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(account),
+      }).catch(() => {});
+    });
     return true;
   };
 
@@ -703,7 +787,20 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setBlockedValueAttempt('Edição do plano de contas bloqueada para o perfil atual.');
       return false;
     }
-    setChartOfAccounts((prev) => prev.map((a) => (a.code === code ? { ...a, ...patch, code: a.code } : a)));
+    setChartOfAccounts((prev) => {
+      const next = prev.map((a) => (a.code === code ? { ...a, ...patch, code: a.code } : a));
+      const saved = next.find((a) => a.code === code);
+      if (saved) {
+        scheduleFinancePersist(`account:${code}`, () => {
+          void fetch(`/api/operator/finance/accounts/${encodeURIComponent(code)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(saved),
+          }).catch(() => {});
+        });
+      }
+      return next;
+    });
     addAuditLog('Plano de contas', code, 'Atualizada');
     return true;
   };
@@ -719,6 +816,15 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
     setChartOfAccounts((prev) => prev.filter((a) => a.code !== code));
     addAuditLog('Plano de contas', code, 'Excluída');
+    scheduleFinancePersist(`account-del:${code}`, () => {
+      void fetch(`/api/operator/finance/accounts/${encodeURIComponent(code)}`, { method: 'DELETE' })
+        .then(async (res) => {
+          if (res.status === 409) {
+            setBlockedValueAttempt(`Conta ${code} está em uso no Operator (409).`);
+          }
+        })
+        .catch(() => {});
+    });
     return true;
   };
 
@@ -733,6 +839,13 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
     setCostCenters((prev) => [...prev, cc]);
     addAuditLog('Centro de custo', '-', `Criado ${cc.id} ${cc.name}`);
+    scheduleFinancePersist(`cc:${cc.id}`, () => {
+      void fetch('/api/operator/finance/cost-centers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cc),
+      }).catch(() => {});
+    });
     return true;
   };
 
@@ -944,6 +1057,7 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setPitchMode,
     scenarios,
     scenariosSource,
+    financeSource,
     activeScenarioId,
     setActiveScenarioId,
     activeScenario,
@@ -1003,6 +1117,7 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     pitchMode,
     scenarios,
     scenariosSource,
+    financeSource,
     activeScenarioId,
     activeScenario,
     updateScenarioDrivers,

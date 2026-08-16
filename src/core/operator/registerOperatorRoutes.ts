@@ -12,7 +12,20 @@ import {
   scenarioCatalogProbe,
   upsertScenarioDef,
 } from './scenarioCatalog';
+import {
+  deleteAccount,
+  deleteCostCenter,
+  deleteLedgerLine,
+  financeCatalogProbe,
+  listFinanceBundle,
+  upsertAccount,
+  upsertCostCenter,
+  upsertLedgerLine,
+} from './financeCatalog';
+import { costBehaviorValidationError } from './financeMappers';
 import { scenarioDriversValidationError } from '../scenarioDrivers';
+import type { AccountItem, CostCenter } from '../../data/planoDeContasData';
+import type { DreGranularItem } from '../../types';
 
 const DEFAULT_FALLBACK: FloorFallback = {
   storage: 22.5,
@@ -110,6 +123,121 @@ export function registerOperatorRoutes(app: Express): void {
       const code = result.error.includes('baseline') ? 403 : 400;
       return res.status(code).json({ success: false, error: result.error });
     }
+    return res.json({ success: true });
+  });
+
+  app.get('/api/operator/finance/bundle', async (_req, res) => {
+    const bundle = await listFinanceBundle();
+    if (!bundle) {
+      return res.status(503).json({
+        success: false,
+        error: 'finance bundle indisponível',
+        operator: { ...operatorConnectionProbe(), finance: financeCatalogProbe() },
+      });
+    }
+    return res.json({
+      success: true,
+      accounts: bundle.accounts,
+      costCenters: bundle.costCenters,
+      ledger: bundle.ledger,
+      operator: { ...operatorConnectionProbe(), finance: financeCatalogProbe() },
+    });
+  });
+
+  app.post('/api/operator/finance/accounts', async (req, res) => {
+    const body = req.body as AccountItem;
+    if (!body?.code || !body?.name) {
+      return res.status(400).json({ success: false, error: 'code e name obrigatórios' });
+    }
+    if (body.type === 'Analítica' || body.type === 'Sintética') {
+      /* ok */
+    } else {
+      return res.status(400).json({ success: false, error: 'type deve ser Analítica ou Sintética' });
+    }
+    const result = await upsertAccount(body);
+    if (result.ok === false) return res.status(500).json({ success: false, error: result.error });
+    return res.json({ success: true, code: body.code });
+  });
+
+  app.put('/api/operator/finance/accounts/:code', async (req, res) => {
+    const code = req.params.code;
+    const body = { ...(req.body as AccountItem), code };
+    if (body.type && body.type !== 'Analítica' && body.type !== 'Sintética') {
+      return res.status(400).json({ success: false, error: 'type deve ser Analítica ou Sintética' });
+    }
+    const result = await upsertAccount(body);
+    if (result.ok === false) return res.status(500).json({ success: false, error: result.error });
+    return res.json({ success: true, code });
+  });
+
+  app.delete('/api/operator/finance/accounts/:code', async (req, res) => {
+    const result = await deleteAccount(req.params.code);
+    if (result.ok === false) {
+      const status = result.status ?? 400;
+      return res.status(status).json({
+        success: false,
+        error: result.error,
+        code: result.code,
+      });
+    }
+    return res.json({ success: true });
+  });
+
+  app.post('/api/operator/finance/cost-centers', async (req, res) => {
+    const body = req.body as CostCenter;
+    if (!body?.id || !body?.name) {
+      return res.status(400).json({ success: false, error: 'id e name obrigatórios' });
+    }
+    const result = await upsertCostCenter(body);
+    if (result.ok === false) return res.status(500).json({ success: false, error: result.error });
+    return res.json({ success: true, id: body.id });
+  });
+
+  app.put('/api/operator/finance/cost-centers/:id', async (req, res) => {
+    const id = req.params.id;
+    const body = { ...(req.body as CostCenter), id };
+    const result = await upsertCostCenter(body);
+    if (result.ok === false) return res.status(500).json({ success: false, error: result.error });
+    return res.json({ success: true, id });
+  });
+
+  app.delete('/api/operator/finance/cost-centers/:id', async (req, res) => {
+    const result = await deleteCostCenter(req.params.id);
+    if (result.ok === false) return res.status(500).json({ success: false, error: result.error });
+    return res.json({ success: true });
+  });
+
+  app.post('/api/operator/finance/ledger', async (req, res) => {
+    const body = req.body as DreGranularItem;
+    if (!body?.id || !body?.name) {
+      return res.status(400).json({ success: false, error: 'id e name obrigatórios' });
+    }
+    const cbErr = costBehaviorValidationError(body.costBehavior ?? null);
+    if (cbErr) return res.status(400).json({ success: false, error: cbErr });
+    const result = await upsertLedgerLine(body);
+    if (result.ok === false) {
+      const code = result.error.includes('inválid') ? 400 : 500;
+      return res.status(code).json({ success: false, error: result.error });
+    }
+    return res.json({ success: true, id: body.id });
+  });
+
+  app.put('/api/operator/finance/ledger/:id', async (req, res) => {
+    const id = req.params.id;
+    const body = { ...(req.body as DreGranularItem), id };
+    const cbErr = costBehaviorValidationError(body.costBehavior ?? null);
+    if (cbErr) return res.status(400).json({ success: false, error: cbErr });
+    const result = await upsertLedgerLine(body);
+    if (result.ok === false) {
+      const code = result.error.includes('inválid') ? 400 : 500;
+      return res.status(code).json({ success: false, error: result.error });
+    }
+    return res.json({ success: true, id });
+  });
+
+  app.delete('/api/operator/finance/ledger/:id', async (req, res) => {
+    const result = await deleteLedgerLine(req.params.id);
+    if (result.ok === false) return res.status(500).json({ success: false, error: result.error });
     return res.json({ success: true });
   });
 }
