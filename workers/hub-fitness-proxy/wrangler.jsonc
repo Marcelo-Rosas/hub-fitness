@@ -1,0 +1,20 @@
+{
+  "name": "hub-fitness-proxy",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-03-07",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "vars": {
+    "ORIGIN_URL": "https://hub-fitness-production.up.railway.app"
+  },
+  "routes": [
+    {
+      "pattern": "hub.vectracargo.com.br",
+      "custom_domain": true
+    }
+  ]
+}
