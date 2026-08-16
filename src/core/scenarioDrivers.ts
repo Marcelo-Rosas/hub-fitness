@@ -1,5 +1,32 @@
-import type { DreGranularItem, ScenarioDrivers } from '../types';
-import { CLIA_LEDGER_ITEM_ID } from './engine';
+import type { DreGranularItem, DreMonth, ScenarioDrivers } from '../types';
+import { OFFICIAL_TOTALS_24M } from './bpV35Reference';
+import type { HubParams } from './params';
+import {
+  applyCliaToDreItems,
+  applyOccupancyToDreItems,
+  applyTechOpexToDreItems,
+  CLIA_LEDGER_ITEM_ID,
+  projectDreFromLedger,
+} from './engine';
+
+export interface ScenarioKpis {
+  llM7Plus: number;
+  m24Cash: number;
+  fatorRHint: number;
+  capexTotal: number;
+}
+
+export interface TornadoBar {
+  factor: string;
+  downside: number;
+  upside: number;
+}
+
+export interface ComputeTornadoArgs {
+  items: DreGranularItem[];
+  baseDrivers: ScenarioDrivers;
+  params: HubParams;
+}
 
 export const DEFAULT_SCENARIO_DRIVERS: ScenarioDrivers = {
   occupancyRate: 0.75,
@@ -81,4 +108,89 @@ export function applyScenarioDrivers(
     }
     return item;
   });
+}
+
+export function deriveScenarioKpis(dreMonths: DreMonth[], params: HubParams): ScenarioKpis {
+  const slice = dreMonths.filter((m) => m.month >= 7 && m.month <= 12);
+  const llM7Plus =
+    slice.length === 0
+      ? 0
+      : Math.round(slice.reduce((a, m) => a + m.lucroLiquido, 0) / slice.length);
+  const sumLl = dreMonths.reduce((a, m) => a + m.lucroLiquido, 0);
+  const m24Cash = Math.round(
+    OFFICIAL_TOTALS_24M.saldoCaixaM24CarenciaAluguel +
+      (sumLl - OFFICIAL_TOTALS_24M.lucroLiquidoTotal),
+  );
+  return {
+    llM7Plus,
+    m24Cash,
+    fatorRHint: 0,
+    capexTotal: params.capex.total,
+  };
+}
+
+/** Full ledger→DRE path for one driver set (pure; used by Tornado / A/B). */
+export function projectScenario(
+  items: DreGranularItem[],
+  drivers: ScenarioDrivers,
+  params: HubParams,
+): DreMonth[] {
+  const d = clampScenarioDrivers(drivers);
+  const withOcc = applyOccupancyToDreItems(items, params);
+  const techParams: HubParams = {
+    ...params,
+    techOpex: { ...params.techOpex, active: d.techOpexActive },
+  };
+  const withTech = applyTechOpexToDreItems(withOcc, techParams);
+  const withClia = applyCliaToDreItems(withTech, params);
+  const driven = applyScenarioDrivers(withClia, d);
+  return projectDreFromLedger(driven, d.occupancyRate, params);
+}
+
+function llM7From(items: DreGranularItem[], drivers: ScenarioDrivers, params: HubParams): number {
+  return deriveScenarioKpis(projectScenario(items, drivers, params), params).llM7Plus;
+}
+
+export function computeTornadoBars(args: ComputeTornadoArgs): TornadoBar[] {
+  const { items, params } = args;
+  const base = clampScenarioDrivers(args.baseDrivers);
+  const baseLl = llM7From(items, base, params);
+
+  const axis = (
+    factor: string,
+    down: ScenarioDrivers,
+    up: ScenarioDrivers,
+  ): TornadoBar => ({
+    factor,
+    downside: llM7From(items, down, params) - baseLl,
+    upside: llM7From(items, up, params) - baseLl,
+  });
+
+  return [
+    axis(
+      'Ocupação (±20%)',
+      { ...base, occupancyRate: base.occupancyRate - 0.2 },
+      { ...base, occupancyRate: base.occupancyRate + 0.2 },
+    ),
+    axis(
+      'Aluguel (±10%)',
+      { ...base, rentFactor: base.rentFactor * 1.1 },
+      { ...base, rentFactor: base.rentFactor * 0.9 },
+    ),
+    axis(
+      'COGS variável (±10%)',
+      { ...base, cogsVariableFactor: base.cogsVariableFactor * 1.1 },
+      { ...base, cogsVariableFactor: base.cogsVariableFactor * 0.9 },
+    ),
+    axis(
+      'HC / OPEX (±10%)',
+      { ...base, hcOpexFactor: base.hcOpexFactor * 1.1 },
+      { ...base, hcOpexFactor: base.hcOpexFactor * 0.9 },
+    ),
+    axis(
+      'Tech OPEX (on/off)',
+      { ...base, techOpexActive: true },
+      { ...base, techOpexActive: false },
+    ),
+  ];
 }

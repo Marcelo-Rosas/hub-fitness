@@ -1,6 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { applyScenarioDrivers, clampScenarioDrivers } from './scenarioDrivers';
+import {
+  applyScenarioDrivers,
+  clampScenarioDrivers,
+  computeTornadoBars,
+  DEFAULT_SCENARIO_DRIVERS,
+  deriveScenarioKpis,
+} from './scenarioDrivers';
 import type { DreGranularItem, ScenarioDrivers } from '../types';
+import { projectDreFromLedger } from './engine';
+import { defaultParams } from './params';
+import { INITIAL_GRANULAR_DRE_ITEMS } from '../data/initialData';
 
 const baseDrivers: ScenarioDrivers = {
   occupancyRate: 0.75,
@@ -105,5 +114,31 @@ describe('clampScenarioDrivers', () => {
     expect(c.occupancyRate).toBe(1);
     expect(c.rentFactor).toBe(0.5);
     expect(c.cogsVariableFactor).toBe(1.5);
+  });
+});
+
+describe('deriveScenarioKpis', () => {
+  it('llM7Plus is mean of M7–M12', () => {
+    const months = projectDreFromLedger(INITIAL_GRANULAR_DRE_ITEMS, 0.75, defaultParams);
+    const k = deriveScenarioKpis(months, defaultParams);
+    const slice = months.filter((m) => m.month >= 7 && m.month <= 12);
+    const mean = Math.round(slice.reduce((a, m) => a + m.lucroLiquido, 0) / slice.length);
+    expect(k.llM7Plus).toBe(mean);
+    expect(k.capexTotal).toBe(defaultParams.capex.total);
+  });
+});
+
+describe('computeTornadoBars', () => {
+  it('rent ±10% moves LL without hardcoded magnitudes', () => {
+    const bars = computeTornadoBars({
+      items: INITIAL_GRANULAR_DRE_ITEMS,
+      baseDrivers: { ...DEFAULT_SCENARIO_DRIVERS, occupancyRate: 0.75 },
+      params: defaultParams,
+    });
+    const rent = bars.find((b) => b.factor.includes('Aluguel') || b.factor.includes('rent'));
+    expect(rent).toBeTruthy();
+    expect(rent!.downside).not.toBe(0);
+    expect(rent!.upside).not.toBe(0);
+    expect(Math.abs(rent!.downside)).not.toBe(35000);
   });
 });
