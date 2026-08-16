@@ -1,10 +1,9 @@
 import React, { createContext, useContext, useState, useMemo, useEffect } from 'react';
-import { UserRole, AuthUser, Scenario, VasDriver, AuditLog, GovernanceCheck, DreMonth, CellData, DreGranularItem, MappedVsImplementedCostItem, SupplierCompany, SupplierQuote, ClientMixWeights } from '../types';
+import { UserRole, AuthUser, Scenario, ScenarioDrivers, VasDriver, AuditLog, GovernanceCheck, DreMonth, CellData, DreGranularItem, MappedVsImplementedCostItem, SupplierCompany, SupplierQuote, ClientMixWeights } from '../types';
 import { USER_ROLES, INITIAL_SCENARIOS, INITIAL_VAS_DRIVERS, INITIAL_AUDIT_LOGS, INITIAL_GOVERNANCE_CHECKS, INITIAL_GRANULAR_DRE_ITEMS, INITIAL_MAPPED_VS_IMPLEMENTED_COSTS, INITIAL_SUPPLIER_COMPANIES, INITIAL_SUPPLIER_QUOTES } from '../data/initialData';
 import { HubParams, defaultParams } from '../core/params';
 import {
   applyOccupancyToDreItems,
-  applyScenarioPreset,
   applyTechOpexToDreItems,
   applyCliaToDreItems,
   projectDreFromLedger,
@@ -13,8 +12,8 @@ import {
   isAccountInUse,
   computeCliaSpineMonthly,
   plAdditionalForMonth,
-  SC_V36_WMS_PROPRIO,
 } from '../core/engine';
+import { applyScenarioDrivers, deriveScenarioKpis } from '../core/scenarioDrivers';
 import { OFFICIAL_TOTALS_24M } from '../core/bpV35Reference';
 import { PLANO_DE_CONTAS_ITEMS, COST_CENTERS, AccountItem, CostCenter } from '../data/planoDeContasData';
 import type { IngestParseResult } from '../ingest';
@@ -91,13 +90,17 @@ interface PlannerContextType {
   pitchMode: boolean;
   setPitchMode: (pitch: boolean) => void;
   scenarios: Scenario[];
+  scenariosSource: 'seed' | 'operator';
   activeScenarioId: string;
   setActiveScenarioId: (id: string) => void;
   activeScenario: Scenario;
+  updateScenarioDrivers: (id: string, partial: Partial<ScenarioDrivers>) => void;
   vasDrivers: VasDriver[];
   updateVasDriver: (id: string, field: 'price' | 'quantityM7_12' | 'quantityM1_6' | 'quantityM13_24', value: number) => void;
   dreMonths: DreMonth[];
   updateDreValue: (monthIndex: number, field: keyof DreMonth, value: number) => void;
+  /** Ledger sem ScenarioDrivers (Tornado / A/B). */
+  ledgerBaseItems: DreGranularItem[];
   granularDreItems: DreGranularItem[];
   addDreGranularItem: (item: Omit<DreGranularItem, 'id'>) => void;
   updateDreGranularItem: (id: string, updated: Partial<DreGranularItem>) => void;
@@ -224,6 +227,7 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const [pitchMode, setPitchMode] = useState<boolean>(false);
   const [scenarios, setScenarios] = useState<Scenario[]>(INITIAL_SCENARIOS);
+  const [scenariosSource, setScenariosSource] = useState<'seed' | 'operator'>('seed');
   const [activeScenarioId, setActiveScenarioId] = useState<string>('sc-baseline');
   const [vasDrivers, setVasDrivers] = useState<VasDriver[]>(INITIAL_VAS_DRIVERS);
   const [granularDreItems, setGranularDreItems] = useState<DreGranularItem[]>(INITIAL_GRANULAR_DRE_ITEMS);
@@ -240,26 +244,67 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const setHubParams = (updater: HubParams | ((prev: HubParams) => HubParams)) => {
     setHubParamsState((prev) => (typeof updater === 'function' ? updater(prev) : updater));
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/operator/scenarios');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled || !data?.success || !Array.isArray(data.scenarios) || data.scenarios.length === 0) {
+          return;
+        }
+        setScenarios(
+          data.scenarios.map((s: Scenario) => ({
+            ...s,
+            drivers: s.drivers,
+            occupancyRate: s.drivers?.occupancyRate ?? s.occupancyRate,
+          })),
+        );
+        setScenariosSource('operator');
+      } catch {
+        /* keep seed */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const rawActiveScenario = useMemo(() => {
+    return scenarios.find((s) => s.id === activeScenarioId) || scenarios[0];
+  }, [scenarios, activeScenarioId]);
+
+  const activeDrivers = rawActiveScenario.drivers;
+
   const occupancyDreItems = useMemo(
     () => applyOccupancyToDreItems(granularDreItems, hubParams),
     [granularDreItems, hubParams],
   );
-  const techDreItems = useMemo(
-    () => applyTechOpexToDreItems(occupancyDreItems, hubParams),
-    [occupancyDreItems, hubParams],
+  const techParams = useMemo(
+    () => ({
+      ...hubParams,
+      techOpex: { ...hubParams.techOpex, active: activeDrivers.techOpexActive },
+    }),
+    [hubParams, activeDrivers.techOpexActive],
   );
-  const derivedGranularDreItems = useMemo(
+  const techDreItems = useMemo(
+    () => applyTechOpexToDreItems(occupancyDreItems, techParams),
+    [occupancyDreItems, techParams],
+  );
+  const cliaDreItems = useMemo(
     () => applyCliaToDreItems(techDreItems, hubParams),
     [techDreItems, hubParams],
+  );
+  const derivedGranularDreItems = useMemo(
+    () => applyScenarioDrivers(cliaDreItems, activeDrivers),
+    [cliaDreItems, activeDrivers],
   );
   const cliaSpineMonthly = (monthNum: number) => computeCliaSpineMonthly(monthNum, hubParams);
 
   const [chartOfAccounts, setChartOfAccounts] = useState<AccountItem[]>(PLANO_DE_CONTAS_ITEMS);
   const [costCenters, setCostCenters] = useState<CostCenter[]>(COST_CENTERS);
-
-  useEffect(() => {
-    setHubParamsState((prev) => applyScenarioPreset(prev, activeScenarioId));
-  }, [activeScenarioId]);
 
   const [activeMix, setActiveMix] = useState<ClientMixWeights>({
     p1: 20,
@@ -305,14 +350,10 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     );
   };
 
-  const activeScenario = useMemo(() => {
-    return scenarios.find((s) => s.id === activeScenarioId) || scenarios[0];
-  }, [scenarios, activeScenarioId]);
-
-  // Recalculate 24-month DRE reactively from granular DRE items & scenario occupancy
+  // Recalculate 24-month DRE reactively from granular DRE items & scenario drivers
   const dreMonths = useMemo<DreMonth[]>(() => {
-    return projectDreFromLedger(derivedGranularDreItems, activeScenario.occupancyRate, hubParams);
-  }, [derivedGranularDreItems, activeScenario, hubParams]);
+    return projectDreFromLedger(derivedGranularDreItems, activeDrivers.occupancyRate, hubParams);
+  }, [derivedGranularDreItems, activeDrivers.occupancyRate, hubParams]);
 
   // Fator R: RBT12 + PL adicional de hubParams.fiscal (sem literais 7k/11k/15k)
   const fatorR = useMemo(() => {
@@ -336,6 +377,53 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const ratio = (folhaAcumulada12m / rbt12) * 100;
     return Number(ratio.toFixed(2));
   }, [dreMonths, prolaboreMonthly, hubParams]);
+
+  const activeScenario = useMemo(() => {
+    const kpis = deriveScenarioKpis(dreMonths, hubParams);
+    return {
+      ...rawActiveScenario,
+      occupancyRate: activeDrivers.occupancyRate,
+      llM7Plus: kpis.llM7Plus,
+      m24Cash: kpis.m24Cash,
+      capexTotal: kpis.capexTotal,
+      fatorR,
+    };
+  }, [rawActiveScenario, activeDrivers.occupancyRate, dreMonths, hubParams, fatorR]);
+
+  const updateScenarioDrivers = (id: string, partial: Partial<ScenarioDrivers>) => {
+    let nextDrivers: ScenarioDrivers | null = null;
+    let nextMeta: Scenario | null = null;
+    setScenarios((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        nextDrivers = { ...s.drivers, ...partial };
+        nextMeta = {
+          ...s,
+          drivers: nextDrivers,
+          occupancyRate: nextDrivers.occupancyRate,
+        };
+        return nextMeta;
+      }),
+    );
+    if (nextDrivers && nextMeta) {
+      const payload = nextMeta;
+      const drivers = nextDrivers;
+      void fetch(`/api/operator/scenarios/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: payload.name,
+          isBaseline: payload.isBaseline,
+          status: payload.status,
+          drivers,
+          notes: payload.notes ?? null,
+          mitigationStrategy: payload.mitigationStrategy ?? null,
+        }),
+      }).catch(() => {
+        /* offline: local state already updated */
+      });
+    }
+  };
 
   const governanceChecks = useMemo((): GovernanceCheck[] => {
     const fatorOk = fatorR >= hubParams.fiscal.fatorRMin && fatorR <= hubParams.fiscal.fatorRMax;
@@ -864,13 +952,16 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     pitchMode,
     setPitchMode,
     scenarios,
+    scenariosSource,
     activeScenarioId,
     setActiveScenarioId,
     activeScenario,
+    updateScenarioDrivers,
     vasDrivers,
     updateVasDriver,
     dreMonths,
     updateDreValue,
+    ledgerBaseItems: granularDreItems,
     granularDreItems: derivedGranularDreItems,
     addDreGranularItem,
     updateDreGranularItem,
@@ -920,8 +1011,10 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     activeRole,
     pitchMode,
     scenarios,
+    scenariosSource,
     activeScenarioId,
     activeScenario,
+    updateScenarioDrivers,
     vasDrivers,
     dreMonths,
     occupancyDreItems,
