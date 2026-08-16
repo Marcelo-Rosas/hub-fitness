@@ -116,9 +116,9 @@ Spec: `2026-08-15-email-rfq-approve-design.md` (tokens, NOTIFY, HTML `/approve/:
 
 ## Phase 5 — Persist CoA/ledger (M3)
 
-- [ ] Decide SQLite vs Operator table for chart + ledger lines  
-- [ ] Persist M3 CRUD; load on boot  
-- [ ] Spec/plan curto se faltar design
+- [x] Decide SQLite vs Operator table for chart + ledger lines → Operator `finance.*`
+- [x] Persist M3 CRUD; load on boot (`GET /api/operator/finance/bundle` + autosave)
+- [x] Spec/plan: `2026-08-16-finance-coa-ledger-design.md` + plan
 
 ---
 
@@ -133,6 +133,6 @@ Spec: `2026-08-15-email-rfq-approve-design.md` (tokens, NOTIFY, HTML `/approve/:
 
 ## Execution order
 
-**Now:** Phase 1 Plan B done (token e-mail) — commit/push quando pedido.  
-**Next session:** Phase 5 (CoA/ledger M3) ou deploy Railway se pedido.  
+**Now:** Phase 5 CoA/ledger shipped (Operator finance tables + API + PlannerContext).  
+**Next:** smoke live bundle + P2 Mix→COGS / Ad Valorem CPQ se pedido.  
 **Phases 2–4:** already done.
