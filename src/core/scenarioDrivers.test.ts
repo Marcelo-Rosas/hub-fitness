@@ -1,0 +1,109 @@
+import { describe, it, expect } from 'vitest';
+import { applyScenarioDrivers, clampScenarioDrivers } from './scenarioDrivers';
+import type { DreGranularItem, ScenarioDrivers } from '../types';
+
+const baseDrivers: ScenarioDrivers = {
+  occupancyRate: 0.75,
+  rentFactor: 1,
+  cogsVariableFactor: 1,
+  hcOpexFactor: 1,
+  techOpexActive: false,
+};
+
+function item(partial: Partial<DreGranularItem> & Pick<DreGranularItem, 'id' | 'section'>): DreGranularItem {
+  return {
+    type: 'fixo',
+    category: 't',
+    name: partial.id,
+    monthlyAmountY1: 1000,
+    monthlyAmountY2: 2000,
+    active: true,
+    costBehavior: 'fixed',
+    ...partial,
+  };
+}
+
+describe('applyScenarioDrivers', () => {
+  it('scales only variable COGS by cogsVariableFactor', () => {
+    const items = [
+      item({ id: 'v', section: 'custo', costBehavior: 'variable', monthlyAmountY1: 1000, monthlyAmountY2: 2000 }),
+      item({ id: 'f', section: 'custo', costBehavior: 'fixed', monthlyAmountY1: 1000, monthlyAmountY2: 2000 }),
+      item({ id: 'h', section: 'despesa', costBehavior: 'hc', monthlyAmountY1: 1000, monthlyAmountY2: 2000 }),
+    ];
+    const out = applyScenarioDrivers(items, { ...baseDrivers, cogsVariableFactor: 1.2 });
+    expect(out.find((i) => i.id === 'v')!.monthlyAmountY1).toBe(1200);
+    expect(out.find((i) => i.id === 'v')!.monthlyAmountY2).toBe(2400);
+    expect(out.find((i) => i.id === 'f')!.monthlyAmountY1).toBe(1000);
+    expect(out.find((i) => i.id === 'h')!.monthlyAmountY1).toBe(1000);
+  });
+
+  it('rentFactor scales aluguel and condominio', () => {
+    const items = [
+      item({ id: 'cst-aluguel', section: 'despesa', monthlyAmountY1: 60000, monthlyAmountY2: 63000 }),
+      item({ id: 'cst-condominio', section: 'despesa', monthlyAmountY1: 6500, monthlyAmountY2: 6500 }),
+      item({ id: 'other', section: 'despesa', costBehavior: 'hc', monthlyAmountY1: 1000, monthlyAmountY2: 1000 }),
+    ];
+    const out = applyScenarioDrivers(items, { ...baseDrivers, rentFactor: 0.9 });
+    expect(out.find((i) => i.id === 'cst-aluguel')!.monthlyAmountY1).toBe(54000);
+    expect(out.find((i) => i.id === 'cst-condominio')!.monthlyAmountY1).toBe(5850);
+    expect(out.find((i) => i.id === 'other')!.monthlyAmountY1).toBe(1000);
+  });
+
+  it('hcOpexFactor scales hc only', () => {
+    const items = [
+      item({ id: 'cst-pessoal-clt-pl', section: 'despesa', costBehavior: 'hc', monthlyAmountY1: 10000, monthlyAmountY2: 10000 }),
+      item({ id: 'cst-depreciacao', section: 'despesa', costBehavior: 'fixed', monthlyAmountY1: 5000, monthlyAmountY2: 5000 }),
+    ];
+    const out = applyScenarioDrivers(items, { ...baseDrivers, hcOpexFactor: 1.1 });
+    expect(out.find((i) => i.id === 'cst-pessoal-clt-pl')!.monthlyAmountY1).toBe(11000);
+    expect(out.find((i) => i.id === 'cst-depreciacao')!.monthlyAmountY1).toBe(5000);
+  });
+
+  it('skips engineLocked and manualOverride', () => {
+    const items = [
+      item({
+        id: 'rec-4pl-ct',
+        section: 'receita',
+        engineLocked: true,
+        monthlyAmountY1: 6274,
+        monthlyAmountY2: 9845,
+      }),
+      item({
+        id: 'cst-insumos',
+        section: 'custo',
+        costBehavior: 'variable',
+        manualOverride: true,
+        monthlyAmountY1: 1000,
+        monthlyAmountY2: 1000,
+      }),
+    ];
+    const out = applyScenarioDrivers(items, {
+      ...baseDrivers,
+      cogsVariableFactor: 1.5,
+      rentFactor: 0.5,
+    });
+    expect(out[0].monthlyAmountY1).toBe(6274);
+    expect(out[1].monthlyAmountY1).toBe(1000);
+  });
+
+  it('identity factors leave amounts unchanged', () => {
+    const items = [item({ id: 'v', section: 'custo', costBehavior: 'variable' })];
+    const out = applyScenarioDrivers(items, baseDrivers);
+    expect(out[0].monthlyAmountY1).toBe(1000);
+  });
+});
+
+describe('clampScenarioDrivers', () => {
+  it('clamps occupancy and factors to ranges', () => {
+    const c = clampScenarioDrivers({
+      occupancyRate: 2,
+      rentFactor: 0.1,
+      cogsVariableFactor: 9,
+      hcOpexFactor: 1,
+      techOpexActive: true,
+    });
+    expect(c.occupancyRate).toBe(1);
+    expect(c.rentFactor).toBe(0.5);
+    expect(c.cogsVariableFactor).toBe(1.5);
+  });
+});
