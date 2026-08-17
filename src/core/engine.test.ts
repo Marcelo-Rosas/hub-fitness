@@ -13,6 +13,7 @@ import {
   applyTechOpexToDreMonths,
   computeTechOpexMonthly,
   computeWmsProprioImpact,
+  expandCompositionFilhas,
   applyCliaToDreItems,
   projectDreFromLedger,
   isLedgerItemLocked,
@@ -287,6 +288,15 @@ describe('ledger DRE ao vivo', () => {
     );
     expect(patched[0].monthlyAmountY1).toBe(computeCliaSpineMonthly(12, defaultParams));
     expect(isLedgerItemLocked(patched[0])).toBe(true);
+    expect(patched[0].composition?.map((c) => c.accountCode)).toEqual([
+      '4.1.04.01',
+      '4.1.04.02',
+      '4.1.04.03',
+      '4.1.04.04',
+    ]);
+    const filhas = expandCompositionFilhas(patched);
+    expect(filhas).toHaveLength(4);
+    expect(filhas.reduce((a, i) => a + i.monthlyAmountY1, 0)).toBe(patched[0].monthlyAmountY1);
   });
 
   it('conta sintética não lança valor', () => {

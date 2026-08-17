@@ -23,7 +23,7 @@ M2 DRE · M3 Cadastro · M4 Caixa · M5 Fator R · M11 Plano de Contas/Mix · M1
 
 | Contrato | Fonte (Operator) | Cardinalidade | Consumidores |
 |---|---|---|---|
-| DRE live (M2) | `finance.ledger_lines` → `projectDreFromLedger` → `dreMonths` | CoA 1:N linhas; ocupação **5.2.02** (sintética) 1:N analíticas `5.2.02.*`; aluguel **5.2.02.01** com carência 6m | `summarizeLiveDre`, M2 cards + tabela + granular 24m |
+| DRE live (M2) | `finance.ledger_lines` → `projectDreFromLedger` → `dreMonths` | CoA 1:N linhas; ocupação **5.2.02** 1:N `5.2.02.*`; CLIA **4.1.04** 1:N `4.1.04.01–04` (composition com código = filha na tabela); aluguel **5.2.02.01** carência 6m | `summarizeLiveDre`, M2 cards + tabela + granular 24m |
 | Cadastro M3 | mesmas `ledger_lines` + `chart_accounts` + `cost_centers` | só **Analítica** lança; 5.2.02 sintética bloqueada | M3 CRUD |
 | VAS / pisos SANCO | `vasDrivers` (memória; M14) | **não** alimenta ledger/DRE | `M3ReceitaVas` / M14 |
 | BP v3.5 freeze | `officialData.ts` / CSV seed | fixture 1:1 totais | M1 snapshot, `summarizeOfficialDre`, testes de teto |

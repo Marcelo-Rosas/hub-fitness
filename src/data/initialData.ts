@@ -43,19 +43,11 @@ export const USER_ROLES: RoleConfig[] = [
   },
 ];
 
-import { computeCliaSpineMonthly, computeRentMonthly, computeCondominiumMonthly, computeWmsProprioImpact, SC_V36_WMS_PROPRIO } from '../core/engine';
+import { computeCliaSpineMonthly, computeRentMonthly, computeCondominiumMonthly, computeWmsProprioImpact, SC_V36_WMS_PROPRIO, buildCliaComposition } from '../core/engine';
 import { defaultParams } from '../core/params';
 
 const CLIA_SPINE_M12 = computeCliaSpineMonthly(12, defaultParams);
 const CLIA_SPINE_M24 = computeCliaSpineMonthly(24, defaultParams);
-const CLIA_TOWER_Y1 = 1_350;
-const CLIA_STOR_Y1 = 1_597;
-const CLIA_DTA_Y1 = 600;
-const CLIA_HAND_Y1 = Math.max(0, CLIA_SPINE_M12 - CLIA_TOWER_Y1 - CLIA_STOR_Y1 - CLIA_DTA_Y1);
-const CLIA_TOWER_Y2 = 1_350;
-const CLIA_STOR_Y2 = 3_195;
-const CLIA_DTA_Y2 = 1_200;
-const CLIA_HAND_Y2 = Math.max(0, CLIA_SPINE_M24 - CLIA_TOWER_Y2 - CLIA_STOR_Y2 - CLIA_DTA_Y2);
 const RENT_Y1 = computeRentMonthly(defaultParams, 1);
 const RENT_Y2 = computeRentMonthly(defaultParams, 2);
 const CONDO_Y1 = computeCondominiumMonthly(defaultParams, 1);
@@ -379,12 +371,7 @@ export const INITIAL_GRANULAR_DRE_ITEMS: DreGranularItem[] = [
     active: true, engineLocked: true, accountCode: '4.1.04.01', costCenterId: 'CC 001',
     costBehavior: 'fixed',
     notes: `Derivado do spine CLIA (engine): M12≈R$ ${CLIA_SPINE_M12.toLocaleString('pt-BR')}, M24≈R$ ${CLIA_SPINE_M24.toLocaleString('pt-BR')}. Upside entreposto Forte — fora do Fator R.`,
-    composition: [
-      { id: 'rec-clia-tower', name: 'Tower fee (3 clientes)', formula: 'R$ 450 × clientes', monthlyAmountY1: CLIA_TOWER_Y1, monthlyAmountY2: CLIA_TOWER_Y2 },
-      { id: 'rec-clia-stor', name: 'Markup armazenagem CIF', formula: '0,08% CIF × FEU', monthlyAmountY1: CLIA_STOR_Y1, monthlyAmountY2: CLIA_STOR_Y2 },
-      { id: 'rec-clia-dta', name: 'Fee DTA por processo', formula: 'R$ 100 × FEU', monthlyAmountY1: CLIA_DTA_Y1, monthlyAmountY2: CLIA_DTA_Y2 },
-      { id: 'rec-clia-hand', name: 'Markup handling / desova', formula: '26,6% × base Forte', monthlyAmountY1: CLIA_HAND_Y1, monthlyAmountY2: CLIA_HAND_Y2 },
-    ],
+    composition: buildCliaComposition(CLIA_SPINE_M12, CLIA_SPINE_M24),
   },
 
   // === CUSTOS VARIÁVEIS / COGS ===

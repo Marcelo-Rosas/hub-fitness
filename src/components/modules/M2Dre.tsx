@@ -8,6 +8,7 @@ import {
   OCCUPANCY_SYNTHETIC_CODE,
   coaSyntheticParent,
   groupLedgerBySyntheticParent,
+  expandCompositionFilhas,
   ledgerAmount24m,
 } from '../../core/engine';
 import { M2DreVarianceChart } from '../M2DreVarianceChart';
@@ -117,7 +118,7 @@ export const M2Dre: React.FC = () => {
   const m7TotalCostSum = m7CustoTotal + m7DespesaTotal; // R$ 178.609
 
   const filteredGranularItems = useMemo(() => {
-    return granularDreItems.filter((item) => {
+    return expandCompositionFilhas(granularDreItems).filter((item) => {
       if (sectionFilter !== 'all' && item.section !== sectionFilter) return false;
       if (searchTerm) {
         const q = searchTerm.toLowerCase();
@@ -543,13 +544,14 @@ export const M2Dre: React.FC = () => {
                                     <div className={`pl-9 flex items-center gap-1.5 min-w-0 flex-wrap ${nested ? 'ml-6' : ''}`}>
                                       <span className="text-[12px] leading-snug">{comp.name}</span>
                                       <AccountHint text={comp.formula} />
+                                      {comp.accountCode ? <CoaMaeFilha accountCode={comp.accountCode} show="pair" /> : null}
                                     </div>
                                   </td>
                                   <td className="py-2 px-3 text-center text-[11px] text-slate-500">
                                     {item.costCenterId ?? '—'}
                                   </td>
                                   <td className="py-2 px-3 text-center text-[10px] uppercase tracking-wide text-slate-500">
-                                    detalhe
+                                    fórmula
                                   </td>
                                   <td className="py-2 px-3 text-right font-mono text-[12px] tabular-nums text-slate-300">
                                     R$ {formatBRL(comp.monthlyAmountY1)}

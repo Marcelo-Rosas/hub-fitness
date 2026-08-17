@@ -9,6 +9,7 @@ import {
   canPostToAccount,
   coaSyntheticParent,
   coaMaeFilha,
+  expandCompositionFilhas,
   groupLedgerBySyntheticParent,
   ledgerAmount24m,
   occupancyAmountForMonth,
@@ -82,25 +83,44 @@ describe('smoke CoA 5.2.02 → DRE', () => {
     expect(groups[1].items.map((i) => i.accountCode)).toEqual(['4.1.04.01']);
   });
 
-  it('linha nova M3 (ledger) entra no 1:N da mãe do plano, composition não é filha CoA', () => {
+  it('composition com accountCode vira filha própria; mix sem código não', () => {
     const clia = INITIAL_GRANULAR_DRE_ITEMS.find((i) => i.id === 'rec-4pl-ct')!;
     expect(clia.accountCode).toBe('4.1.04.01');
     expect(PLANO_DE_CONTAS_ITEMS.find((a) => a.code === '4.1.04')?.type).toBe('Sintética');
+    expect(PLANO_DE_CONTAS_ITEMS.find((a) => a.code === '4.1.04.02')?.type).toBe('Analítica');
+
+    const filhas = expandCompositionFilhas([clia]);
+    expect(filhas.map((i) => i.accountCode)).toEqual(['4.1.04.01', '4.1.04.02', '4.1.04.03', '4.1.04.04']);
+    expect(filhas.map((i) => i.id)).toEqual([
+      'rec-clia-tower',
+      'rec-clia-stor',
+      'rec-clia-dta',
+      'rec-clia-hand',
+    ]);
+    expect(filhas.reduce((a, i) => a + i.monthlyAmountY1, 0)).toBe(clia.monthlyAmountY1);
+
+    const arm = INITIAL_GRANULAR_DRE_ITEMS.find((i) => i.id === 'rec-armazenagem')!;
+    expect(expandCompositionFilhas([arm])).toHaveLength(1);
+    expect(expandCompositionFilhas([arm])[0].id).toBe('rec-armazenagem');
+
     const nova = desp({
       id: 'dre-item-nova-clia',
       section: 'receita',
       name: 'Nova receita 4PL',
-      accountCode: '4.1.04.02',
+      accountCode: '4.1.04.98',
       monthlyAmountY1: 1_000,
       monthlyAmountY2: 1_000,
     });
-    const groups = groupLedgerBySyntheticParent([clia, nova]);
+    const groups = groupLedgerBySyntheticParent([...filhas, nova]);
     expect(groups).toHaveLength(1);
     expect(groups[0].parentCode).toBe('4.1.04');
-    expect(groups[0].items.map((i) => i.id)).toEqual(['rec-4pl-ct', 'dre-item-nova-clia']);
-    expect(groups[0].items.every((i) => !i.composition || i.id === 'rec-4pl-ct')).toBe(true);
-    expect(clia.composition?.some((c) => c.id === 'rec-clia-tower')).toBe(true);
-    expect(groups[0].items.some((i) => i.id === 'rec-clia-tower')).toBe(false);
+    expect(groups[0].items.map((i) => i.accountCode)).toEqual([
+      '4.1.04.01',
+      '4.1.04.02',
+      '4.1.04.03',
+      '4.1.04.04',
+      '4.1.04.98',
+    ]);
   });
 
   it('carência 6m zera 5.2.02.01 mesmo sem id cst-aluguel (edit M3)', () => {
@@ -390,6 +410,12 @@ describe('smoke CSV + PDF sync (mesmo payload live)', () => {
     const y1Row = pack.monthRows.find((row) => row[0] === 'Y1_M1_M12')!;
     expect(y1Row[1]).toBe(pack.years.y1.receita);
     expect(pdf.rows.find((row) => row[0] === 'Y1_M1_M12')![1]).toBe(formatBrlCell(pack.years.y1.receita));
+
+    const cliaFilhas = pack.ledgerRows.filter((row) => String(row[0]) === '4.1.04').map((row) => String(row[1]));
+    expect(cliaFilhas).toEqual(expect.arrayContaining(['4.1.04.01', '4.1.04.02', '4.1.04.03', '4.1.04.04']));
+    expect(csv).toContain('Tower fee (3 clientes)');
+    expect(csv).toContain('Markup armazenagem CIF');
+    expect(pack.ledgerRows.some((row) => String(row[4]).includes('Torre de Controle CLIA'))).toBe(false);
   });
 
   it('cria linha M3 → CSV e PDF mostram conta, Y1 e DRE M7', () => {

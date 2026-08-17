@@ -42,7 +42,7 @@ M3 Salvar
 | Editar nome da conta | `finance.chart_accounts` | mesmo `code` | PUT upsert |
 | Apagar conta | `chart_accounts` | — | 409 se ledger usa o código |
 
-Soft ref: `ledger_lines.account_code` → `chart_accounts.code` (índice, sem FK). 1 mãe sintética : N analíticas (prefixo `4.1.04` → `4.1.04.*`). 1 analítica : N linhas ledger.
+Soft ref: `ledger_lines.account_code` → `chart_accounts.code` (índice, sem FK). 1 mãe sintética : N analíticas (prefixo `4.1.04` → `4.1.04.*`). 1 analítica : N linhas ledger. Composition **com** `accountCode` (CLIA 4.1.04.01–04) = filha na tabela/CSV/PDF. Composition **sem** código (mix P1–P5) = fórmula, não CoA.
 
 ### Smoke deste contrato
 

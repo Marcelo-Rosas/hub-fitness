@@ -1,6 +1,6 @@
 import type { HubParams } from './params';
 import { defaultParams } from './params';
-import type { DreGranularItem, DreMonth } from '../types';
+import type { DreCompositionLine, DreGranularItem, DreMonth } from '../types';
 import {
   FORTE_ENTREPOSTO_30D,
   FORTE_DTC_20D,
@@ -203,6 +203,92 @@ export function groupLedgerBySyntheticParent(items: DreGranularItem[]): Array<{
   return order.map((parentCode) => ({ parentCode, items: map.get(parentCode)! }));
 }
 
+export const CLIA_TOWER_CODE = '4.1.04.01';
+export const CLIA_STOR_CODE = '4.1.04.02';
+export const CLIA_DTA_CODE = '4.1.04.03';
+export const CLIA_HAND_CODE = '4.1.04.04';
+
+/** Filhas analíticas do spine CLIA — soma = total da linha rec-4pl-ct. */
+export function buildCliaComposition(spineY1: number, spineY2: number): DreCompositionLine[] {
+  const towerY1 = 1_350;
+  const storY1 = 1_597;
+  const dtaY1 = 600;
+  const towerY2 = 1_350;
+  const storY2 = 3_195;
+  const dtaY2 = 1_200;
+  return [
+    {
+      id: 'rec-clia-tower',
+      name: 'Tower fee (3 clientes)',
+      formula: 'R$ 450 × clientes',
+      monthlyAmountY1: towerY1,
+      monthlyAmountY2: towerY2,
+      accountCode: CLIA_TOWER_CODE,
+    },
+    {
+      id: 'rec-clia-stor',
+      name: 'Markup armazenagem CIF',
+      formula: '0,08% CIF × FEU',
+      monthlyAmountY1: storY1,
+      monthlyAmountY2: storY2,
+      accountCode: CLIA_STOR_CODE,
+    },
+    {
+      id: 'rec-clia-dta',
+      name: 'Fee DTA por processo',
+      formula: 'R$ 100 × FEU',
+      monthlyAmountY1: dtaY1,
+      monthlyAmountY2: dtaY2,
+      accountCode: CLIA_DTA_CODE,
+    },
+    {
+      id: 'rec-clia-hand',
+      name: 'Markup handling / desova',
+      formula: '26,6% × base Forte',
+      monthlyAmountY1: Math.max(0, spineY1 - towerY1 - storY1 - dtaY1),
+      monthlyAmountY2: Math.max(0, spineY2 - towerY2 - storY2 - dtaY2),
+      accountCode: CLIA_HAND_CODE,
+    },
+  ];
+}
+
+/**
+ * Composition com accountCode vira linha-filha própria (não "detalhe").
+ * Sem código = fórmula da analítica pai — não entra no CoA.
+ */
+export function expandCompositionFilhas(items: DreGranularItem[]): DreGranularItem[] {
+  const out: DreGranularItem[] = [];
+  for (const item of items) {
+    const coded = (item.composition ?? []).filter((c) => Boolean(c.accountCode));
+    const rest = (item.composition ?? []).filter((c) => !c.accountCode);
+    if (coded.length === 0) {
+      out.push(item);
+      continue;
+    }
+    for (const c of coded) {
+      out.push({
+        ...item,
+        id: c.id,
+        name: c.name,
+        accountCode: c.accountCode,
+        monthlyAmountY1: c.monthlyAmountY1,
+        monthlyAmountY2: c.monthlyAmountY2,
+        notes: c.formula ?? item.notes,
+        composition: undefined,
+      });
+    }
+    if (rest.length > 0) {
+      out.push({
+        ...item,
+        monthlyAmountY1: rest.reduce((a, c) => a + c.monthlyAmountY1, 0),
+        monthlyAmountY2: rest.reduce((a, c) => a + c.monthlyAmountY2, 0),
+        composition: rest,
+      });
+    }
+  }
+  return out;
+}
+
 export function occupancyAmountForMonth(
   items: DreGranularItem[],
   month: number,
@@ -244,7 +330,11 @@ export function canPostToAccount(account: { type: string } | undefined | null): 
 }
 
 export function isAccountInUse(accountCode: string, items: DreGranularItem[]): boolean {
-  return items.some((item) => item.accountCode === accountCode);
+  return items.some(
+    (item) =>
+      item.accountCode === accountCode ||
+      item.composition?.some((c) => c.accountCode === accountCode),
+  );
 }
 
 export function applyCliaToDreItems(
@@ -261,6 +351,7 @@ export function applyCliaToDreItems(
       monthlyAmountY1: y1,
       monthlyAmountY2: y2,
       active: true,
+      composition: buildCliaComposition(y1, y2),
     };
   });
 }

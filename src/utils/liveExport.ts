@@ -1,5 +1,5 @@
 import type { DreGranularItem, DreMonth } from '../types';
-import { coaMaeFilha, summarizeLiveDre, type LiveDreTotals } from '../core/engine';
+import { coaMaeFilha, expandCompositionFilhas, summarizeLiveDre, type LiveDreTotals } from '../core/engine';
 
 /** Sem fallback CSV freeze. Sem meses → vazio (nunca OFFICIAL_DRE_24M). */
 export function liveMonths(dreMonths: DreMonth[] | undefined): DreMonth[] {
@@ -84,7 +84,7 @@ export function buildLiveDreExport(
   ]);
   monthRows.push(['Y1_M1_M12', years.y1.receita, years.y1.das, years.y1.custos, years.y1.despesas, years.y1.lucro]);
   monthRows.push(['Y2_M13_M24', years.y2.receita, years.y2.das, years.y2.custos, years.y2.despesas, years.y2.lucro]);
-  const ledgerRows: (string | number)[][] = granularItems.map((item) => {
+  const ledgerRows: (string | number)[][] = expandCompositionFilhas(granularItems).map((item) => {
     const { mae, filha } = coaMaeFilha(item.accountCode);
     return [
       mae || '—',
