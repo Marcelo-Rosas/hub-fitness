@@ -249,3 +249,25 @@ export interface ClientMixWeights {
   presetName?: string;
 }
 
+/** Piso salarial SC: CCT / mediana mercado / média CAGED — não headcount. */
+export type MixCostMode = 'cct' | 'mediana' | 'caged';
+
+export type PayrollContractKind = 'clt' | 'prolabore';
+
+/** Cargo do galpão. Total folha = custoHc(piso do cenário) × hc. */
+export interface PayrollRole {
+  id: string;
+  cargo: string;
+  detail: string;
+  cc: string;
+  cbo?: string;
+  accountCode: string;
+  /** null = cargo sem piso CCT; motor usa mediana. */
+  salarioCct: number | null;
+  salarioMediana: number;
+  salarioCaged: number;
+  contractKind: PayrollContractKind;
+  perilPct: number;
+  hc: number;
+}
+
