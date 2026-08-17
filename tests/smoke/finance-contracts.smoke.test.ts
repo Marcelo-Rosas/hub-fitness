@@ -8,6 +8,8 @@ import {
   applyOccupancyToDreItems,
   canPostToAccount,
   coaSyntheticParent,
+  coaMaeFilha,
+  groupLedgerBySyntheticParent,
   ledgerAmount24m,
   occupancyAmountForMonth,
   projectDreFromLedger,
@@ -17,10 +19,19 @@ import {
 } from '../../src/core/engine';
 import { defaultParams } from '../../src/core/params';
 import { applyScenarioDrivers, DEFAULT_SCENARIO_DRIVERS } from '../../src/core/scenarioDrivers';
-import { ledgerToRow, rowToLedger } from '../../src/core/operator/financeMappers';
+import { ledgerToRow, rowToLedger, accountToRow, rowToAccount } from '../../src/core/operator/financeMappers';
 import { INITIAL_GRANULAR_DRE_ITEMS } from '../../src/data/initialData';
 import { PLANO_DE_CONTAS_ITEMS } from '../../src/data/planoDeContasData';
+import type { AccountItem } from '../../src/data/planoDeContasData';
 import { OFFICIAL_TOTALS_24M } from '../../src/core/bpV35Reference';
+import {
+  LIVE_EXPORT_SEAL,
+  buildLiveDreExport,
+  formatBrlCell,
+  pdfLedgerTable,
+  pdfMonthTable,
+  renderLiveDreCsv,
+} from '../../src/utils/liveExport';
 
 const LIVE = process.env.SMOKE_LIVE_URL ?? 'https://hub.vectracargo.com.br';
 
@@ -59,6 +70,37 @@ describe('smoke CoA 5.2.02 → DRE', () => {
     expect(RENT_ANALYTIC_CODE).toBe('5.2.02.01');
     expect(coaSyntheticParent('5.2.02.01')).toBe('5.2.02');
     expect(coaSyntheticParent('5.2.02')).toBe('5.2.02');
+    expect(coaMaeFilha('4.1.04.01')).toEqual({ mae: '4.1.04', filha: '4.1.04.01' });
+    expect(coaMaeFilha('5.2.02')).toEqual({ mae: '5.2.02', filha: undefined });
+    const groups = groupLedgerBySyntheticParent([
+      desp({ id: 'rent', accountCode: '5.2.02.01' }),
+      desp({ id: 'condo', accountCode: '5.2.02.02' }),
+      desp({ id: 'clia', accountCode: '4.1.04.01' }),
+    ]);
+    expect(groups.map((g) => g.parentCode)).toEqual(['5.2.02', '4.1.04']);
+    expect(groups[0].items.map((i) => i.id)).toEqual(['rent', 'condo']);
+    expect(groups[1].items.map((i) => i.accountCode)).toEqual(['4.1.04.01']);
+  });
+
+  it('linha nova M3 (ledger) entra no 1:N da mãe do plano, composition não é filha CoA', () => {
+    const clia = INITIAL_GRANULAR_DRE_ITEMS.find((i) => i.id === 'rec-4pl-ct')!;
+    expect(clia.accountCode).toBe('4.1.04.01');
+    expect(PLANO_DE_CONTAS_ITEMS.find((a) => a.code === '4.1.04')?.type).toBe('Sintética');
+    const nova = desp({
+      id: 'dre-item-nova-clia',
+      section: 'receita',
+      name: 'Nova receita 4PL',
+      accountCode: '4.1.04.02',
+      monthlyAmountY1: 1_000,
+      monthlyAmountY2: 1_000,
+    });
+    const groups = groupLedgerBySyntheticParent([clia, nova]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].parentCode).toBe('4.1.04');
+    expect(groups[0].items.map((i) => i.id)).toEqual(['rec-4pl-ct', 'dre-item-nova-clia']);
+    expect(groups[0].items.every((i) => !i.composition || i.id === 'rec-4pl-ct')).toBe(true);
+    expect(clia.composition?.some((c) => c.id === 'rec-clia-tower')).toBe(true);
+    expect(groups[0].items.some((i) => i.id === 'rec-clia-tower')).toBe(false);
   });
 
   it('carência 6m zera 5.2.02.01 mesmo sem id cst-aluguel (edit M3)', () => {
@@ -247,6 +289,154 @@ describe('smoke DRE live KPIs (não CSV)', () => {
   });
 });
 
+const SMOKE_COA: AccountItem = {
+  code: '4.1.04.98',
+  name: 'SMOKE M3 receita 4PL (apagar)',
+  level: 4,
+  group: 'RECEITAS',
+  nature: 'Credora',
+  type: 'Analítica',
+  costCenterId: 'CC 001',
+  notes: 'Smoke M3 cria+edita — cleanup DELETE',
+};
+
+function smokeLedger(y1: number): DreGranularItem {
+  return {
+    id: 'smoke-m3-4pl-98',
+    section: 'receita',
+    type: 'servico',
+    category: '4PL Upside',
+    name: 'SMOKE linha M3 4.1.04.98',
+    monthlyAmountY1: y1,
+    monthlyAmountY2: y1,
+    active: true,
+    accountCode: SMOKE_COA.code,
+    costCenterId: 'CC 001',
+    costBehavior: 'fixed',
+    manualOverride: true,
+  };
+}
+
+describe('smoke M3 cria conta+valor e edita existente', () => {
+  it('nova analítica round-trip + lançamento com valor entra na mãe 4.1.04 e no DRE M7', () => {
+    expect(PLANO_DE_CONTAS_ITEMS.find((a) => a.code === '4.1.04')?.type).toBe('Sintética');
+    expect(canPostToAccount(SMOKE_COA)).toBe(true);
+    const persistedAcc = rowToAccount(accountToRow(SMOKE_COA));
+    expect(persistedAcc.code).toBe('4.1.04.98');
+    expect(persistedAcc.type).toBe('Analítica');
+
+    const created = smokeLedger(1_500);
+    const restored = rowToLedger(ledgerToRow(created));
+    expect(restored.accountCode).toBe('4.1.04.98');
+    expect(restored.monthlyAmountY1).toBe(1_500);
+    expect(restored.manualOverride).toBe(true);
+
+    const clia = INITIAL_GRANULAR_DRE_ITEMS.find((i) => i.id === 'rec-4pl-ct')!;
+    const groups = groupLedgerBySyntheticParent([clia, restored]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].parentCode).toBe('4.1.04');
+    expect(groups[0].items.map((i) => i.accountCode)).toEqual(['4.1.04.01', '4.1.04.98']);
+
+    const before = projectDreFromLedger(INITIAL_GRANULAR_DRE_ITEMS, 0.75);
+    const after = projectDreFromLedger([...INITIAL_GRANULAR_DRE_ITEMS, restored], 0.75);
+    expect(after[6].receitaServicos - before[6].receitaServicos).toBe(1_500);
+  });
+
+  it('editar linha existente (Armazenagem Y1) altera DRE e sobrevive mapper PUT', () => {
+    const seed = INITIAL_GRANULAR_DRE_ITEMS.find((i) => i.id === 'rec-armazenagem')!;
+    expect(seed.accountCode).toBe('4.1.01.01');
+    const edited = {
+      ...seed,
+      monthlyAmountY1: seed.monthlyAmountY1 + 2_000,
+      manualOverride: true,
+    };
+    const restored = rowToLedger(ledgerToRow(edited));
+    expect(restored.id).toBe('rec-armazenagem');
+    expect(restored.monthlyAmountY1).toBe(seed.monthlyAmountY1 + 2_000);
+    expect(restored.accountCode).toBe('4.1.01.01');
+
+    const before = projectDreFromLedger(INITIAL_GRANULAR_DRE_ITEMS, 0.75);
+    const ledger = INITIAL_GRANULAR_DRE_ITEMS.map((i) => (i.id === edited.id ? restored : i));
+    const after = projectDreFromLedger(ledger, 0.75);
+    expect(after[6].receitaServicos - before[6].receitaServicos).toBe(2_000);
+    expect(coaMaeFilha(restored.accountCode)).toEqual({ mae: '4.1.01', filha: '4.1.01.01' });
+  });
+});
+
+describe('smoke CSV + PDF sync (mesmo payload live)', () => {
+  it('CSV TOTAL_24M = summarizeLiveDre = células PDF', () => {
+    const months = projectDreFromLedger(INITIAL_GRANULAR_DRE_ITEMS, 0.75);
+    const { csv, pack } = renderLiveDreCsv(months, 'Base', INITIAL_GRANULAR_DRE_ITEMS);
+    const live = summarizeLiveDre(months.slice(0, 24));
+    expect(pack.seal).toBe(LIVE_EXPORT_SEAL);
+    expect(pack.totals.receitaTotal).toBe(live.receitaTotal);
+    expect(pack.totals.lucroLiquidoTotal).toBe(live.lucroLiquidoTotal);
+    expect(pack.years.y1.receita + pack.years.y2.receita).toBe(live.receitaTotal);
+    expect(csv).toContain(LIVE_EXPORT_SEAL);
+    expect(csv).toContain('TOTAL_24M');
+    expect(csv).toContain(String(live.receitaTotal));
+    expect(csv).toContain(String(live.lucroLiquidoTotal));
+    expect(csv).not.toContain('BASE BP CONGELADA');
+
+    const totalRow = pack.monthRows.find((row) => row[0] === 'TOTAL_24M')!;
+    expect(totalRow[1]).toBe(live.receitaTotal);
+    expect(totalRow[5]).toBe(live.lucroLiquidoTotal);
+
+    const pdf = pdfMonthTable(pack);
+    const pdfTotal = pdf.rows.find((row) => row[0] === 'TOTAL_24M')!;
+    expect(pdfTotal[1]).toBe(formatBrlCell(live.receitaTotal));
+    expect(pdfTotal[5]).toBe(formatBrlCell(live.lucroLiquidoTotal));
+
+    const y1Row = pack.monthRows.find((row) => row[0] === 'Y1_M1_M12')!;
+    expect(y1Row[1]).toBe(pack.years.y1.receita);
+    expect(pdf.rows.find((row) => row[0] === 'Y1_M1_M12')![1]).toBe(formatBrlCell(pack.years.y1.receita));
+  });
+
+  it('cria linha M3 → CSV e PDF mostram conta, Y1 e DRE M7', () => {
+    const created = smokeLedger(1_500);
+    const ledger = [...INITIAL_GRANULAR_DRE_ITEMS, created];
+    const before = projectDreFromLedger(INITIAL_GRANULAR_DRE_ITEMS, 0.75);
+    const after = projectDreFromLedger(ledger, 0.75);
+    expect(after[6].receitaServicos - before[6].receitaServicos).toBe(1_500);
+
+    const { csv, pack } = renderLiveDreCsv(after, 'Base', ledger);
+    expect(csv).toContain('4.1.04.98');
+    expect(csv).toContain('SMOKE linha M3 4.1.04.98');
+    const led = pack.ledgerRows.find((row) => String(row[1]).includes('4.1.04.98'));
+    expect(led?.[5]).toBe(1_500);
+    expect(pack.monthRows[6][1]).toBe(after[6].receitaServicos);
+
+    const pdfLed = pdfLedgerTable(pack);
+    const pdfLine = pdfLed.rows.find((row) => row[1].includes('4.1.04.98'));
+    expect(pdfLine?.[5]).toBe(formatBrlCell(1_500));
+    expect(pdfMonthTable(pack).rows[6][1]).toBe(formatBrlCell(after[6].receitaServicos));
+  });
+
+  it('editar armazenagem Y1 → CSV ledger e TOTAL_24M acompanham', () => {
+    const seed = INITIAL_GRANULAR_DRE_ITEMS.find((i) => i.id === 'rec-armazenagem')!;
+    const edited = { ...seed, monthlyAmountY1: seed.monthlyAmountY1 + 2_000, manualOverride: true };
+    const ledger = INITIAL_GRANULAR_DRE_ITEMS.map((i) => (i.id === edited.id ? edited : i));
+    const before = projectDreFromLedger(INITIAL_GRANULAR_DRE_ITEMS, 0.75);
+    const after = projectDreFromLedger(ledger, 0.75);
+    expect(after[6].receitaServicos - before[6].receitaServicos).toBe(2_000);
+
+    const { csv, pack } = renderLiveDreCsv(after, 'Base', ledger);
+    const led = pack.ledgerRows.find((row) => String(row[1]).includes('4.1.01.01'));
+    expect(led?.[5]).toBe(edited.monthlyAmountY1);
+    expect(csv).toContain(String(edited.monthlyAmountY1));
+    expect(pack.totals.receitaTotal).toBe(summarizeLiveDre(after.slice(0, 24)).receitaTotal);
+    expect(pack.totals.receitaTotal).not.toBe(OFFICIAL_TOTALS_24M.receitaTotal);
+  });
+
+  it('sem dreMonths CSV/PDF vazios — nunca freeze 4.805.700', () => {
+    const { csv, pack } = renderLiveDreCsv([], 'Base', []);
+    expect(pack.months).toHaveLength(0);
+    expect(pack.totals.receitaTotal).toBe(0);
+    expect(csv).not.toContain(String(OFFICIAL_TOTALS_24M.receitaTotal));
+    expect(buildLiveDreExport(undefined, []).monthRows.filter((row) => row[0] !== 'TOTAL_24M' && row[0] !== 'Y1_M1_M12' && row[0] !== 'Y2_M13_M24')).toHaveLength(0);
+  });
+});
+
 describe('smoke live Operator', () => {
   it(
     'GET /api/health',
@@ -291,5 +481,57 @@ describe('smoke live Operator', () => {
       expect(body.ledger.some((l) => l.accountCode === '5.2.02')).toBe(false);
     },
     20_000,
+  );
+
+  it(
+    'POST conta+linha 4.1.04.98, PUT valor, DELETE cleanup',
+    async () => {
+      const headers = { 'Content-Type': 'application/json' };
+      const created = smokeLedger(1_500);
+      const edited = smokeLedger(2_500);
+      try {
+        const accRes = await fetch(`${LIVE}/api/operator/finance/accounts`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(SMOKE_COA),
+        });
+        expect(accRes.ok, await accRes.text()).toBe(true);
+
+        const postLed = await fetch(`${LIVE}/api/operator/finance/ledger`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(created),
+        });
+        expect(postLed.ok, await postLed.text()).toBe(true);
+
+        const afterCreate = await fetch(`${LIVE}/api/operator/finance/bundle`);
+        expect(afterCreate.ok).toBe(true);
+        const createdBody = (await afterCreate.json()) as {
+          accounts: Array<{ code: string; type: string }>;
+          ledger: Array<{ id: string; accountCode?: string; monthlyAmountY1?: number }>;
+        };
+        expect(createdBody.accounts.find((a) => a.code === SMOKE_COA.code)?.type).toBe('Analítica');
+        const line = createdBody.ledger.find((l) => l.id === created.id);
+        expect(line?.accountCode).toBe(SMOKE_COA.code);
+        expect(line?.monthlyAmountY1).toBe(1_500);
+
+        const putLed = await fetch(`${LIVE}/api/operator/finance/ledger/${encodeURIComponent(created.id)}`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify(edited),
+        });
+        expect(putLed.ok, await putLed.text()).toBe(true);
+
+        const afterEdit = await fetch(`${LIVE}/api/operator/finance/bundle`);
+        const editedBody = (await afterEdit.json()) as {
+          ledger: Array<{ id: string; monthlyAmountY1?: number }>;
+        };
+        expect(editedBody.ledger.find((l) => l.id === created.id)?.monthlyAmountY1).toBe(2_500);
+      } finally {
+        await fetch(`${LIVE}/api/operator/finance/ledger/${encodeURIComponent(created.id)}`, { method: 'DELETE' });
+        await fetch(`${LIVE}/api/operator/finance/accounts/${encodeURIComponent(SMOKE_COA.code)}`, { method: 'DELETE' });
+      }
+    },
+    45_000,
   );
 });

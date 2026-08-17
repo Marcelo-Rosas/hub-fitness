@@ -52,6 +52,7 @@ const TopBar: React.FC<TopBarProps> = ({
     setActiveScenarioId,
     activeScenario,
     dreMonths,
+    granularDreItems,
   } = usePlanner();
 
   const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false);
@@ -229,7 +230,7 @@ const TopBar: React.FC<TopBarProps> = ({
               </button>
               <button
                 onClick={() => {
-                  exportDre24mCSV(dreMonths, activeScenario.name);
+                  exportDre24mCSV(dreMonths, activeScenario.name, granularDreItems);
                   setIsExportDropdownOpen(false);
                 }}
                 className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2 cursor-pointer font-semibold text-green-800"

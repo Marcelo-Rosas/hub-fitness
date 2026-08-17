@@ -3,7 +3,7 @@ import { Lock, Plus, RotateCcw, X } from 'lucide-react';
 import { ModuleHeader } from '../ModuleHeader';
 import { usePlanner } from '../../context/PlannerContext';
 import { DreGranularItem, DreSection } from '../../types';
-import { isLedgerItemLocked } from '../../core/engine';
+import { isLedgerItemLocked, groupLedgerBySyntheticParent } from '../../core/engine';
 import { canEditFinance } from '../../core/rbac/moduleEdit';
 import {
   AccountItem,
@@ -12,6 +12,7 @@ import {
   resolvePickerGroup,
 } from '../../data/planoDeContasData';
 import { SearchableSelect } from '../ui/SearchableSelect';
+import { CoaMaeFilha } from '../CoaMaeFilha';
 
 const SECTION_META: Record<
   DreSection,
@@ -46,7 +47,7 @@ type PanelMode = { kind: 'create'; section: DreSection } | { kind: 'edit'; id: s
 
 export const M3CadastroFinanceiro: React.FC = () => {
   const {
-    granularDreItems,
+    ledgerBaseItems,
     addDreGranularItem,
     updateDreGranularItem,
     deleteDreGranularItem,
@@ -78,25 +79,27 @@ export const M3CadastroFinanceiro: React.FC = () => {
 
   const kpis = useMemo(() => {
     const sum = (section: DreSection, year: 1 | 2) =>
-      granularDreItems
+      ledgerBaseItems
         .filter((i) => i.active && i.section === section)
         .reduce((a, b) => a + (year === 1 ? b.monthlyAmountY1 : b.monthlyAmountY2), 0);
     const rec = sum('receita', 1);
     const cst = sum('custo', 1);
     const desp = sum('despesa', 1);
     return { rec, cst, desp, res: rec - cst - desp };
-  }, [granularDreItems]);
+  }, [ledgerBaseItems]);
 
   const grouped = useMemo(
     () =>
-      (['receita', 'custo', 'despesa'] as DreSection[]).map((section) => ({
-        section,
-        items: granularDreItems.filter((i) => i.section === section),
-        total: granularDreItems
-          .filter((i) => i.active && i.section === section)
-          .reduce((a, b) => a + b.monthlyAmountY1, 0),
-      })),
-    [granularDreItems],
+      (['receita', 'custo', 'despesa'] as DreSection[]).map((section) => {
+        const items = ledgerBaseItems.filter((i) => i.section === section);
+        return {
+          section,
+          groups: groupLedgerBySyntheticParent(items),
+          items,
+          total: items.filter((i) => i.active).reduce((a, b) => a + b.monthlyAmountY1, 0),
+        };
+      }),
+    [ledgerBaseItems],
   );
 
   const groupAccounts = chartOfAccounts.filter((a) => resolvePickerGroup(a) === group);
@@ -126,9 +129,9 @@ export const M3CadastroFinanceiro: React.FC = () => {
   };
 
   const saveLine = () => {
-    if (!canEdit) return;
+    if (!canEdit || !accountCode.trim()) return;
     const payload: Omit<DreGranularItem, 'id'> = {
-      section: panel?.kind === 'create' ? panel.section : granularDreItems.find((i) => i.id === panel?.id)?.section ?? 'despesa',
+      section: panel?.kind === 'create' ? panel.section : ledgerBaseItems.find((i) => i.id === panel?.id)?.section ?? 'despesa',
       type: 'fixo',
       category: group,
       name: name.trim() || 'Nova linha',
@@ -215,7 +218,7 @@ export const M3CadastroFinanceiro: React.FC = () => {
 
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_336px] gap-4 items-start">
         <div className="space-y-4">
-          {grouped.map(({ section, items, total }) => {
+          {grouped.map(({ section, groups, total }) => {
             const meta = SECTION_META[section];
             return (
               <div key={section} className={`bg-slate-900 rounded-xl border ${meta.accent} overflow-hidden`}>
@@ -243,41 +246,70 @@ export const M3CadastroFinanceiro: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((item) => {
-                      const locked = isLedgerItemLocked(item);
+                    {groups.map((group) => {
+                      const parentAcc = chartOfAccounts.find((a) => a.code === group.parentCode);
                       return (
-                        <tr
-                          key={item.id}
-                          className={`border-t border-slate-800 ${locked ? 'bg-emerald-950/40' : item.id === 'cst-aluguel' ? 'bg-amber-950/30' : ''}`}
-                        >
-                          <td className="py-2.5 px-4 font-mono text-slate-200">{item.accountCode ?? '—'}</td>
-                          <td className="py-2.5 px-3 text-slate-100">{item.name}</td>
-                          <td className="py-2.5 px-3 text-slate-400">{item.costCenterId ?? '—'}</td>
-                          <td className="py-2.5 px-3 text-right font-mono font-bold text-white">{fmt(item.monthlyAmountY1)}</td>
-                          <td className="py-2.5 px-3 text-right font-mono text-slate-300">{fmt(item.monthlyAmountY2)}</td>
-                          <td className="py-2.5 px-3 text-right">
-                            {locked ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-emerald-500/40 text-emerald-300 font-extrabold text-[10px]">
-                                <Lock className="w-3 h-3" /> TRAVADA
-                              </span>
-                            ) : canEdit ? (
-                              <div className="flex justify-end gap-2">
-                                <button type="button" onClick={() => openEdit(item)} className="text-sky-400 font-bold cursor-pointer">
-                                  Editar
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => deleteDreGranularItem(item.id)}
-                                  className="text-rose-400 font-bold cursor-pointer"
-                                >
-                                  Excluir
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="text-slate-500">Leitura</span>
-                            )}
-                          </td>
-                        </tr>
+                        <React.Fragment key={group.parentCode || group.items[0]?.id || section}>
+                          {group.parentCode ? (
+                            <tr className="border-t border-slate-700 bg-slate-800/80">
+                              <td className="py-2 px-4">
+                                <CoaMaeFilha accountCode={group.parentCode} show="mae" />
+                              </td>
+                              <td className="py-2 px-3 text-slate-200 font-bold">
+                                {parentAcc?.name ?? group.parentCode}
+                              </td>
+                              <td className="py-2 px-3 text-slate-500">{parentAcc?.costCenterId ?? '—'}</td>
+                              <td className="py-2 px-3 text-right text-[10px] uppercase tracking-wide text-slate-500">
+                                sintética
+                              </td>
+                              <td className="py-2 px-3" />
+                              <td className="py-2 px-3" />
+                            </tr>
+                          ) : null}
+                          {group.items.map((item) => {
+                            const locked = isLedgerItemLocked(item);
+                            return (
+                              <tr
+                                key={item.id}
+                                className={`border-t border-slate-800 ${locked ? 'bg-emerald-950/40' : item.id === 'cst-aluguel' ? 'bg-amber-950/30' : ''}`}
+                              >
+                                <td className="py-2.5 px-4">
+                                  {item.accountCode ? (
+                                    <CoaMaeFilha accountCode={item.accountCode} show="pair" />
+                                  ) : (
+                                    <span className="font-mono text-slate-400">—</span>
+                                  )}
+                                </td>
+                                <td className="py-2.5 px-3 text-slate-100">{item.name}</td>
+                                <td className="py-2.5 px-3 text-slate-400">{item.costCenterId ?? '—'}</td>
+                                <td className="py-2.5 px-3 text-right font-mono font-bold text-white">{fmt(item.monthlyAmountY1)}</td>
+                                <td className="py-2.5 px-3 text-right font-mono text-slate-300">{fmt(item.monthlyAmountY2)}</td>
+                                <td className="py-2.5 px-3 text-right">
+                                  {locked ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-emerald-500/40 text-emerald-300 font-extrabold text-[10px]">
+                                      <Lock className="w-3 h-3" /> TRAVADA
+                                    </span>
+                                  ) : canEdit ? (
+                                    <div className="flex justify-end gap-2">
+                                      <button type="button" onClick={() => openEdit(item)} className="text-sky-400 font-bold cursor-pointer">
+                                        Editar
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => deleteDreGranularItem(item.id)}
+                                        className="text-rose-400 font-bold cursor-pointer"
+                                      >
+                                        Excluir
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-500">Leitura</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </React.Fragment>
                       );
                     })}
                   </tbody>
@@ -416,7 +448,7 @@ export const M3CadastroFinanceiro: React.FC = () => {
                 <button
                   type="button"
                   onClick={saveLine}
-                  disabled={!canEdit}
+                  disabled={!canEdit || !accountCode.trim()}
                   className="flex-1 h-9 rounded-lg bg-[#006100] text-white text-sm font-extrabold cursor-pointer disabled:opacity-40"
                 >
                   Salvar

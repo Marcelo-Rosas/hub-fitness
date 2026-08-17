@@ -178,6 +178,31 @@ export function coaSyntheticParent(accountCode?: string): string | undefined {
   return parts.slice(0, 3).join('.');
 }
 
+/** Mãe sintética + filha analítica. Nunca coloca código filho no lugar da mãe. */
+export function coaMaeFilha(accountCode?: string): { mae?: string; filha?: string } {
+  if (!accountCode) return {};
+  const mae = coaSyntheticParent(accountCode);
+  const filha = mae && accountCode !== mae ? accountCode : undefined;
+  return { mae, filha };
+}
+
+export function groupLedgerBySyntheticParent(items: DreGranularItem[]): Array<{
+  parentCode: string;
+  items: DreGranularItem[];
+}> {
+  const order: string[] = [];
+  const map = new Map<string, DreGranularItem[]>();
+  for (const item of items) {
+    const parent = coaSyntheticParent(item.accountCode) ?? '';
+    if (!map.has(parent)) {
+      order.push(parent);
+      map.set(parent, []);
+    }
+    map.get(parent)!.push(item);
+  }
+  return order.map((parentCode) => ({ parentCode, items: map.get(parentCode)! }));
+}
+
 export function occupancyAmountForMonth(
   items: DreGranularItem[],
   month: number,

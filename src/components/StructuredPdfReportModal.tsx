@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { usePlanner } from '../context/PlannerContext';
 import { HubFitnessLogo } from './HubFitnessLogo';
-import { exportDre24mPDF } from '../utils/exportHandlers';
-import { OFFICIAL_TOTALS_24M } from '../data/officialData';
-import { X, Printer, Download, CheckCircle2, ShieldCheck, FileText, Sparkles, Building2, TrendingUp, DollarSign, Percent, Clock } from 'lucide-react';
+import { exportDre24mCSV, exportDre24mPDF } from '../utils/exportHandlers';
+import { buildLiveDreExport, formatBrlCell } from '../utils/liveExport';
+import { X, Printer, Download, ShieldCheck } from 'lucide-react';
 
 interface StructuredPdfReportModalProps {
   isOpen: boolean;
@@ -14,23 +14,21 @@ export const StructuredPdfReportModal: React.FC<StructuredPdfReportModalProps> =
   isOpen,
   onClose,
 }) => {
-  const { dreMonths, activeScenario, activeRole, fatorR } = usePlanner();
+  const { dreMonths, activeScenario, activeRole, fatorR, granularDreItems } = usePlanner();
 
   if (!isOpen) return null;
 
-  // Relatório auditado: no baseline usa totais oficiais BP v3.5 (mesma fonte do M1)
-  const useOfficial = activeScenario.isBaseline;
-  const totalRev24m = useOfficial
-    ? OFFICIAL_TOTALS_24M.receitaTotal
-    : dreMonths.reduce((a, b) => a + b.receitaServicos, 0);
-  const totalLL24m = useOfficial
-    ? OFFICIAL_TOTALS_24M.lucroLiquidoTotal
-    : dreMonths.reduce((a, b) => a + b.lucroLiquido, 0);
-  const totalCustos24m = dreMonths.reduce((a, b) => a + b.custosOperacionais, 0);
-  const totalDespesas24m = dreMonths.reduce((a, b) => a + b.despesasOperacionais, 0);
-  const totalImpostos24m = dreMonths.reduce((a, b) => a + b.das6Percent, 0);
-  const m24Cash = useOfficial ? OFFICIAL_TOTALS_24M.saldoCaixaM24CarenciaAluguel : activeScenario.m24Cash;
-  const margemPct = totalRev24m > 0 ? ((totalLL24m / totalRev24m) * 100).toFixed(1) : '0.0';
+  const pack = buildLiveDreExport(dreMonths, granularDreItems);
+  const { totals, years, seal } = pack;
+  const totalRev24m = totals.receitaTotal;
+  const totalLL24m = totals.lucroLiquidoTotal;
+  const totalCustos24m = totals.custosOperacionaisTotal;
+  const totalDespesas24m = totals.despesasOperacionaisTotal;
+  const totalImpostos24m = totals.dasTotal;
+  const margemPct = totals.margemLiquidaPercent.toFixed(1);
+  const pctOfRev = (n: number) =>
+    totalRev24m > 0 ? `${((n / totalRev24m) * 100).toFixed(1).replace('.', ',')}%` : '0,0%';
+  const brlNeg = (n: number) => `R$ (${n.toLocaleString('pt-BR')})`;
 
   const currentDate = new Date().toLocaleDateString('pt-BR', {
     day: '2-digit',
@@ -43,7 +41,11 @@ export const StructuredPdfReportModal: React.FC<StructuredPdfReportModalProps> =
   };
 
   const handleDownloadPdfFile = () => {
-    exportDre24mPDF(dreMonths, activeScenario.name);
+    exportDre24mPDF(dreMonths, activeScenario.name, granularDreItems);
+  };
+
+  const handleDownloadCsvFile = () => {
+    exportDre24mCSV(dreMonths, activeScenario.name, granularDreItems);
   };
 
   return (
@@ -85,6 +87,13 @@ export const StructuredPdfReportModal: React.FC<StructuredPdfReportModalProps> =
                 <span className="hidden sm:inline">Baixar (.pdf)</span>
               </button>
               <button
+                onClick={handleDownloadCsvFile}
+                className="bg-white/10 hover:bg-white/20 text-white border border-white/20 font-semibold text-xs px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer h-8"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-300" />
+                <span className="hidden sm:inline">Baixar (.csv)</span>
+              </button>
+              <button
                 onClick={onClose}
                 className="text-white/70 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors cursor-pointer h-8 w-8 flex items-center justify-center"
                 aria-label="Fechar"
@@ -108,7 +117,7 @@ export const StructuredPdfReportModal: React.FC<StructuredPdfReportModalProps> =
 
             <div className="text-right space-y-0.5 shrink-0">
               <div className="inline-block bg-[#006100] text-white text-[11px] font-bold px-3 py-1 rounded">
-                RELATÓRIO FINANCEIRO AUDITADO
+                {seal}
               </div>
               <div className="text-xs font-bold text-[#1F3864]">DOC ID: HUB-FIT-2026-X89</div>
               <div className="text-[11px] text-gray-500">Data de Emissão: {currentDate}</div>
@@ -123,17 +132,17 @@ export const StructuredPdfReportModal: React.FC<StructuredPdfReportModalProps> =
             <div>
               <div className="text-[10px] font-bold text-gray-500 uppercase">Receita Bruta (24m)</div>
               <div className="text-lg font-extrabold text-[#1F3864] font-mono mt-0.5">
-                R$ {(totalRev24m / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}k
+                {formatBrlCell(totalRev24m)}
               </div>
-              <div className="text-[10px] text-green-700 font-bold mt-0.5">▲ Serv. 3PL & VAS</div>
+              <div className="text-[10px] text-green-700 font-bold mt-0.5">{seal}</div>
             </div>
 
             <div>
               <div className="text-[10px] font-bold text-gray-500 uppercase">LL Ano 1 / Ano 2</div>
               <div className="text-sm font-extrabold text-[#006100] font-mono mt-0.5">
-                R$ 320k (16,4%) / R$ 250k
+                {formatBrlCell(years.y1.lucro)} / {formatBrlCell(years.y2.lucro)}
               </div>
-              <div className="text-[10px] text-gray-600 font-medium mt-0.5">LL 24m: R$ {(totalLL24m / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}k</div>
+              <div className="text-[10px] text-gray-600 font-medium mt-0.5">LL 24m: {formatBrlCell(totalLL24m)}</div>
             </div>
 
             <div>
@@ -172,38 +181,38 @@ export const StructuredPdfReportModal: React.FC<StructuredPdfReportModalProps> =
               <tbody className="divide-y divide-gray-200">
                 <tr className="bg-white font-bold text-gray-900">
                   <td className="py-2 px-3">(+) Receita de Serviços 3PL / VAS</td>
-                  <td className="py-2 px-3 text-right font-mono">R$ 1.950.000</td>
-                  <td className="py-2 px-3 text-right font-mono">R$ 2.860.000</td>
-                  <td className="py-2 px-3 text-right font-mono text-[#1F3864]">R$ {totalRev24m.toLocaleString('pt-BR')}</td>
+                  <td className="py-2 px-3 text-right font-mono">{formatBrlCell(years.y1.receita)}</td>
+                  <td className="py-2 px-3 text-right font-mono">{formatBrlCell(years.y2.receita)}</td>
+                  <td className="py-2 px-3 text-right font-mono text-[#1F3864]">{formatBrlCell(totalRev24m)}</td>
                   <td className="py-2 px-3 text-right font-mono">100,0%</td>
                 </tr>
                 <tr className="bg-gray-50 text-red-700 font-medium">
                   <td className="py-2 px-3">(−) Impostos sobre Serviços (DAS Simples - Anexo III)</td>
-                  <td className="py-2 px-3 text-right font-mono">R$ (117.000)</td>
-                  <td className="py-2 px-3 text-right font-mono">R$ (171.600)</td>
-                  <td className="py-2 px-3 text-right font-mono">R$ ({totalImpostos24m.toLocaleString('pt-BR')})</td>
-                  <td className="py-2 px-3 text-right font-mono">6,0%</td>
+                  <td className="py-2 px-3 text-right font-mono">{brlNeg(years.y1.das)}</td>
+                  <td className="py-2 px-3 text-right font-mono">{brlNeg(years.y2.das)}</td>
+                  <td className="py-2 px-3 text-right font-mono">{brlNeg(totalImpostos24m)}</td>
+                  <td className="py-2 px-3 text-right font-mono">{pctOfRev(totalImpostos24m)}</td>
                 </tr>
                 <tr className="bg-white text-gray-800">
                   <td className="py-2 px-3">(−) Custos Operacionais Diretos (WMS, Galpão, Insumos)</td>
-                  <td className="py-2 px-3 text-right font-mono">R$ (980.000)</td>
-                  <td className="py-2 px-3 text-right font-mono">R$ (1.420.000)</td>
-                  <td className="py-2 px-3 text-right font-mono">R$ ({totalCustos24m.toLocaleString('pt-BR')})</td>
-                  <td className="py-2 px-3 text-right font-mono">49,9%</td>
+                  <td className="py-2 px-3 text-right font-mono">{brlNeg(years.y1.custos)}</td>
+                  <td className="py-2 px-3 text-right font-mono">{brlNeg(years.y2.custos)}</td>
+                  <td className="py-2 px-3 text-right font-mono">{brlNeg(totalCustos24m)}</td>
+                  <td className="py-2 px-3 text-right font-mono">{pctOfRev(totalCustos24m)}</td>
                 </tr>
                 <tr className="bg-gray-50 text-gray-800">
                   <td className="py-2 px-3">(−) Despesas Administrativas & Prolabore Fator R</td>
-                  <td className="py-2 px-3 text-right font-mono">R$ (620.000)</td>
-                  <td className="py-2 px-3 text-right font-mono">R$ (1.098.300)</td>
-                  <td className="py-2 px-3 text-right font-mono">R$ ({totalDespesas24m.toLocaleString('pt-BR')})</td>
-                  <td className="py-2 px-3 text-right font-mono">35,7%</td>
+                  <td className="py-2 px-3 text-right font-mono">{brlNeg(years.y1.despesas)}</td>
+                  <td className="py-2 px-3 text-right font-mono">{brlNeg(years.y2.despesas)}</td>
+                  <td className="py-2 px-3 text-right font-mono">{brlNeg(totalDespesas24m)}</td>
+                  <td className="py-2 px-3 text-right font-mono">{pctOfRev(totalDespesas24m)}</td>
                 </tr>
                 <tr className="bg-[#C6EFCE]/30 font-extrabold text-[#006100] border-t-2 border-[#006100]/30">
                   <td className="py-2.5 px-3">(=) LUCRO LÍQUIDO DO PERÍODO</td>
-                  <td className="py-2.5 px-3 text-right font-mono">R$ 233.000</td>
-                  <td className="py-2.5 px-3 text-right font-mono">R$ 340.100</td>
-                  <td className="py-2.5 px-3 text-right font-mono text-base">R$ {totalLL24m.toLocaleString('pt-BR')}</td>
-                  <td className="py-2.5 px-3 text-right font-mono">{margemPct}%</td>
+                  <td className="py-2.5 px-3 text-right font-mono">{formatBrlCell(years.y1.lucro)}</td>
+                  <td className="py-2.5 px-3 text-right font-mono">{formatBrlCell(years.y2.lucro)}</td>
+                  <td className="py-2.5 px-3 text-right font-mono text-base">{formatBrlCell(totalLL24m)}</td>
+                  <td className="py-2.5 px-3 text-right font-mono">{margemPct.replace('.', ',')}%</td>
                 </tr>
               </tbody>
             </table>

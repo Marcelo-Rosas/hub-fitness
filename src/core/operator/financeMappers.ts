@@ -149,6 +149,9 @@ function parseComposition(raw: unknown): DreCompositionLine[] | undefined {
       ...(o.formula != null ? { formula: String(o.formula) } : {}),
       monthlyAmountY1: Number(o.monthlyAmountY1 ?? 0),
       monthlyAmountY2: Number(o.monthlyAmountY2 ?? 0),
+      ...(o.accountCode != null && String(o.accountCode).trim()
+        ? { accountCode: String(o.accountCode).trim() }
+        : {}),
     };
   });
 }

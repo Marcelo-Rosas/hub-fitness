@@ -11,6 +11,8 @@ import {
 } from 'recharts';
 import { GitCompare, Copy, Sparkles } from 'lucide-react';
 import { ModuleHeader } from '../ModuleHeader';
+import { HubChartCard } from '../charts/HubChartCard';
+import { HUB_CHART, HubChartLegendPill, hubTick, hubTooltipStyle, hubYAxisK } from '../charts/hubChartTheme';
 import { computeWmsProprioImpact } from '../../core/engine';
 import {
   computeTornadoBars,
@@ -318,30 +320,32 @@ export const M6Cenarios: React.FC<{ embed?: boolean }> = ({ embed = false }) => 
         </div>
       </div>
 
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
-        <div>
-          <h3 className="text-sm font-bold text-slate-900">Tornado live — Δ LL M7+</h3>
-          <p className="text-xs text-slate-500">
-            Sensibilidade vs drivers do cenário ativo (engine, zero literais).
-          </p>
-        </div>
-        <div className="h-72 w-full pt-2">
-          <ResponsiveContainer width="100%" height="100%">
+      <HubChartCard
+        title="Tornado live — Δ LL M7+"
+        subtitle="Sensibilidade vs drivers do cenário ativo (engine, zero literais)."
+        badge="Δ LL M7+"
+        plotClassName="h-72 w-full pt-2"
+        legend={
+          <>
+            <HubChartLegendPill tone="rose">Downside</HubChartLegendPill>
+            <HubChartLegendPill tone="sky">Upside</HubChartLegendPill>
+          </>
+        }
+      >
+        <ResponsiveContainer width="100%" height="100%">
             <BarChart layout="vertical" data={tornadoData} margin={{ top: 10, right: 30, left: 140, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis type="number" tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
-              <YAxis type="category" dataKey="factor" tick={{ fontSize: 11, fill: '#334155' }} width={130} />
+              <CartesianGrid strokeDasharray="3 3" stroke={HUB_CHART.grid} vertical={false} />
+              <XAxis type="number" tickFormatter={hubYAxisK} tick={hubTick} />
+              <YAxis type="category" dataKey="factor" tick={{ fontSize: 11, fill: HUB_CHART.tick }} width={130} />
               <Tooltip
-                formatter={(val) =>
-                  `R$ ${Number(val ?? 0).toLocaleString('pt-BR')}`
-                }
+                formatter={(val) => `R$ ${Number(val ?? 0).toLocaleString('pt-BR')}`}
+                contentStyle={hubTooltipStyle}
               />
-              <Bar dataKey="downside" name="Downside" fill="#f43f5e" radius={[4, 0, 0, 4]} />
-              <Bar dataKey="upside" name="Upside" fill="#10b981" radius={[0, 4, 4, 0]} />
+              <Bar dataKey="downside" name="Downside" fill={HUB_CHART.downside} radius={[4, 0, 0, 4]} />
+              <Bar dataKey="upside" name="Upside" fill={HUB_CHART.upside} radius={[0, 4, 4, 0]} />
             </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+        </ResponsiveContainer>
+      </HubChartCard>
     </div>
   );
 };

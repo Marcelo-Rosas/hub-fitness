@@ -36,6 +36,17 @@ describe('financeMappers', () => {
     expect(rowToLedger(ledgerToRow(item))).toEqual(item);
   });
 
+  it('DreGranularItem round-trips composition.accountCode', () => {
+    const item = INITIAL_GRANULAR_DRE_ITEMS.find((i) => i.composition?.length)!;
+    const withChild = {
+      ...item,
+      composition: item.composition!.map((c, i) =>
+        i === 0 ? { ...c, accountCode: item.accountCode } : c,
+      ),
+    };
+    expect(rowToLedger(ledgerToRow(withChild)).composition?.[0]?.accountCode).toBe(item.accountCode);
+  });
+
   it('Fator R flags round-trip on ledger', () => {
     const hc = INITIAL_GRANULAR_DRE_ITEMS.find((i) => i.id === 'cst-pessoal-clt-pl')!;
     expect(hc.isFatorRNumerator).toBe(true);

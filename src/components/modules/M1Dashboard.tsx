@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -8,7 +8,6 @@ import {
   Tooltip,
   CartesianGrid,
   ReferenceLine,
-  ReferenceDot,
 } from 'recharts';
 import { TrendingUp, ArrowUpRight, DollarSign, Percent, Clock, Wallet, Zap, ShieldCheck, CheckCircle2, Box, Award, AlertTriangle } from 'lucide-react';
 import { ModuleHeader } from '../ModuleHeader';
@@ -16,11 +15,12 @@ import { parseOfficialCSVs } from '../../data/officialData';
 import { SANCO_TCO_BREAKDOWN } from '../../data/benchmarkData';
 import { deriveCashMilestones, formatBrlSigned } from '../../core/cashMilestones';
 import { usePlanner } from '../../context/PlannerContext';
+import { HubAreaGradient, HubChartCard } from '../charts/HubChartCard';
+import { HUB_CHART, HubChartLegendPill, hubTick, hubTooltipStyle, hubYAxisK, markerLabel } from '../charts/hubChartTheme';
 
 export const M1Dashboard: React.FC = () => {
   const { hubParams } = usePlanner();
-  const { dreMonths, cashflowSeries, totals24M } = parseOfficialCSVs();
-  const [cashTimeframe, setCashTimeframe] = useState<'24m'>('24m');
+  const { cashflowSeries, totals24M } = parseOfficialCSVs();
 
   // Exact metrics from official 01_DRE_24_meses.csv and 02_Fluxo_Caixa.csv
   const totalReceita = totals24M.receitaTotal; // R$ 4.805.700
@@ -34,8 +34,8 @@ export const M1Dashboard: React.FC = () => {
     cashflowSeries.map((item) => ({
       month: item.month,
       monthNum: item.monthNum,
-      saldo: item.saldoAcumuladoCarenciaAluguel,
-      fluxo: item.fluxoLiquidoCarenciaAluguel,
+      saldo: item.saldoAcumuladoPuro,
+      fluxo: item.fluxoLiquidoPuro,
     })),
     { rentOnMonthNum: hubParams.rent.carenciaAluguelMeses + 1 },
   );
@@ -54,6 +54,7 @@ export const M1Dashboard: React.FC = () => {
     labelValue: item.saldoAcumuladoCarenciaAluguel,
   }));
 
+  const rentOn = `M${hubParams.rent.carenciaAluguelMeses + 1}`;
   const tcoBreakdown = SANCO_TCO_BREAKDOWN;
 
   return (
@@ -171,116 +172,85 @@ export const M1Dashboard: React.FC = () => {
 
       {/* CHARTS SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Chart 1: Saldo Acumulado de Caixa com AreaChart e Marcadores Reais (2 cols) */}
-        <div className="lg:col-span-2 bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-3 flex flex-col h-95">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <span>Evolução do Fluxo de Caixa Acumulado (M0 a M24)</span>
-                <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-[10px] font-bold">
-                  02_Fluxo_Caixa.csv
-                </span>
-              </h3>
-              <p className="text-xs text-slate-500">
-                Curva com CAPEX {milestones.capex?.month ?? 'M0'}, Vale {milestones.valley.month} (
-                {formatBrlSigned(milestones.valley.saldo)}) e Payback {milestones.payback?.month ?? '—'}
+        <HubChartCard
+          className="lg:col-span-2 h-95 flex flex-col"
+          plotClassName="flex-1 w-full min-h-0 pt-1"
+          title={<span>📈 Curva de Saldo de Caixa Acumulado (Fluxo Puro M0–M24)</span>}
+          subtitle={`Marcadores Obrigatórios: ${milestones.capex?.month ?? 'M0'} CAPEX | ${milestones.valley.month} Vale da Morte | ${milestones.payback?.month ?? '—'} Payback | ${rentOn} Aluguel ON`}
+          badge={
+            milestones.payback
+              ? `Puro: Payback ${milestones.payback.month} (${formatBrlSigned(milestones.payback.saldo)})`
+              : '24m'
+          }
+          legend={
+            <>
+              <HubChartLegendPill tone="rose">
+                {milestones.capex?.month ?? 'M0'} · CAPEX ({formatBrlSigned(milestones.capex?.saldo ?? 0)})
+              </HubChartLegendPill>
+              <HubChartLegendPill tone="amber">
+                {milestones.valley.month} · Vale da Morte ({formatBrlSigned(milestones.valley.saldo)})
+              </HubChartLegendPill>
+              <HubChartLegendPill tone="sky">
+                {milestones.payback?.month ?? '—'} · Payback
                 {milestones.payback ? ` (${formatBrlSigned(milestones.payback.saldo)})` : ''}
-              </p>
-            </div>
-            <div className="flex gap-1 bg-slate-100 p-1 rounded-lg text-xs font-semibold">
-              <span className="px-2.5 py-1 bg-white text-slate-900 font-bold rounded shadow-2xs">
-                24m Estrito
-              </span>
-            </div>
-          </div>
-
-          <div className="flex-1 w-full pt-1">
+              </HubChartLegendPill>
+              <HubChartLegendPill tone="indigo">{rentOn} · Aluguel ON / fim da carência</HubChartLegendPill>
+            </>
+          }
+        >
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData} margin={{ top: 20, right: 25, left: 10, bottom: 0 }}>
+              <AreaChart data={chartData} margin={{ top: 56, right: 24, left: 10, bottom: 8 }}>
                 <defs>
-                  <linearGradient id="m1CashGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0.05} />
-                  </linearGradient>
+                  <HubAreaGradient id="m1CashGrad" />
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748b' }} />
-                <YAxis
-                  tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
-                  tick={{ fontSize: 11, fill: '#64748b' }}
-                />
+                <CartesianGrid strokeDasharray="3 3" stroke={HUB_CHART.grid} vertical={false} />
+                <XAxis dataKey="month" tick={hubTick} />
+                <YAxis tickFormatter={hubYAxisK} tick={hubTick} />
                 <Tooltip
-                  formatter={(val: any) => [`R$ ${Number(val).toLocaleString('pt-BR')}`, 'Saldo Acumulado (Carência Aluguel)']}
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '8px', color: '#fff', fontSize: '12px' }}
+                  formatter={(val: number) => [`R$ ${Number(val).toLocaleString('pt-BR')}`, 'Saldo Acumulado']}
+                  contentStyle={hubTooltipStyle}
                 />
-                {/* Zero Level Reference Line */}
-                <ReferenceLine y={0} stroke="#94a3b8" strokeWidth={1} strokeDasharray="2 2" />
-
-                {/* Payback derivado */}
+                <ReferenceLine y={0} stroke={HUB_CHART.zero} strokeWidth={1} strokeDasharray="2 2" />
+                {milestones.capex && (
+                  <ReferenceLine
+                    x={milestones.capex.month}
+                    stroke={HUB_CHART.capex}
+                    strokeWidth={2}
+                    label={markerLabel(`${milestones.capex.month} CAPEX`, '#dc2626', 14)}
+                  />
+                )}
+                <ReferenceLine
+                  x={milestones.valley.month}
+                  stroke={HUB_CHART.vale}
+                  strokeWidth={2.5}
+                  label={markerLabel(`${milestones.valley.month} Vale`, '#d97706', 14)}
+                />
                 {milestones.payback && (
                   <ReferenceLine
                     x={milestones.payback.month}
-                    stroke="#10b981"
-                    strokeWidth={2}
-                    strokeDasharray="4 4"
-                    label={{
-                      value: `PAYBACK ${formatBrlSigned(milestones.payback.saldo)} ★`,
-                      fill: '#059669',
-                      fontSize: 10,
-                      fontWeight: 'bold',
-                      position: 'top',
-                    }}
+                    stroke={HUB_CHART.payback}
+                    strokeWidth={2.5}
+                    label={markerLabel(`${milestones.payback.month} Payback`, '#0369a1', 34)}
                   />
                 )}
-
-                {/* CAPEX derivado */}
-                {milestones.capex && (
-                  <ReferenceDot
-                    x={milestones.capex.month}
-                    y={milestones.capex.saldo}
-                    r={6}
-                    fill="#ef4444"
-                    stroke="#ffffff"
-                    strokeWidth={2}
-                    label={{
-                      value: `${milestones.capex.month}: ${formatBrlSigned(milestones.capex.saldo)}`,
-                      fill: '#dc2626',
-                      fontSize: 10,
-                      fontWeight: 'bold',
-                      position: 'bottom',
-                    }}
-                  />
-                )}
-
-                {/* Vale derivado */}
-                <ReferenceDot
-                  x={milestones.valley.month}
-                  y={milestones.valley.saldo}
-                  r={6}
-                  fill="#f59e0b"
-                  stroke="#ffffff"
-                  strokeWidth={2}
-                  label={{
-                    value: `${milestones.valley.month}: Vale`,
-                    fill: '#d97706',
-                    fontSize: 10,
-                    fontWeight: 'bold',
-                    position: 'top',
-                  }}
+                <ReferenceLine
+                  x={rentOn}
+                  stroke={HUB_CHART.rent}
+                  strokeWidth={1.5}
+                  strokeDasharray="2 2"
+                  label={markerLabel(`${rentOn} Aluguel ON`, '#4f46e5', 54)}
                 />
-
                 <Area
                   type="monotone"
-                  dataKey="saldoCarenciaAluguel"
-                  stroke="#059669"
+                  dataKey="saldoPuro"
+                  stroke={HUB_CHART.stroke}
                   strokeWidth={3}
                   fillOpacity={1}
                   fill="url(#m1CashGrad)"
                 />
               </AreaChart>
             </ResponsiveContainer>
-          </div>
-        </div>
+        </HubChartCard>
 
         {/* Side Panel: Capacidade & Payback Audit (1 col) */}
         <div className="bg-slate-900 text-white p-5 rounded-xl shadow-xs flex flex-col justify-between space-y-4 border border-slate-800">

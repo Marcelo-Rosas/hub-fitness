@@ -28,16 +28,16 @@ export const ModuleHeader: React.FC<ModuleHeaderProps> = ({
   kpis,
   actions,
 }) => {
-  const { dreMonths, activeScenario, fatorR } = usePlanner();
+  const { dreMonths, activeScenario, fatorR, granularDreItems } = usePlanner();
   const [isReportModalOpen, setIsReportModalOpen] = useState<boolean>(false);
   const [isAiModalOpen, setIsAiModalOpen] = useState<boolean>(false);
 
   const handlePdfExport = () => {
-    exportModulePDF(moduleId, dreMonths, activeScenario, fatorR);
+    exportModulePDF(moduleId, dreMonths, activeScenario, fatorR, granularDreItems);
   };
 
   const handleCsvExport = () => {
-    exportModuleCSV(moduleId, dreMonths, activeScenario, fatorR);
+    exportModuleCSV(moduleId, dreMonths, activeScenario, fatorR, granularDreItems);
   };
 
   return (

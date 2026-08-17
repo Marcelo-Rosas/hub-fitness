@@ -3,12 +3,12 @@ import {
   computeTechOpexMonthly,
   plAdditionalForMonth,
   summarizeLiveDre,
-  ledgerAmount24m,
   occupancyAmountForMonth,
-  isOccupancyCoa,
   isRentAnalyticLine,
-  isRentOrCondoLine,
   OCCUPANCY_SYNTHETIC_CODE,
+  coaSyntheticParent,
+  groupLedgerBySyntheticParent,
+  ledgerAmount24m,
 } from '../../core/engine';
 import { M2DreVarianceChart } from '../M2DreVarianceChart';
 import { usePlanner } from '../../context/PlannerContext';
@@ -24,6 +24,7 @@ import {
   CircleHelp,
 } from 'lucide-react';
 import { ModuleHeader } from '../ModuleHeader';
+import { CoaMaeFilha } from '../CoaMaeFilha';
 
 const SECTION_META: Record<
   DreSection,
@@ -73,7 +74,7 @@ const AccountHint: React.FC<{ text?: string }> = ({ text }) => {
 };
 
 export const M2Dre: React.FC = () => {
-  const { granularDreItems, hubParams, dreMonths, activeScenario } = usePlanner();
+  const { granularDreItems, hubParams, dreMonths, activeScenario, chartOfAccounts } = usePlanner();
   const live24 = useMemo(() => summarizeLiveDre(dreMonths), [dreMonths]);
   const y1Of = (id: string) =>
     granularDreItems.find((i) => i.id === id && i.active)?.monthlyAmountY1 ?? 0;
@@ -120,7 +121,7 @@ export const M2Dre: React.FC = () => {
       if (sectionFilter !== 'all' && item.section !== sectionFilter) return false;
       if (searchTerm) {
         const q = searchTerm.toLowerCase();
-        const hay = `${item.name} ${item.accountCode ?? ''} ${item.costCenterId ?? ''} ${item.category}`.toLowerCase();
+        const hay = `${item.name} ${item.accountCode ?? ''} ${coaSyntheticParent(item.accountCode) ?? ''} ${item.costCenterId ?? ''} ${item.category}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -130,20 +131,9 @@ export const M2Dre: React.FC = () => {
   const groupedGranular = useMemo(() => {
     return SECTION_ORDER.map((section) => {
       const items = filteredGranularItems.filter((i) => i.section === section);
-      const occupancyItems =
-        section === 'despesa'
-          ? items.filter(
-              (i) => isOccupancyCoa(i.accountCode) || isRentOrCondoLine(i),
-            )
-          : [];
-      const occupancyIds = new Set(occupancyItems.map((i) => i.id));
-      const restItems = occupancyItems.length ? items.filter((i) => !occupancyIds.has(i.id)) : items;
+      const groups = groupLedgerBySyntheticParent(items);
       const total24 = items.reduce((acc, item) => acc + ledgerAmount24m(item, hubParams), 0);
-      const occupancy24 = occupancyItems.reduce(
-        (acc, item) => acc + ledgerAmount24m(item, hubParams),
-        0,
-      );
-      return { section, items: restItems, occupancyItems, occupancy24, total24 };
+      return { section, groups, total24 };
     });
   }, [filteredGranularItems, hubParams]);
 
@@ -164,7 +154,7 @@ export const M2Dre: React.FC = () => {
       <ModuleHeader
         moduleId="M2"
         title="DRE Demonstrativo do Resultado (24 Meses)"
-        subtitle="Consolidado live M1–M24 a partir de finance.ledger_lines (Operator) → engine. CSV BP é seed/auditoria, não este contrato."
+        subtitle="Consolidado live M1–M24 a partir de finance.ledger_lines (Operator) → engine. CSV e PDF saem do mesmo payload."
         kpis={[
           {
             label: 'Receita Bruta 24m',
@@ -474,16 +464,17 @@ export const M2Dre: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="text-slate-200">
-                  {groupedGranular.map(({ section, items, occupancyItems, occupancy24, total24 }) => {
+                  {groupedGranular.map(({ section, groups, total24 }) => {
                     const meta = SECTION_META[section];
                     const isExpanded = expandedSections[section];
-                    const visibleItems = [...occupancyItems, ...items];
+                    const visibleItems = groups.flatMap((g) => g.items);
                     const compositionCount = visibleItems.reduce((n, i) => n + (i.composition?.length ?? 0), 0);
-                    const occOpen = expandedAccounts[`coa:${OCCUPANCY_SYNTHETIC_CODE}`] ?? true;
-                    const occupancyY1 = occupancyItems.reduce((a, i) => a + i.monthlyAmountY1, 0);
-                    const occupancyY2 = occupancyItems.reduce((a, i) => a + i.monthlyAmountY2, 0);
 
-                    const renderItem = (item: (typeof items)[number], idx: number) => {
+                    const renderItem = (
+                      item: (typeof visibleItems)[number],
+                      idx: number,
+                      nested: boolean,
+                    ) => {
                       const lineTotal24 = ledgerAmount24m(item, hubParams);
                       const rowBg = idx % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800/40';
                       const hasComp = (item.composition?.length ?? 0) > 0;
@@ -492,7 +483,7 @@ export const M2Dre: React.FC = () => {
                         <React.Fragment key={item.id}>
                           <tr className={`${rowBg} hover:bg-slate-800 transition-colors border-t border-slate-800/60`}>
                             <td className="py-3 px-4 font-sans text-white">
-                              <div className="flex items-start gap-2">
+                              <div className={`flex items-start gap-2 ${nested ? 'pl-6' : ''}`}>
                                 {hasComp ? (
                                   <button
                                     type="button"
@@ -511,9 +502,7 @@ export const M2Dre: React.FC = () => {
                                 )}
                                 <div className="min-w-0 flex items-center gap-1.5 flex-wrap">
                                   <span className="font-semibold text-[13px] leading-snug">{item.name}</span>
-                                  {item.accountCode && (
-                                    <span className="font-mono text-[10px] text-slate-500">{item.accountCode}</span>
-                                  )}
+                                  <CoaMaeFilha accountCode={item.accountCode} show="pair" />
                                   <AccountHint text={item.notes} />
                                 </div>
                               </div>
@@ -551,7 +540,7 @@ export const M2Dre: React.FC = () => {
                                   className="bg-slate-950/70 border-t border-slate-800/40 text-slate-300"
                                 >
                                   <td className="py-2 px-4">
-                                    <div className="pl-9 flex items-center gap-1 min-w-0">
+                                    <div className={`pl-9 flex items-center gap-1.5 min-w-0 flex-wrap ${nested ? 'ml-6' : ''}`}>
                                       <span className="text-[12px] leading-snug">{comp.name}</span>
                                       <AccountHint text={comp.formula} />
                                     </div>
@@ -560,7 +549,7 @@ export const M2Dre: React.FC = () => {
                                     {item.costCenterId ?? '—'}
                                   </td>
                                   <td className="py-2 px-3 text-center text-[10px] uppercase tracking-wide text-slate-500">
-                                    item
+                                    detalhe
                                   </td>
                                   <td className="py-2 px-3 text-right font-mono text-[12px] tabular-nums text-slate-300">
                                     R$ {formatBRL(comp.monthlyAmountY1)}
@@ -624,43 +613,72 @@ export const M2Dre: React.FC = () => {
                           </tr>
                         )}
 
-                        {isExpanded && occupancyItems.length > 0 && (
-                          <tr className="bg-amber-950/40 border-t border-amber-900/40">
-                            <td className="py-3 px-4 font-sans text-white">
-                              <button
-                                type="button"
-                                onClick={() => toggleAccount(`coa:${OCCUPANCY_SYNTHETIC_CODE}`)}
-                                className="flex items-center gap-2 cursor-pointer"
-                              >
-                                {occOpen ? (
-                                  <ChevronDown className="w-3.5 h-3.5 text-amber-300" />
-                                ) : (
-                                  <ChevronRight className="w-3.5 h-3.5 text-amber-300" />
+                        {isExpanded &&
+                          groups.map((group) => {
+                            const hasMae = Boolean(group.parentCode);
+                            const parentAcc = chartOfAccounts.find((a) => a.code === group.parentCode);
+                            const groupOpen = expandedAccounts[`coa:${group.parentCode}`] ?? true;
+                            const isOcc = group.parentCode === OCCUPANCY_SYNTHETIC_CODE;
+                            const group24 = group.items.reduce((acc, item) => acc + ledgerAmount24m(item, hubParams), 0);
+                            const groupY1 = group.items.reduce((a, i) => a + i.monthlyAmountY1, 0);
+                            const groupY2 = group.items.reduce((a, i) => a + i.monthlyAmountY2, 0);
+                            return (
+                              <React.Fragment key={group.parentCode || group.items[0]?.id || section}>
+                                {hasMae && (
+                                  <tr
+                                    className={
+                                      isOcc
+                                        ? 'bg-amber-950/40 border-t border-amber-900/40'
+                                        : 'bg-slate-800/80 border-t border-slate-700/60'
+                                    }
+                                  >
+                                    <td className="py-3 px-4 font-sans text-white">
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleAccount(`coa:${group.parentCode}`)}
+                                        className="flex items-center gap-2 cursor-pointer flex-wrap"
+                                      >
+                                        {groupOpen ? (
+                                          <ChevronDown className={`w-3.5 h-3.5 ${isOcc ? 'text-amber-300' : 'text-cyan-300'}`} />
+                                        ) : (
+                                          <ChevronRight className={`w-3.5 h-3.5 ${isOcc ? 'text-amber-300' : 'text-cyan-300'}`} />
+                                        )}
+                                        <span className="font-semibold text-[13px]">
+                                          {parentAcc?.name ?? group.parentCode}
+                                        </span>
+                                        <CoaMaeFilha accountCode={group.parentCode} show="mae" />
+                                      </button>
+                                    </td>
+                                    <td className="py-3 px-3 text-center text-slate-400 text-[12px]">
+                                      {parentAcc?.costCenterId ?? group.items[0]?.costCenterId ?? '—'}
+                                    </td>
+                                    <td className="py-3 px-3 text-center">
+                                      <span
+                                        className={`inline-block min-w-20 px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                          isOcc
+                                            ? 'border-amber-700 text-amber-200'
+                                            : 'border-cyan-800 text-cyan-200'
+                                        }`}
+                                      >
+                                        SINTÉTICA
+                                      </span>
+                                    </td>
+                                    <td className="py-3 px-3 text-right font-mono text-[13px] tabular-nums text-slate-100">
+                                      R$ {formatBRL(groupY1)}
+                                    </td>
+                                    <td className="py-3 px-3 text-right font-mono text-[13px] tabular-nums text-slate-100">
+                                      R$ {formatBRL(groupY2)}
+                                    </td>
+                                    <td className="py-3 px-3 text-right font-mono text-[13px] tabular-nums font-bold text-emerald-400">
+                                      R$ {formatBRL(group24)}
+                                    </td>
+                                  </tr>
                                 )}
-                                <span className="font-semibold text-[13px]">Despesas de ocupação</span>
-                                <span className="font-mono text-[10px] text-amber-300">{OCCUPANCY_SYNTHETIC_CODE}</span>
-                              </button>
-                            </td>
-                            <td className="py-3 px-3 text-center text-slate-400 text-[12px]">CC 002</td>
-                            <td className="py-3 px-3 text-center">
-                              <span className="inline-block min-w-20 px-2 py-0.5 rounded text-[10px] font-bold border border-amber-700 text-amber-200">
-                                SINTÉTICA
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 text-right font-mono text-[13px] tabular-nums text-slate-100">
-                              R$ {formatBRL(occupancyY1)}
-                            </td>
-                            <td className="py-3 px-3 text-right font-mono text-[13px] tabular-nums text-slate-100">
-                              R$ {formatBRL(occupancyY2)}
-                            </td>
-                            <td className="py-3 px-3 text-right font-mono text-[13px] tabular-nums font-bold text-emerald-400">
-                              R$ {formatBRL(occupancy24)}
-                            </td>
-                          </tr>
-                        )}
-
-                        {isExpanded && occOpen && occupancyItems.map((item, idx) => renderItem(item, idx))}
-                        {isExpanded && items.map((item, idx) => renderItem(item, occupancyItems.length + idx))}
+                                {(!hasMae || groupOpen) &&
+                                  group.items.map((item, idx) => renderItem(item, idx, hasMae))}
+                              </React.Fragment>
+                            );
+                          })}
                       </React.Fragment>
                     );
                   })}

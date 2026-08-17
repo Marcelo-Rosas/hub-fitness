@@ -36,6 +36,8 @@ export interface DreCompositionLine {
   formula?: string;
   monthlyAmountY1: number;
   monthlyAmountY2: number;
+  /** Conta analítica da filha; omit = herda a filha do lançamento pai. */
+  accountCode?: string;
 }
 
 export interface DreGranularItem {

@@ -8,12 +8,12 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  Legend,
   CartesianGrid,
-  Cell,
 } from 'recharts';
 import { INITIAL_GRANULAR_DRE_ITEMS } from '../data/initialData';
 import { DreGranularItem, Scenario } from '../types';
+import { HubChartCard } from './charts/HubChartCard';
+import { HUB_CHART, HubChartLegendPill, hubTick, hubTooltipStyle, hubYAxisK } from './charts/hubChartTheme';
 import {
   TrendingUp,
   TrendingDown,
@@ -182,6 +182,7 @@ export const M2DreVarianceChart: React.FC<M2DreVarianceChartProps> = ({
         ...item,
         status: 'Novo Item Adicionado',
         varY1: item.monthlyAmountY1,
+        isChanged: true,
       };
     }
     const diffY1 = item.monthlyAmountY1 - baselineItem.monthlyAmountY1;
@@ -370,69 +371,64 @@ export const M2DreVarianceChart: React.FC<M2DreVarianceChartProps> = ({
 
       {/* CHART CONTENT AREA */}
       {chartTab === 'comparison' && (
-        <div className="space-y-2">
-          <div className="text-xs font-semibold text-slate-700 flex items-center justify-between">
-            <span>Projeção Financeira Anualizada: Baseline Oficial vs Valores Modificados</span>
-            <div className="flex items-center gap-4 text-[11px]">
-              <span className="flex items-center gap-1.5">
-                <div className="w-3 h-3 bg-slate-400 rounded"></div> Baseline
-              </span>
-              <span className="flex items-center gap-1.5">
-                <div className="w-3 h-3 bg-[#1F3864] rounded"></div> Valores Atualizados
-              </span>
-            </div>
-          </div>
-
-          <div className="h-72 w-full pt-2">
+        <HubChartCard
+          title="Projeção anualizada: Baseline vs modificado"
+          subtitle="Barras por seção — mesmo chrome da curva de caixa M4."
+          badge="24m"
+          plotClassName="h-72 w-full pt-2"
+          legend={
+            <>
+              <HubChartLegendPill tone="slate">Baseline</HubChartLegendPill>
+              <HubChartLegendPill tone="sky">Modificado</HubChartLegendPill>
+            </>
+          }
+        >
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={sectionComparisonData} margin={{ top: 10, right: 20, left: 20, bottom: 25 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#475569' }} />
-                <YAxis
-                  tick={{ fontSize: 10, fill: '#475569' }}
-                  tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
-                />
+              <BarChart data={sectionComparisonData} margin={{ top: 10, right: 20, left: 20, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={HUB_CHART.grid} />
+                <XAxis dataKey="name" tick={hubTick} />
+                <YAxis tick={hubTick} tickFormatter={hubYAxisK} />
                 <Tooltip
                   formatter={(value: number) => [`R$ ${value.toLocaleString('pt-BR')}`, '']}
-                  contentStyle={{ backgroundColor: '#0F172A', color: '#fff', borderRadius: '8px', fontSize: '12px' }}
+                  contentStyle={hubTooltipStyle}
                 />
-                <Legend wrapperStyle={{ paddingTop: '10px', fontSize: '11px' }} />
-                <Bar dataKey="Baseline" fill="#94A3B8" radius={[4, 4, 0, 0]} name="Baseline Inicial (Oficial)" />
-                <Bar dataKey="Modificado" fill="#1F3864" radius={[4, 4, 0, 0]} name="Atualmente Modificado pelo Usuário" />
+                <Bar dataKey="Baseline" fill={HUB_CHART.strokeMuted} radius={[4, 4, 0, 0]} name="Baseline" />
+                <Bar dataKey="Modificado" fill={HUB_CHART.stroke} radius={[4, 4, 0, 0]} name="Modificado" />
               </BarChart>
             </ResponsiveContainer>
-          </div>
-        </div>
+        </HubChartCard>
       )}
 
       {chartTab === 'monthly' && (
-        <div className="space-y-2">
-          <div className="text-xs font-semibold text-slate-700 flex items-center justify-between">
-            <span>Curva de Evolução Mensal M1 a M24: Receita e Custos (Baseline x Modificado)</span>
-          </div>
-
-          <div className="h-72 w-full pt-2">
+        <HubChartCard
+          title="📈 Curva mensal M1–M24: receita e custos"
+          subtitle="Tracejado = baseline · sólido = modificado"
+          badge="24m"
+          plotClassName="h-72 w-full pt-2"
+          legend={
+            <>
+              <HubChartLegendPill tone="slate">Receita baseline</HubChartLegendPill>
+              <HubChartLegendPill tone="sky">Receita modificada</HubChartLegendPill>
+              <HubChartLegendPill tone="rose">Custos modificados</HubChartLegendPill>
+            </>
+          }
+        >
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={monthlyTrendData} margin={{ top: 10, right: 20, left: 10, bottom: 25 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#475569' }} />
-                <YAxis
-                  tick={{ fontSize: 10, fill: '#475569' }}
-                  tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
-                />
+              <LineChart data={monthlyTrendData} margin={{ top: 10, right: 20, left: 10, bottom: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={HUB_CHART.grid} vertical={false} />
+                <XAxis dataKey="month" tick={hubTick} />
+                <YAxis tick={hubTick} tickFormatter={hubYAxisK} />
                 <Tooltip
                   formatter={(value: number) => [`R$ ${value.toLocaleString('pt-BR')}`, '']}
-                  contentStyle={{ backgroundColor: '#0F172A', color: '#fff', borderRadius: '8px', fontSize: '12px' }}
+                  contentStyle={hubTooltipStyle}
                 />
-                <Legend wrapperStyle={{ paddingTop: '10px', fontSize: '11px' }} />
-                <Line type="monotone" dataKey="Receita Baseline" stroke="#94A3B8" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                <Line type="monotone" dataKey="Receita Modificada" stroke="#10B981" strokeWidth={3} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="Custos Baseline" stroke="#CBD5E1" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                <Line type="monotone" dataKey="Custos Modificados" stroke="#EF4444" strokeWidth={2.5} dot={{ r: 2 }} />
+                <Line type="monotone" dataKey="Receita Baseline" stroke={HUB_CHART.strokeMuted} strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                <Line type="monotone" dataKey="Receita Modificada" stroke={HUB_CHART.stroke} strokeWidth={3} dot={false} />
+                <Line type="monotone" dataKey="Custos Baseline" stroke="#cbd5e1" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                <Line type="monotone" dataKey="Custos Modificados" stroke={HUB_CHART.capex} strokeWidth={2.5} dot={false} />
               </LineChart>
             </ResponsiveContainer>
-          </div>
-        </div>
+        </HubChartCard>
       )}
 
       {chartTab === 'itemBreakdown' && (

@@ -1,7 +1,14 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { DreMonth, Scenario, DreGranularItem } from '../types';
-import { OFFICIAL_DRE_24M } from '../data/initialData';
+import {
+  LIVE_EXPORT_SEAL,
+  buildLiveDreExport,
+  liveMonths,
+  pdfLedgerTable,
+  pdfMonthTable,
+  renderLiveDreCsv,
+} from './liveExport';
 
 /**
  * Robust CSV Exporter for Brazilian Excel Standard
@@ -27,7 +34,7 @@ export function exportToCSV(
     csvContent += `"Cenário Ativo: ${metadata.scenarioName.replace(/"/g, '""')}"\n`;
   }
   csvContent += `"Data de Emissão: ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}"\n`;
-  csvContent += `"Selo de Governança: AUDITÁVEL V3.5 - BASE BP CONGELADA"\n\n`;
+  csvContent += `"${LIVE_EXPORT_SEAL}"\n\n`;
 
   // Headers
   csvContent += headers.map((h) => `"${h.replace(/"/g, '""')}"`).join(';') + '\n';
@@ -44,11 +51,14 @@ export function exportToCSV(
     csvContent += formattedRow.join(';') + '\n';
   });
 
+  triggerCsvDownload(csvContent, filename);
+}
+
+function triggerCsvDownload(csvContent: string, filename: string) {
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const timestamp = new Date().toISOString().slice(0, 10);
   const cleanFilename = filename.endsWith('.csv') ? filename : `${filename}_${timestamp}.csv`;
-
   const link = document.createElement('a');
   link.setAttribute('href', url);
   link.setAttribute('download', cleanFilename);
@@ -57,6 +67,9 @@ export function exportToCSV(
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+
+/** CSV DRE live: meses + ledger. Mesmo payload do PDF. Reexport de liveExport. */
+export { renderLiveDreCsv } from './liveExport';
 
 /**
  * Universal PDF Exporter using jsPDF with Watermark "AUDITÁVEL V3.5"
@@ -68,6 +81,7 @@ export interface PdfExportParams {
   kpis?: { label: string; value: string; color?: string }[];
   tableHeaders: string[];
   tableData: (string | number)[][];
+  extraTables?: { title?: string; headers: string[]; data: (string | number)[][] }[];
   filename: string;
   notes?: string[];
   moduleCode?: string;
@@ -81,6 +95,7 @@ export function exportToPDF(params: PdfExportParams) {
     kpis = [],
     tableHeaders,
     tableData,
+    extraTables = [],
     filename,
     notes = [],
     moduleCode = 'HUB-SIM',
@@ -209,7 +224,7 @@ export function exportToPDF(params: PdfExportParams) {
       doc.setFontSize(7);
       doc.setFont('helvetica', 'normal');
       doc.text(
-        `HUB-SIM v3.5 Audit Engine · Selo de Conformidade BP · HASH: HUBSIM-${moduleCode}-V3.5-${Math.abs(
+        `HUB-SIM · ${LIVE_EXPORT_SEAL} · HASH: HUBSIM-${moduleCode}-${Math.abs(
           new Date().getTime()
         ).toString(16)}`,
         14,
@@ -218,6 +233,36 @@ export function exportToPDF(params: PdfExportParams) {
 
       doc.text(`Página ${currentPage}`, pageWidth - 14, pageHeight - 5, { align: 'right' });
     },
+  });
+
+  extraTables.forEach((table) => {
+    let nextY = (doc as any).lastAutoTable.finalY + 10;
+    if (nextY > pageHeight - 40) {
+      doc.addPage();
+      nextY = 20;
+    }
+    if (table.title) {
+      doc.setTextColor(31, 56, 100);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.text(table.title, 14, nextY);
+      nextY += 4;
+    }
+    autoTable(doc, {
+      startY: nextY,
+      head: [table.headers],
+      body: table.data.map((row) => row.map((c) => String(c))),
+      theme: 'grid',
+      headStyles: {
+        fillColor: [31, 56, 100],
+        textColor: [255, 255, 255],
+        fontSize: 7,
+        fontStyle: 'bold',
+      },
+      bodyStyles: { fontSize: 7, textColor: [30, 41, 59] },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      margin: { left: 14, right: 14 },
+    });
   });
 
   // Notes/Clauses Section
@@ -251,110 +296,53 @@ export function exportToPDF(params: PdfExportParams) {
 }
 
 /**
- * Generate DRE 24m CSV
+ * Generate DRE 24m CSV — ledger live, sem freeze BP.
  */
-export function exportDre24mCSV(dreMonths: DreMonth[], scenarioName: string) {
-  const months = dreMonths && dreMonths.length >= 24 ? dreMonths.slice(0, 24) : OFFICIAL_DRE_24M;
-  const headers = [
-    'Mês',
-    'Rótulo',
-    'Receita Serviços (R$)',
-    'DAS 6% Simples (R$)',
-    'IRPJ (R$)',
-    'CSLL (R$)',
-    'PIS/COFINS/CPP/ISS (R$)',
-    'Custos Operacionais COGS (R$)',
-    'Despesas Operacionais OPEX (R$)',
-    'Lucro Líquido (R$)',
-  ];
-
-  const rows = months.map((m) => [
-    m.month,
-    m.label,
-    m.receitaServicos,
-    m.das6Percent,
-    m.irpj,
-    m.csll,
-    m.pisCofinsCppIss,
-    m.custosOperacionais,
-    m.despesasOperacionais,
-    m.lucroLiquido,
-  ]);
-
-  // Totals Row
-  const totalRev = months.reduce((a, b) => a + b.receitaServicos, 0);
-  const totalDas = months.reduce((a, b) => a + b.das6Percent, 0);
-  const totalCustos = months.reduce((a, b) => a + b.custosOperacionais, 0);
-  const totalDespesas = months.reduce((a, b) => a + b.despesasOperacionais, 0);
-  const totalLucro = months.reduce((a, b) => a + b.lucroLiquido, 0);
-
-  rows.push([
-    'TOTAL_24M',
-    'Acumulado 24 Meses',
-    totalRev,
-    totalDas,
-    0,
-    0,
-    0,
-    totalCustos,
-    totalDespesas,
-    totalLucro,
-  ]);
-
-  exportToCSV(rows, headers, `HUBSIM_DRE_24m_${scenarioName.replace(/\s+/g, '_')}`, {
-    title: 'HUB-SIM · DEMONSTRATIVO DO RESULTADO DO EXERCÍCIO (DRE 24 MESES)',
-    subtitle: 'Auditoria de DRE Reativa Congelada BP v3.5',
-    scenarioName,
-  });
+export function exportDre24mCSV(
+  dreMonths: DreMonth[],
+  scenarioName: string,
+  granularItems: DreGranularItem[] = [],
+) {
+  const { csv } = renderLiveDreCsv(dreMonths, scenarioName, granularItems);
+  triggerCsvDownload(csv, `HUBSIM_DRE_24m_${scenarioName.replace(/\s+/g, '_')}`);
 }
 
 /**
- * Generate DRE 24m PDF
+ * Generate DRE 24m PDF — mesmos totais/linhas do CSV.
  */
-export function exportDre24mPDF(dreMonths: DreMonth[], scenarioName: string) {
-  const months = dreMonths && dreMonths.length >= 24 ? dreMonths.slice(0, 24) : OFFICIAL_DRE_24M;
-  const totalRev = months.reduce((a, b) => a + b.receitaServicos, 0);
-  const totalLL = months.reduce((a, b) => a + b.lucroLiquido, 0);
-  const margemLiquida = totalRev > 0 ? ((totalLL / totalRev) * 100).toFixed(1) : '11.9';
-
-  const tableHeaders = ['Mês', 'Receita Bruta (R$)', 'DAS 6% (R$)', 'Custos COGS (R$)', 'Despesas OPEX (R$)', 'Lucro Líquido (R$)'];
-  const tableData = months.map((m) => [
-    m.label,
-    `R$ ${m.receitaServicos.toLocaleString('pt-BR')}`,
-    `R$ (${m.das6Percent.toLocaleString('pt-BR')})`,
-    `R$ (${m.custosOperacionais.toLocaleString('pt-BR')})`,
-    `R$ (${m.despesasOperacionais.toLocaleString('pt-BR')})`,
-    `R$ ${m.lucroLiquido.toLocaleString('pt-BR')}`,
-  ]);
-
-  // Add summary row
-  tableData.push([
-    'TOTAL 24M',
-    `R$ ${totalRev.toLocaleString('pt-BR')}`,
-    `R$ (${months.reduce((a, b) => a + b.das6Percent, 0).toLocaleString('pt-BR')})`,
-    `R$ (${months.reduce((a, b) => a + b.custosOperacionais, 0).toLocaleString('pt-BR')})`,
-    `R$ (${months.reduce((a, b) => a + b.despesasOperacionais, 0).toLocaleString('pt-BR')})`,
-    `R$ ${totalLL.toLocaleString('pt-BR')}`,
-  ]);
-
+export function exportDre24mPDF(
+  dreMonths: DreMonth[],
+  scenarioName: string,
+  granularItems: DreGranularItem[] = [],
+) {
+  const pack = buildLiveDreExport(dreMonths, granularItems);
+  const monthTable = pdfMonthTable(pack);
+  const ledgerTable = pdfLedgerTable(pack);
   exportToPDF({
     title: 'Demonstrativo do Resultado do Exercício (DRE 24m)',
-    subtitle: 'Relatório Oficial Auditado de Projeção Financeira e Tributária',
+    subtitle: pack.seal,
     scenarioName,
     moduleCode: 'M2',
     filename: `HUBSIM_DRE_24m_${scenarioName.replace(/\s+/g, '_')}`,
     kpis: [
-      { label: 'Receita Bruta 24m', value: `R$ ${totalRev.toLocaleString('pt-BR')}` },
-      { label: 'Lucro Líquido 24m', value: `R$ ${totalLL.toLocaleString('pt-BR')}` },
-      { label: 'Margem Líquida', value: `${margemLiquida}%` },
-      { label: 'Enquadramento', value: 'Anexo III (6,0%)' },
+      { label: 'Receita Bruta 24m', value: `R$ ${pack.totals.receitaTotal.toLocaleString('pt-BR')}` },
+      { label: 'Lucro Líquido 24m', value: `R$ ${pack.totals.lucroLiquidoTotal.toLocaleString('pt-BR')}` },
+      { label: 'Margem Líquida', value: `${pack.totals.margemLiquidaPercent.toFixed(1)}%` },
+      { label: 'Linhas ledger', value: String(pack.ledgerRows.length) },
     ],
-    tableHeaders,
-    tableData,
+    tableHeaders: monthTable.headers,
+    tableData: monthTable.rows,
+    extraTables: [
+      {
+        title: '2. LEDGER MÃE/FILHA',
+        headers: ledgerTable.headers,
+        data: ledgerTable.rows,
+      },
+    ],
     notes: [
-      'Valores calculados em estrita aderência ao Simples Nacional Anexo III (alíquota efetiva 6,0%).',
-      'Payback do CAPEX inicial (R$ 207,3k) ocorre no M5 (com carência de aluguel) ou M6 (fluxo de caixa puro).',
-      'Controle do Fator R mantido na banda de segurança de 28,01% a 28,70%.',
+      pack.seal,
+      'CSV e PDF saem do mesmo buildLiveDreExport (ledger → projectDreFromLedger).',
+      'CAPEX travado R$ 207.300. Ad Valorem 0,10% só NF de serviço.',
     ],
   });
 }
@@ -370,9 +358,10 @@ export function exportModuleCSV(
   granularItems?: DreGranularItem[]
 ) {
   const scenarioName = scenario.name;
-  const months24 = dreMonths && dreMonths.length >= 24 ? dreMonths.slice(0, 24) : OFFICIAL_DRE_24M;
-  const totalRev = months24.reduce((a, b) => a + b.receitaServicos, 0);
-  const totalLL = months24.reduce((a, b) => a + b.lucroLiquido, 0);
+  const months24 = liveMonths(dreMonths);
+  const pack = buildLiveDreExport(dreMonths, granularItems ?? []);
+  const totalRev = pack.totals.receitaTotal;
+  const totalLL = pack.totals.lucroLiquidoTotal;
   const fatorRFormatted = (fatorR >= 28.01 && fatorR <= 28.70) ? `${fatorR}% (CONFORME / ANEXO III)` : `${fatorR}% (CRÍTICO / ANEXO V)`;
 
   let headers: string[] = ['Item / Mês', 'Valor (R$)', 'Observação'];
@@ -380,31 +369,19 @@ export function exportModuleCSV(
 
   switch (moduleId) {
     case 'M1':
-      headers = ['Indicador Executivo M1', 'Valor M1', 'Status BP v3.5'];
+      headers = ['Indicador Executivo M1', 'Valor live', 'Fonte'];
       rows = [
-        ['Receita Bruta 24m', totalRev, 'Base Congelada R$ 4.805.700'],
-        ['Lucro Líquido 24m', totalLL, 'Base Congelada R$ 570.842'],
+        ['Receita Bruta 24m', totalRev, pack.seal],
+        ['Lucro Líquido 24m', totalLL, pack.seal],
         ['Fator R Atual', fatorRFormatted, 'Alvo 28,01% - 28,70% (Anexo III)'],
-        ['Payback Estimado', 'M5 (c/ carência) / M6 (puro)', 'Auditado'],
-        ['CAPEX Total', scenario.capexTotal, 'R$ 207.300 / 100% Autofinanciado'],
-        ['Caixa M24', scenario.m24Cash, 'R$ 765.446 (Piso R$ 150k preservado)'],
+        ['CAPEX Total', scenario.capexTotal, 'Travado R$ 207.300'],
+        ['Caixa M24 (cenário)', scenario.m24Cash, 'KPI cenário — não ledger DRE'],
       ];
       break;
 
     case 'M2':
-      return exportDre24mCSV(months24, scenarioName);
-
     case 'M3':
-      headers = ['Serviço VAS / 4PL', 'Categoria', 'Preço Unitário (R$)', 'Margem Estimada'];
-      rows = [
-        ['Armazenagem Quinzenal', 'P1 Estocador', 22.5, '45,0%'],
-        ['Movimentação In-Out', 'P2/P4 Handling', 25.0, '38,0%'],
-        ['Desunitização Container 40', 'P3 Desova', 1400.0, '52,0%'],
-        ['Ad Valorem Seguro', 'P4 Ad Valorem', '0,10% s/ NF', '100,0%'],
-        ['Kitting & Etiquetagem', 'P5 Premium', 0.75, '60,0%'],
-        ['Gestão de Fretes 4PL CT', 'P6 Upside 4PL', '3,5% do Frete', '85,0%'],
-      ];
-      break;
+      return exportDre24mCSV(dreMonths, scenarioName, granularItems ?? []);
 
     case 'M4':
       headers = ['Mês', 'Receita (R$)', 'Lucro Líquido (R$)', 'Caixa Acumulado (R$)', 'Piso Prudencial (R$)'];
@@ -510,7 +487,7 @@ export function exportModuleCSV(
 
   exportToCSV(rows, headers, `HUBSIM_${moduleId}_${scenarioName.replace(/\s+/g, '_')}`, {
     title: `HUB-SIM · RELATÓRIO DO MÓDULO ${moduleId}`,
-    subtitle: 'Extrato de Dados Canônicos Auditados BP v3.5',
+    subtitle: pack.seal,
     scenarioName,
   });
 }
@@ -522,12 +499,14 @@ export function exportModulePDF(
   moduleId: string,
   dreMonths: DreMonth[],
   scenario: Scenario,
-  fatorR: number
+  fatorR: number,
+  granularItems?: DreGranularItem[],
 ) {
   const scenarioName = scenario.name;
-  const months24 = dreMonths && dreMonths.length >= 24 ? dreMonths.slice(0, 24) : OFFICIAL_DRE_24M;
-  const totalRev = months24.reduce((a, b) => a + b.receitaServicos, 0);
-  const totalLL = months24.reduce((a, b) => a + b.lucroLiquido, 0);
+  const months24 = liveMonths(dreMonths);
+  const pack = buildLiveDreExport(dreMonths, granularItems ?? []);
+  const totalRev = pack.totals.receitaTotal;
+  const totalLL = pack.totals.lucroLiquidoTotal;
   const fatorRStatus = (fatorR >= 28.01 && fatorR <= 28.70) ? 'CONFORME / ANEXO III' : 'CRÍTICO / ANEXO V';
 
   let title = `Relatório Canônico Auditável · ${moduleId}`;
@@ -541,31 +520,18 @@ export function exportModulePDF(
   switch (moduleId) {
     case 'M1':
       title = 'M1 Dashboard Executivo · Visão Geral 3PL';
-      tableHeaders = ['Indicador Chave', 'Valor Calculado 24m', 'Referência BP v3.5'];
+      tableHeaders = ['Indicador Chave', 'Valor live 24m', 'Fonte'];
       tableData = [
-        ['Receita Bruta Acumulada 24m', `R$ ${totalRev.toLocaleString('pt-BR')}`, 'Congelado R$ 4.805.700'],
-        ['Lucro Líquido Acumulado 24m', `R$ ${totalLL.toLocaleString('pt-BR')}`, 'Congelado R$ 570.842'],
+        ['Receita Bruta Acumulada 24m', `R$ ${totalRev.toLocaleString('pt-BR')}`, pack.seal],
+        ['Lucro Líquido Acumulado 24m', `R$ ${totalLL.toLocaleString('pt-BR')}`, pack.seal],
         ['Fator R Efetivo', `${fatorR}%`, fatorRStatus],
-        ['Payback do Projeto', 'M5 (c/ carência) / M6 (puro)', 'Auditado (+R$ 52,1k M6)'],
-        ['Saldo de Caixa M24', `R$ ${scenario.m24Cash.toLocaleString('pt-BR')}`, 'Preserva piso R$ 150k'],
+        ['Saldo de Caixa M24 (cenário)', `R$ ${scenario.m24Cash.toLocaleString('pt-BR')}`, 'KPI cenário'],
       ];
       break;
 
     case 'M2':
-      return exportDre24mPDF(months24, scenarioName);
-
     case 'M3':
-      title = 'M3 Cadastro financeiro';
-      tableHeaders = ['Serviço VAS', 'Categoria', 'Preço Unitário', 'Margem Bruta Target'];
-      tableData = [
-        ['Armazenagem Quinzenal', 'P1 Estocador', 'R$ 22,50 / pos', '45,0%'],
-        ['Movimentação Handling In-Out', 'P2/P4 Handling', 'R$ 25,00 / palete', '38,0%'],
-        ['Desunitização Container 40 HC', 'P3 Desova', 'R$ 1.400,00 / cont', '52,0%'],
-        ['Ad Valorem Seguro', 'P4 Ad Valorem', '0,10% s/ NF', '100,0%'],
-        ['Etiquetagem EAN & Kitting', 'P5 Premium', 'R$ 0,75 / unid', '60,0%'],
-        ['Gestão de Fretes 4PL CT', 'P6 Upside 4PL', '3,5% do Frete', '85,0%'],
-      ];
-      break;
+      return exportDre24mPDF(dreMonths, scenarioName, granularItems ?? []);
 
     case 'M4':
       title = 'M4 Fluxo de Caixa Acumulado & Payback';
@@ -649,7 +615,7 @@ export function exportModulePDF(
 
   exportToPDF({
     title,
-    subtitle: 'Extrato Oficial de Parâmetros e Projeções do Modelo HUB-SIM v3.5',
+    subtitle: pack.seal,
     scenarioName,
     moduleCode: moduleId,
     filename: `HUBSIM_${moduleId}_${scenarioName.replace(/\s+/g, '_')}`,

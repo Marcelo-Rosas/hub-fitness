@@ -27,6 +27,7 @@ import {
   DollarSign,
 } from 'lucide-react';
 import { SearchableSelect } from '../ui/SearchableSelect';
+import { CoaMaeFilha } from '../CoaMaeFilha';
 
 export const M11PlanoDeContas: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }) => {
   const { dreMonths, activeScenario, chartOfAccounts, costCenters, hubParams, financeSource } = usePlanner();
@@ -469,7 +470,11 @@ export const M11PlanoDeContas: React.FC<{ readOnly?: boolean }> = ({ readOnly = 
                                 <span className="w-3.5 inline-block"></span>
                               )}
                               <span className={account.level === 1 ? 'text-[#1F3864] text-sm' : ''}>
-                                {account.code}
+                                {account.type === 'Analítica' ? (
+                                  <CoaMaeFilha accountCode={account.code} show="pair" tone="light" />
+                                ) : (
+                                  account.code
+                                )}
                               </span>
                             </div>
                           </td>

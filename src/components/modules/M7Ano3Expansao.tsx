@@ -5,14 +5,14 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
-  Legend,
   ReferenceLine,
   Line,
   ComposedChart,
   Area,
 } from 'recharts';
+import { HubAreaGradient, HubChartCard } from '../charts/HubChartCard';
+import { HUB_CHART, HubChartLegendPill, hubTick, hubTooltipStyle, hubYAxisK, markerLabel } from '../charts/hubChartTheme';
 import {
-  Layers,
   AlertTriangle,
   CheckCircle2,
   TrendingUp,
@@ -417,90 +417,78 @@ export const M7Ano3Expansao: React.FC = () => {
       </div>
 
       {/* Recalculated Cash Curve Chart vs Capacity */}
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div>
-            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-emerald-600" />
-              <span>Trajetória Recalculada do Saldo de Caixa Acumulado (Ano 3: M25 a M36)</span>
-            </h3>
-            <p className="text-xs text-slate-500">
-              Caixa (eixo esquerdo, R$) + capacidade em degraus (eixo direito, posições) — impacto de empilhadeiras e CAPEX Galpão B
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
-              Capacidade = linha em degrau
-            </span>
-            <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded font-mono font-bold text-xs border border-emerald-200">
-              M36 Final: R$ {finalM36Cash.toLocaleString('pt-BR')}
-            </span>
-          </div>
-        </div>
-
-        <div className="h-80 w-full pt-2">
+      <HubChartCard
+        title={<span>📈 Trajetória do Saldo de Caixa Acumulado (Ano 3: M25 a M36)</span>}
+        subtitle="Caixa (eixo esquerdo) + capacidade em degraus (eixo direito) — empilhadeiras e CAPEX Galpão B"
+        badge={`M36 Final: R$ ${finalM36Cash.toLocaleString('pt-BR')}`}
+        plotClassName="h-80 w-full pt-2"
+        legend={
+          <>
+            <HubChartLegendPill tone="sky">Saldo acumulado</HubChartLegendPill>
+            <HubChartLegendPill tone="indigo">Capacidade (degrau)</HubChartLegendPill>
+            <HubChartLegendPill tone="amber">Vale {valleyLabel}</HubChartLegendPill>
+            <HubChartLegendPill tone="slate">Fluxo líquido mensal</HubChartLegendPill>
+          </>
+        }
+      >
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={year3Data} margin={{ top: 10, right: 16, left: 10, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748b' }} />
+            <ComposedChart data={year3Data} margin={{ top: 56, right: 16, left: 10, bottom: 8 }}>
+              <defs>
+                <HubAreaGradient id="m7CashGrad" />
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke={HUB_CHART.grid} vertical={false} />
+              <XAxis dataKey="month" tick={hubTick} />
               <YAxis
                 yAxisId="left"
-                tick={{ fontSize: 11, fill: '#059669' }}
-                tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
+                tick={hubTick}
+                tickFormatter={hubYAxisK}
                 label={{
                   value: 'Caixa (R$)',
                   angle: -90,
                   position: 'insideLeft',
                   offset: 4,
-                  style: { fontSize: 10, fill: '#059669', fontWeight: 600 },
+                  style: { fontSize: 10, fill: HUB_CHART.stroke, fontWeight: 600 },
                 }}
               />
               <YAxis
                 yAxisId="right"
                 orientation="right"
                 domain={[2000, 4200]}
-                tick={{ fontSize: 11, fill: '#4f46e5' }}
+                tick={{ fontSize: 11, fill: HUB_CHART.rent }}
                 tickFormatter={(val) => `${val}`}
                 label={{
                   value: 'Posições',
                   angle: 90,
                   position: 'insideRight',
                   offset: 4,
-                  style: { fontSize: 10, fill: '#4f46e5', fontWeight: 600 },
+                  style: { fontSize: 10, fill: HUB_CHART.rent, fontWeight: 600 },
                 }}
               />
               <Tooltip
-                contentStyle={{
-                  borderRadius: 10,
-                  border: '1px solid #e2e8f0',
-                  fontSize: 12,
-                }}
-                formatter={(value: any, name: string) => {
+                contentStyle={hubTooltipStyle}
+                formatter={(value: number, name: string) => {
                   if (name.includes('Caixa') || name.includes('CAPEX') || name.includes('Fluxo')) {
                     return [`R$ ${Number(value).toLocaleString('pt-BR')}`, name];
                   }
                   return [`${Number(value).toLocaleString('pt-BR')} posições`, name];
                 }}
               />
-              <Legend wrapperStyle={{ fontSize: '12px', paddingTop: 8 }} />
+              <ReferenceLine yAxisId="left" y={0} stroke={HUB_CHART.zero} strokeDasharray="2 2" />
               <ReferenceLine
                 yAxisId="left"
                 x={valleyLabel}
-                stroke="#f43f5e"
-                strokeWidth={2}
-                strokeDasharray="4 4"
-                label={{ value: `🚨 Vale ${valleyLabel}`, fill: '#f43f5e', fontSize: 11, fontWeight: 'bold' }}
+                stroke={HUB_CHART.vale}
+                strokeWidth={2.5}
+                label={markerLabel(`${valleyLabel} Vale`, '#d97706', 14)}
               />
-
-              {/* Capacidade: degrau (step) — melhor metáfora visual para saltos discretos de galpão */}
               <Line
                 yAxisId="right"
                 type="stepAfter"
                 dataKey="totalCapacity"
                 name="Capacidade Total (Galpão A + B)"
-                stroke="#4f46e5"
+                stroke={HUB_CHART.rent}
                 strokeWidth={2.5}
-                dot={{ r: 3.5, fill: '#4f46e5', stroke: '#fff', strokeWidth: 1.5 }}
+                dot={{ r: 3.5, fill: HUB_CHART.rent, stroke: '#fff', strokeWidth: 1.5 }}
                 activeDot={{ r: 5 }}
               />
               <Area
@@ -508,9 +496,9 @@ export const M7Ano3Expansao: React.FC = () => {
                 type="monotone"
                 dataKey="accumulatedCash"
                 name="Saldo de Caixa Acumulado (R$)"
-                fill="#10b981"
-                stroke="#059669"
-                fillOpacity={0.18}
+                fill="url(#m7CashGrad)"
+                stroke={HUB_CHART.stroke}
+                fillOpacity={1}
                 strokeWidth={3}
               />
               <Line
@@ -518,14 +506,14 @@ export const M7Ano3Expansao: React.FC = () => {
                 type="monotone"
                 dataKey="netCashFlow"
                 name="Fluxo Líquido Mensal (R$)"
-                stroke="#2563eb"
+                stroke={HUB_CHART.strokeAlt}
                 strokeWidth={2}
-                dot={{ r: 3, fill: '#2563eb' }}
+                strokeDasharray="4 4"
+                dot={false}
               />
             </ComposedChart>
           </ResponsiveContainer>
-        </div>
-      </div>
+      </HubChartCard>
 
       {/* Detailed Month-by-Month Cash Flow Table for Year 3 */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">

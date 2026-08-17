@@ -76,7 +76,7 @@ export const ModuleReportGenerator: React.FC<ModuleReportGeneratorProps> = ({
   });
 
   const handlePdfDownload = () => {
-    exportModulePDF(moduleId, dreMonths, activeScenario, fatorR);
+    exportModulePDF(moduleId, dreMonths, activeScenario, fatorR, granularDreItems);
   };
 
   const handleExportCsv = () => {

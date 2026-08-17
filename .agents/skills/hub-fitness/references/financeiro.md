@@ -28,7 +28,7 @@ M2 DRE · M3 Cadastro · M4 Caixa · M5 Fator R · M11 Plano de Contas/Mix · M1
 | VAS / pisos SANCO | `vasDrivers` (memória; M14) | **não** alimenta ledger/DRE | `M3ReceitaVas` / M14 |
 | BP v3.5 freeze | `officialData.ts` / CSV seed | fixture 1:1 totais | M1 snapshot, `summarizeOfficialDre`, testes de teto |
 
-Planilha CSV **não** alimenta M2 depois do ledger existir. Drift card×tabela = bug de contrato.
+Planilha CSV freeze **não** alimenta M2 depois do ledger existir. Download CSV/PDF = `buildLiveDreExport` (ledger live). Drift card×tabela×CSV×PDF = bug de contrato.
 
 ## Persistência entre contratos
 

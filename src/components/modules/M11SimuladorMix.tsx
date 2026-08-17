@@ -40,10 +40,10 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
-  Cell,
 } from 'recharts';
+import { HubChartCard } from '../charts/HubChartCard';
+import { HUB_CHART, HubChartLegendPill, hubTick, hubTooltipStyle } from '../charts/hubChartTheme';
 
 export const M11SimuladorMix: React.FC<{
   embedPanel?: 'simulator' | 'enquadramento' | 'board_memo' | 'plano_contas';
@@ -799,83 +799,71 @@ export const M11SimuladorMix: React.FC<{
 
           {/* COMPARATIVE VISUAL CHARTS */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Chart 1: Break-Even % by Cost Structure */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                <div className="flex items-center gap-2">
-                  <BarChart3 className="w-4 h-4 text-blue-700" />
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                    Ponto de Equilíbrio (Break-Even %) por Perfil & Mix
-                  </h3>
-                </div>
-                <span className="text-[10px] text-slate-500 font-mono">
-                  Capacidade = {calculations.totalCapacity.toLocaleString('pt-BR')} pos.
+            <HubChartCard
+              title={
+                <span className="flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-sky-700" />
+                  Ponto de Equilíbrio (Break-Even %) por Perfil & Mix
                 </span>
-              </div>
+              }
+              subtitle="Barras por perfil — mesmo chrome da curva de caixa M4."
+              badge={`${calculations.totalCapacity.toLocaleString('pt-BR')} pos.`}
+              plotClassName="h-64 w-full pt-2"
+              legend={
+                <>
+                  <HubChartLegendPill tone="slate">
+                    Original (R${Math.round(calculations.custosOriginais / 1000)}k)
+                  </HubChartLegendPill>
+                  <HubChartLegendPill tone="sky">
+                    Enxuto (R${Math.round(calculations.custosEnxutos / 1000)}k)
+                  </HubChartLegendPill>
+                  <HubChartLegendPill tone="indigo">
+                    Realista (R${Math.round(calculations.custosRealistas / 1000)}k)
+                  </HubChartLegendPill>
+                </>
+              }
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartBreakEvenData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={HUB_CHART.grid} />
+                  <XAxis dataKey="name" tick={hubTick} />
+                  <YAxis unit="%" domain={[0, 120]} tick={hubTick} />
+                  <Tooltip formatter={(val) => [`${Number(val ?? 0)}%`, 'Break-Even']} contentStyle={hubTooltipStyle} />
+                  <Bar dataKey="Original" fill={HUB_CHART.strokeMuted} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Enxuto" fill={HUB_CHART.strokeAlt} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Realista" fill={HUB_CHART.stroke} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </HubChartCard>
 
-              <div className="h-64 w-full text-xs font-sans">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartBreakEvenData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                    <XAxis dataKey="name" stroke="#64748B" tick={{ fontSize: 10 }} />
-                    <YAxis unit="%" stroke="#64748B" domain={[0, 120]} tick={{ fontSize: 10 }} />
-                    <Tooltip
-                      formatter={(val: any) => [`${val}%`, 'Break-Even']}
-                      contentStyle={{ backgroundColor: '#0F172A', color: '#FFF', borderRadius: '8px' }}
-                    />
-                    <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                    <Bar
-                      dataKey="Original"
-                      name={`Custo Original (R$${Math.round(calculations.custosOriginais / 1000)}k)`}
-                      fill="#94A3B8"
-                      radius={[4, 4, 0, 0]}
-                    />
-                    <Bar
-                      dataKey="Enxuto"
-                      name={`Custo Enxuto (R$${Math.round(calculations.custosEnxutos / 1000)}k)`}
-                      fill="#10B981"
-                      radius={[4, 4, 0, 0]}
-                    />
-                    <Bar
-                      dataKey="Realista"
-                      name={`Custo Realista (R$${Math.round(calculations.custosRealistas / 1000)}k)`}
-                      fill="#1E40AF"
-                      radius={[4, 4, 0, 0]}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Chart 2: Margem de Contribuição vs. Ticket Médio */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-emerald-700" />
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                    Margem de Contribuição vs. Ticket Médio (R$/pos)
-                  </h3>
-                </div>
-                <span className="text-[10px] text-slate-500 font-mono">Posição Palete/Mês</span>
-              </div>
-
-              <div className="h-64 w-full text-xs font-sans">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartMarginData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                    <XAxis dataKey="perfil" stroke="#64748B" tick={{ fontSize: 10 }} />
-                    <YAxis unit=" R$" stroke="#64748B" domain={[0, 130]} tick={{ fontSize: 10 }} />
-                    <Tooltip
-                      formatter={(val: any) => [`R$ ${val}`, 'Valor/Mês']}
-                      contentStyle={{ backgroundColor: '#0F172A', color: '#FFF', borderRadius: '8px' }}
-                    />
-                    <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                    <Bar dataKey="MC" name="Margem Contribuição (MC)" fill="#059669" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="Ticket" name="Ticket Médio" fill="#2563EB" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+            <HubChartCard
+              title={
+                <span className="flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-sky-700" />
+                  Margem de Contribuição vs. Ticket Médio (R$/pos)
+                </span>
+              }
+              subtitle="Posição palete/mês — cyan = MC · slate = ticket."
+              badge="R$/pos"
+              plotClassName="h-64 w-full pt-2"
+              legend={
+                <>
+                  <HubChartLegendPill tone="sky">Margem Contribuição (MC)</HubChartLegendPill>
+                  <HubChartLegendPill tone="slate">Ticket Médio</HubChartLegendPill>
+                </>
+              }
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartMarginData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={HUB_CHART.grid} />
+                  <XAxis dataKey="perfil" tick={hubTick} />
+                  <YAxis unit=" R$" domain={[0, 130]} tick={hubTick} />
+                  <Tooltip formatter={(val) => [`R$ ${Number(val ?? 0)}`, 'Valor/Mês']} contentStyle={hubTooltipStyle} />
+                  <Bar dataKey="MC" fill={HUB_CHART.stroke} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Ticket" fill={HUB_CHART.strokeMuted} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </HubChartCard>
           </div>
 
           {/* MASTER DATA TABLE - RAW JSON DATASET */}
