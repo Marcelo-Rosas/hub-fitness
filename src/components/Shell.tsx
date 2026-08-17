@@ -10,6 +10,7 @@ import { GlobalOnboardingGuide } from './GlobalOnboardingGuide';
 import TopBar from './TopBar';
 import { USER_ROLES } from '../data/initialData';
 import { canViewModule, firstVisibleModule } from '../core/rbac/moduleVisibility';
+import { visibleArticles } from '../core/kb/visibility';
 import { saveFileToGoogleDrive } from '../utils/googleDrive';
 import {
   BarChart3,
@@ -39,6 +40,7 @@ import {
   Truck,
   Globe,
   Inbox,
+  HelpCircle,
 } from 'lucide-react';
 
 interface ShellProps {
@@ -99,6 +101,7 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
     intranet: true,
     comex: true,
     estrategia: true,
+    referencia: true,
   });
 
   const toggleGroup = (groupId: string) => {
@@ -175,13 +178,27 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
         { id: 'M8', label: 'Visão 60m & Spin-off', icon: Building2 },
       ],
     },
+    {
+      id: 'referencia',
+      label: 'Referência',
+      icon: BookOpen,
+      items: [{ id: 'KB', label: 'Base de conhecimento', icon: HelpCircle }],
+    },
   ];
 
+  const kbCount = visibleArticles(activeRole).length;
+
   // Visibilidade RBAC — matriz MODULE_VISIBILITY
-  const moduleGroups = rawModuleGroups.map((group) => ({
-    ...group,
-    items: group.items.filter((item) => canViewModule(activeRole, item.id)),
-  }));
+  const moduleGroups = rawModuleGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => {
+        if (!canViewModule(activeRole, item.id)) return false;
+        if (item.id === 'KB' && kbCount === 0) return false;
+        return true;
+      }),
+    }))
+    .filter((group) => group.items.length > 0);
 
   useEffect(() => {
     if (!canViewModule(activeRole, activeModule)) {
@@ -287,7 +304,12 @@ Status de Governança:
                       return (
                         <button
                           key={item.id}
-                          onClick={() => setActiveModule(item.id)}
+                          onClick={() => {
+                            if (item.id === 'KB') {
+                              window.history.replaceState(null, '', '?module=KB');
+                            }
+                            setActiveModule(item.id);
+                          }}
                           className={`w-full h-9 flex items-center justify-center rounded-lg transition-all relative group/item cursor-pointer ${
                             isActive
                               ? 'bg-emerald-500/20 text-[#C6EFCE] font-bold border border-emerald-500/40 shadow-xs'
@@ -337,7 +359,12 @@ Status de Governança:
                         return (
                           <button
                             key={item.id}
-                            onClick={() => setActiveModule(item.id)}
+                            onClick={() => {
+                              if (item.id === 'KB') {
+                                window.history.replaceState(null, '', '?module=KB');
+                              }
+                              setActiveModule(item.id);
+                            }}
                             className={`w-full text-left px-2.5 py-1.5 text-[11.5px] rounded-md flex items-center justify-between transition-all cursor-pointer ${
                               isActive
                                 ? 'bg-emerald-500/20 text-[#C6EFCE] font-bold border border-emerald-500/30 shadow-xs'

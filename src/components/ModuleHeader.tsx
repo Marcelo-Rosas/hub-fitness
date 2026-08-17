@@ -3,7 +3,10 @@ import { usePlanner } from '../context/PlannerContext';
 import { exportModulePDF, exportModuleCSV } from '../utils/exportHandlers';
 import { ModuleReportGenerator } from './ModuleReportGenerator';
 import { GeminiAdvisorModal } from './GeminiAdvisorModal';
-import { Download, FileText, Sparkles, Printer } from 'lucide-react';
+import { Download, FileText, Sparkles, Printer, HelpCircle } from 'lucide-react';
+import type { ModuleId } from '../core/rbac/moduleVisibility';
+import { kbHrefForModule } from '../core/kb/visibility';
+import { resolvePlannerSearch } from '../core/m6LegacyRoutes';
 
 export interface KpiCardItem {
   label: string;
@@ -28,7 +31,10 @@ export const ModuleHeader: React.FC<ModuleHeaderProps> = ({
   kpis,
   actions,
 }) => {
-  const { dreMonths, activeScenario, fatorR, granularDreItems } = usePlanner();
+  const { dreMonths, activeScenario, fatorR, granularDreItems, activeRole, setActiveModule } =
+    usePlanner();
+  const kbHref =
+    moduleId !== 'KB' ? kbHrefForModule(activeRole, moduleId as ModuleId) : null;
   const [isReportModalOpen, setIsReportModalOpen] = useState<boolean>(false);
   const [isAiModalOpen, setIsAiModalOpen] = useState<boolean>(false);
 
@@ -53,7 +59,24 @@ export const ModuleHeader: React.FC<ModuleHeaderProps> = ({
             </span>
             <span>HUB-SIM · 3PL LOGISTICS PLANNER</span>
           </div>
-          <h1 className="text-2xl font-black text-white tracking-tight">{title}</h1>
+          <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
+            {title}
+            {kbHref && (
+              <button
+                type="button"
+                aria-label="Base de conhecimento"
+                title="Base de conhecimento"
+                onClick={() => {
+                  const route = resolvePlannerSearch(kbHref);
+                  window.history.replaceState(null, '', kbHref);
+                  setActiveModule(route.module);
+                }}
+                className="inline-flex items-center justify-center w-6 h-6 rounded-full border border-white/40 text-white/90 hover:bg-white/15 cursor-pointer"
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </h1>
           <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">{subtitle}</p>
         </div>
 
