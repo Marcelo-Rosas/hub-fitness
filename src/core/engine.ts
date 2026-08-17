@@ -509,10 +509,41 @@ export interface DreTotals24m {
   lucroLiquidoTotal: number;
 }
 
+/** BP v3.5 CSV freeze — seed/auditoria only. Not the live DRE contract. */
 export function summarizeOfficialDre(): DreTotals24m {
   return {
     receitaTotal: OFFICIAL_TOTALS_24M.receitaTotal,
     lucroLiquidoTotal: OFFICIAL_TOTALS_24M.lucroLiquidoTotal,
+  };
+}
+
+/** Live DRE contract: 1 source (ledger → projectDreFromLedger) → N consumers (M2 cards, table, footer). */
+export interface LiveDreTotals {
+  receitaTotal: number;
+  custosOperacionaisTotal: number;
+  despesasOperacionaisTotal: number;
+  dasTotal: number;
+  lucroBrutoTotal: number;
+  lucroLiquidoTotal: number;
+  margemLiquidaPercent: number;
+}
+
+export function summarizeLiveDre(months: DreMonth[]): LiveDreTotals {
+  const receitaTotal = months.reduce((a, m) => a + m.receitaServicos, 0);
+  const custosOperacionaisTotal = months.reduce((a, m) => a + m.custosOperacionais, 0);
+  const despesasOperacionaisTotal = months.reduce((a, m) => a + m.despesasOperacionais, 0);
+  const dasTotal = months.reduce((a, m) => a + m.das6Percent, 0);
+  const lucroLiquidoTotal = months.reduce((a, m) => a + m.lucroLiquido, 0);
+  const lucroBrutoTotal = receitaTotal - custosOperacionaisTotal - dasTotal;
+  const margemLiquidaPercent = receitaTotal === 0 ? 0 : (lucroLiquidoTotal / receitaTotal) * 100;
+  return {
+    receitaTotal,
+    custosOperacionaisTotal,
+    despesasOperacionaisTotal,
+    dasTotal,
+    lucroBrutoTotal,
+    lucroLiquidoTotal,
+    margemLiquidaPercent,
   };
 }
 

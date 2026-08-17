@@ -257,7 +257,10 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [supplierCompanies, setSupplierCompanies] = useState<SupplierCompany[]>(INITIAL_SUPPLIER_COMPANIES);
   const [supplierQuotes, setSupplierQuotes] = useState<SupplierQuote[]>(INITIAL_SUPPLIER_QUOTES);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(INITIAL_AUDIT_LOGS);
-  const [activeModule, setActiveModule] = useState<string>('M1');
+  const [activeModule, setActiveModule] = useState<string>(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get('module');
+    return fromUrl && /^M\d{1,2}$/.test(fromUrl) ? fromUrl : 'M1';
+  });
   const [inspectorCell, setInspectorCell] = useState<InspectorCellInfo | null>(null);
   const [spinOffActive, setSpinOffActive] = useState<boolean>(false);
   const [prolaboreMonthly, setProlaboreMonthly] = useState<number>(defaultParams.fiscal.plBaseMonthly);

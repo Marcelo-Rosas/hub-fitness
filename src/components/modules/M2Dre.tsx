@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { parseOfficialCSVs } from '../../data/officialData';
-import { computeTechOpexMonthly, plAdditionalForMonth } from '../../core/engine';
+import { computeTechOpexMonthly, plAdditionalForMonth, summarizeLiveDre } from '../../core/engine';
 import { M2DreVarianceChart } from '../M2DreVarianceChart';
 import { usePlanner } from '../../context/PlannerContext';
 import { DreSection } from '../../types';
@@ -65,7 +64,7 @@ const AccountHint: React.FC<{ text?: string }> = ({ text }) => {
 
 export const M2Dre: React.FC = () => {
   const { granularDreItems, hubParams, dreMonths, activeScenario } = usePlanner();
-  const { totals24M } = parseOfficialCSVs();
+  const live24 = useMemo(() => summarizeLiveDre(dreMonths), [dreMonths]);
   const condoY1 = Math.round(hubParams.rent.areaM2 * hubParams.rent.condominiumPerM2);
   const rentY1 = Math.round(hubParams.rent.areaM2 * hubParams.rent.pricePerM2);
   const techOpexY1 = computeTechOpexMonthly(hubParams);
@@ -144,26 +143,26 @@ export const M2Dre: React.FC = () => {
       <ModuleHeader
         moduleId="M2"
         title="DRE Demonstrativo do Resultado (24 Meses)"
-        subtitle="Consolidado contábil oficial M1 ao M24 extraído de 01_DRE_24_meses.csv com amparo no Simples Nacional Anexo III."
+        subtitle="Consolidado live M1–M24 a partir de finance.ledger_lines (Operator) → engine. CSV BP é seed/auditoria, não este contrato."
         kpis={[
           {
             label: 'Receita Bruta 24m',
-            value: `R$ ${totals24M.receitaTotal.toLocaleString('pt-BR')}`,
-            subtext: 'Somatório oficial 24 meses M1–M24',
+            value: `R$ ${live24.receitaTotal.toLocaleString('pt-BR')}`,
+            subtext: 'Soma das linhas DRE (mesmo contrato da tabela)',
             badge: 'RECEITA TOTAL',
             highlightColor: 'slate',
           },
           {
             label: 'Custos & OpEx 24m',
-            value: `R$ ${totals24M.custosETotasOp.toLocaleString('pt-BR')}`,
-            subtext: 'Custos variáveis + despesas + tributos',
+            value: `R$ ${(live24.custosOperacionaisTotal + live24.despesasOperacionaisTotal + live24.dasTotal).toLocaleString('pt-BR')}`,
+            subtext: 'Custos variáveis + despesas + DAS',
             badge: 'CUSTOS TOTAL',
             highlightColor: 'amber',
           },
           {
             label: 'Lucro Líquido 24m',
-            value: `R$ ${totals24M.lucroLiquidoTotal.toLocaleString('pt-BR')}`,
-            subtext: 'Margem Líquida Efetiva 11,9%',
+            value: `R$ ${live24.lucroLiquidoTotal.toLocaleString('pt-BR')}`,
+            subtext: `Margem líquida ${live24.margemLiquidaPercent.toFixed(1).replace('.', ',')}%`,
             badge: 'LUCRO LÍQUIDO ★',
             highlightColor: 'emerald',
           },
@@ -343,17 +342,26 @@ export const M2Dre: React.FC = () => {
                       TOTAL 24M (M1–M24)
                     </td>
                     <td className="py-4 px-4 text-right text-white font-black text-sm">
-                      R$ {dreMonths.reduce((a, m) => a + m.receitaServicos, 0).toLocaleString('pt-BR')}
+                      R$ {live24.receitaTotal.toLocaleString('pt-BR')}
                     </td>
-                    <td colSpan={5} className="py-4 px-4 text-center text-slate-400 font-sans text-xs">
-                      Custos + Despesas Op + DAS = R${' '}
-                      {dreMonths.reduce((a, m) => a + m.custosOperacionais + m.despesasOperacionais + m.das6Percent, 0).toLocaleString('pt-BR')}
+                    <td className="py-4 px-4 text-right text-slate-200 font-black text-sm">
+                      R$ {live24.custosOperacionaisTotal.toLocaleString('pt-BR')}
+                    </td>
+                    <td className="py-4 px-4 text-right text-slate-200 font-black text-sm">
+                      R$ {live24.lucroBrutoTotal.toLocaleString('pt-BR')}
+                    </td>
+                    <td className="py-4 px-4 text-right text-slate-200 font-black text-sm">
+                      R$ {live24.despesasOperacionaisTotal.toLocaleString('pt-BR')}
+                    </td>
+                    <td className="py-4 px-4 text-right text-slate-400">—</td>
+                    <td className="py-4 px-4 text-right text-slate-200 font-black text-sm">
+                      R$ {live24.dasTotal.toLocaleString('pt-BR')}
                     </td>
                     <td className="py-4 px-4 text-right text-emerald-400 font-black text-base">
-                      R$ {dreMonths.reduce((a, m) => a + m.lucroLiquido, 0).toLocaleString('pt-BR')}
+                      R$ {live24.lucroLiquidoTotal.toLocaleString('pt-BR')}
                     </td>
                     <td className="py-4 px-4 text-right text-emerald-300 font-black text-sm">
-                      11,9%
+                      {live24.margemLiquidaPercent.toFixed(1)}%
                     </td>
                   </tr>
                 </tfoot>

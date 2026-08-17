@@ -40,6 +40,10 @@ Documento vivo. Agentes e humanos: **ler antes de ship**. Novas regras → acres
 
 UI/copy: bind a `hubParams` / milestones / engine — não petrificar BP v3.5 em `M*.tsx`.
 
+**Contrato 1 fonte:** cada tela/KPI tem uma origem. Seed CSV (`officialData.ts`) só bootstrap/auditoria BP. Depois do Operator (`finance.ledger_lines` 1:N `chart_accounts` / `cost_centers`), consumidores (M2 cards, tabela, rodapé) leem `dreMonths` via `summarizeLiveDre` — nunca misturar freeze CSV com engine na mesma tela.
+
+---
+
 ---
 
 ## 2. ADR-003 (dados)
@@ -106,4 +110,5 @@ UI/copy: bind a `hubParams` / milestones / engine — não petrificar BP v3.5 em
 
 | Data | Mudança |
 |------|---------|
+| 2026-08-16 | Contrato DRE live: ledger 1:N → `summarizeLiveDre`; CSV = seed |
 | 2026-08-15 | Criação: ship discipline + canônicos pós Plan B / hardcode purge |
