@@ -17,11 +17,14 @@ import { computeWmsProprioImpact } from '../../core/engine';
 import {
   computeTornadoBars,
   deriveScenarioKpis,
+  pickComparatorScenarios,
   projectScenario,
 } from '../../core/scenarioDrivers';
 import { canEditFinance } from '../../core/rbac/moduleEdit';
 import { INITIAL_GRANULAR_DRE_ITEMS } from '../../data/initialData';
+import { PROFILE_PRESETS } from '../../data/mixSimulatorData';
 import { OFFICIAL_TOTALS_24M } from '../../data/officialData';
+import { occupiedPositionsFromRate } from '../../core/mixPreview';
 
 export const M6Cenarios: React.FC<{ embed?: boolean }> = ({ embed = false }) => {
   const {
@@ -37,32 +40,36 @@ export const M6Cenarios: React.FC<{ embed?: boolean }> = ({ embed = false }) => 
     isMixDirty,
     hubParams,
     activeRole,
+    activeMix,
+    updateActiveMix,
   } = usePlanner();
 
   const canEdit = canEditFinance(activeRole);
   const base = ledgerBaseItems.length ? ledgerBaseItems : INITIAL_GRANULAR_DRE_ITEMS;
   const ledgerItems = isMixDirty && previewMixItems.length ? previewMixItems : base;
 
-  const baseline = scenarios.find((s) => s.isBaseline) || scenarios[0];
-  const pessimistic = scenarios.find((s) => s.id === 'sc-pessimistic') || scenarios[1] || scenarios[0];
+  const { left, right } = useMemo(
+    () => pickComparatorScenarios(scenarios, activeScenarioId),
+    [scenarios, activeScenarioId],
+  );
 
-  const baselineKpis = useMemo(() => {
-    const months = projectScenario(ledgerItems, baseline.drivers, hubParams);
+  const leftKpis = useMemo(() => {
+    const months = projectScenario(ledgerItems, left.drivers, hubParams);
     return deriveScenarioKpis(months, hubParams);
-  }, [ledgerItems, baseline.drivers, hubParams]);
+  }, [ledgerItems, left.drivers, hubParams]);
 
-  const pessimisticKpis = useMemo(() => {
-    const months = projectScenario(ledgerItems, pessimistic.drivers, hubParams);
+  const rightKpis = useMemo(() => {
+    const months = projectScenario(ledgerItems, right.drivers, hubParams);
     return deriveScenarioKpis(months, hubParams);
-  }, [ledgerItems, pessimistic.drivers, hubParams]);
+  }, [ledgerItems, right.drivers, hubParams]);
 
-  const deltaOccupancy = (pessimistic.drivers.occupancyRate - baseline.drivers.occupancyRate) * 100;
-  const deltaLL = pessimisticKpis.llM7Plus - baselineKpis.llM7Plus;
-  const deltaCash = pessimisticKpis.m24Cash - baselineKpis.m24Cash;
+  const deltaOccupancy = (right.drivers.occupancyRate - left.drivers.occupancyRate) * 100;
+  const deltaLL = rightKpis.llM7Plus - leftKpis.llM7Plus;
+  const deltaCash = rightKpis.m24Cash - leftKpis.m24Cash;
 
   const v36 = computeWmsProprioImpact(hubParams);
-  const v36LlDelta = v36.llM7Plus - baselineKpis.llM7Plus;
-  const v36CashDelta = v36.saldoM24CarenciaAluguel - baselineKpis.m24Cash;
+  const v36LlDelta = v36.llM7Plus - leftKpis.llM7Plus;
+  const v36CashDelta = v36.saldoM24CarenciaAluguel - leftKpis.m24Cash;
 
   const tornadoData = useMemo(
     () =>
@@ -87,7 +94,7 @@ export const M6Cenarios: React.FC<{ embed?: boolean }> = ({ embed = false }) => 
       <ModuleHeader
         moduleId="M6"
         title="Matriz de Cenários & Análise Tornado"
-        subtitle="Drivers de ocupação/custo/despesa cruzam o motor DRE. Tornado live (sem literais)."
+        subtitle="Ocupação vem do Mix (posições × ticket perfil). Aqui: aluguel, COGS, HC, tech e Tornado live."
         kpis={[
           {
             label: 'Cenários',
@@ -99,7 +106,7 @@ export const M6Cenarios: React.FC<{ embed?: boolean }> = ({ embed = false }) => 
           {
             label: 'Delta Ocupação',
             value: `${deltaOccupancy.toFixed(0)} pp`,
-            subtext: `Pessimista vs base`,
+            subtext: `Ativo vs ${left.name}`,
             badge: 'ESTRESSE',
             highlightColor: 'rose',
           },
@@ -131,6 +138,49 @@ export const M6Cenarios: React.FC<{ embed?: boolean }> = ({ embed = false }) => 
       />
       )}
 
+      {embed && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-4 space-y-2">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            Blends pró-formatados
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            {(['blend_alvo', 'blend_conservador', 'blend_agressivo'] as const).map((key) => {
+              const preset = PROFILE_PRESETS[key];
+              const selected =
+                activeMix.p1 === preset.p1 &&
+                activeMix.p2 === preset.p2 &&
+                activeMix.p4 === preset.p4 &&
+                activeMix.p5 === preset.p5;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() =>
+                    updateActiveMix({
+                      p1: preset.p1,
+                      p2: preset.p2,
+                      p4: preset.p4,
+                      p5: preset.p5,
+                      presetName: preset.presetName,
+                    })
+                  }
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg border cursor-pointer ${
+                    selected
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-slate-50 text-slate-700 border-slate-200'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              );
+            })}
+            <span className="px-3 py-1.5 text-xs font-bold rounded-lg border border-rose-200 bg-rose-50 text-rose-800">
+              Monocliente · Vetado
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-4 space-y-3">
         <div className="flex flex-wrap gap-2">
           {scenarios.map((s) => (
@@ -150,21 +200,20 @@ export const M6Cenarios: React.FC<{ embed?: boolean }> = ({ embed = false }) => 
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
-          <label className="space-y-1">
-            <span className="font-semibold text-slate-700">Ocupação ({(d.occupancyRate * 100).toFixed(0)}%)</span>
-            <input
-              type="range"
-              min={0.05}
-              max={1}
-              step={0.01}
-              disabled={!canEdit}
-              value={d.occupancyRate}
-              onChange={(e) =>
-                updateScenarioDrivers(activeScenarioId, { occupancyRate: Number(e.target.value) })
-              }
-              className="w-full"
-            />
-          </label>
+          <div className="space-y-1 rounded-lg border border-indigo-200 bg-indigo-50/70 p-2.5">
+            <span className="font-semibold text-indigo-950">
+              Ocupação Mix ({(d.occupancyRate * 100).toFixed(0)}%)
+            </span>
+            <p className="text-[11px] text-indigo-900 font-mono">
+              {occupiedPositionsFromRate(d.occupancyRate, hubParams.capacity.totalPositions).toLocaleString(
+                'pt-BR',
+              )}{' '}
+              / {hubParams.capacity.totalPositions.toLocaleString('pt-BR')} pos
+            </p>
+            <p className="text-[10px] text-slate-600">
+              SSOT na aba Mix & Receitas (ticket perfil). Aqui só aluguel / COGS / HC / tech.
+            </p>
+          </div>
           <label className="space-y-1">
             <span className="font-semibold text-slate-700">Aluguel ×{d.rentFactor.toFixed(2)}</span>
             <input
@@ -234,7 +283,7 @@ export const M6Cenarios: React.FC<{ embed?: boolean }> = ({ embed = false }) => 
           <div className="flex items-center gap-2">
             <GitCompare className="w-4 h-4 text-blue-400" />
             <h3 className="text-xs font-bold uppercase tracking-wider">
-              Comparador A/B: Base vs Pessimista (engine)
+              Comparador A/B: {left.name} vs {right.name} (engine)
             </h3>
           </div>
         </div>
@@ -243,28 +292,28 @@ export const M6Cenarios: React.FC<{ embed?: boolean }> = ({ embed = false }) => 
             <thead>
               <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
                 <th className="py-3 px-4 font-sans">Métrica</th>
-                <th className="py-3 px-4 text-right bg-emerald-50 text-emerald-900">{baseline.name}</th>
-                <th className="py-3 px-4 text-right bg-rose-50 text-rose-900">{pessimistic.name}</th>
+                <th className="py-3 px-4 text-right bg-emerald-50 text-emerald-900">{left.name}</th>
+                <th className="py-3 px-4 text-right bg-rose-50 text-rose-900">{right.name}</th>
                 <th className="py-3 px-4 text-right font-bold">Δ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               <tr>
                 <td className="py-3 px-4 font-sans font-semibold">Ocupação</td>
-                <td className="py-3 px-4 text-right">{(baseline.drivers.occupancyRate * 100).toFixed(0)}%</td>
-                <td className="py-3 px-4 text-right">{(pessimistic.drivers.occupancyRate * 100).toFixed(0)}%</td>
+                <td className="py-3 px-4 text-right">{(left.drivers.occupancyRate * 100).toFixed(0)}%</td>
+                <td className="py-3 px-4 text-right">{(right.drivers.occupancyRate * 100).toFixed(0)}%</td>
                 <td className="py-3 px-4 text-right">{deltaOccupancy.toFixed(0)} pp</td>
               </tr>
               <tr>
                 <td className="py-3 px-4 font-sans font-semibold">LL M7+</td>
-                <td className="py-3 px-4 text-right">R$ {baselineKpis.llM7Plus.toLocaleString('pt-BR')}</td>
-                <td className="py-3 px-4 text-right">R$ {pessimisticKpis.llM7Plus.toLocaleString('pt-BR')}</td>
+                <td className="py-3 px-4 text-right">R$ {leftKpis.llM7Plus.toLocaleString('pt-BR')}</td>
+                <td className="py-3 px-4 text-right">R$ {rightKpis.llM7Plus.toLocaleString('pt-BR')}</td>
                 <td className="py-3 px-4 text-right">R$ {deltaLL.toLocaleString('pt-BR')}</td>
               </tr>
               <tr>
                 <td className="py-3 px-4 font-sans font-semibold">Caixa M24</td>
-                <td className="py-3 px-4 text-right">R$ {baselineKpis.m24Cash.toLocaleString('pt-BR')}</td>
-                <td className="py-3 px-4 text-right">R$ {pessimisticKpis.m24Cash.toLocaleString('pt-BR')}</td>
+                <td className="py-3 px-4 text-right">R$ {leftKpis.m24Cash.toLocaleString('pt-BR')}</td>
+                <td className="py-3 px-4 text-right">R$ {rightKpis.m24Cash.toLocaleString('pt-BR')}</td>
                 <td className="py-3 px-4 text-right">R$ {deltaCash.toLocaleString('pt-BR')}</td>
               </tr>
             </tbody>
@@ -322,7 +371,7 @@ export const M6Cenarios: React.FC<{ embed?: boolean }> = ({ embed = false }) => 
 
       <HubChartCard
         title="Tornado live — Δ LL M7+"
-        subtitle="Sensibilidade vs drivers do cenário ativo (engine, zero literais)."
+        subtitle="Sensibilidade vs Mix + drivers do cenário ativo (engine, zero literais)."
         badge="Δ LL M7+"
         plotClassName="h-72 w-full pt-2"
         legend={
