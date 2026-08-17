@@ -20,11 +20,22 @@ import {
 } from '../../src/core/engine';
 import { defaultParams } from '../../src/core/params';
 import { applyScenarioDrivers, DEFAULT_SCENARIO_DRIVERS } from '../../src/core/scenarioDrivers';
+import {
+  BLEND_ALVO_MC_POS,
+  BLEND_ALVO_MIX,
+  BLEND_CONSERVADOR_MIX,
+  computeMinViableBe,
+} from '../../src/core/mixPreview';
 import { ledgerToRow, rowToLedger, accountToRow, rowToAccount } from '../../src/core/operator/financeMappers';
 import { INITIAL_GRANULAR_DRE_ITEMS } from '../../src/data/initialData';
+import { INITIAL_PAYROLL_ROLES } from '../../src/data/payrollRoles';
 import { PLANO_DE_CONTAS_ITEMS } from '../../src/data/planoDeContasData';
 import type { AccountItem } from '../../src/data/planoDeContasData';
 import { OFFICIAL_TOTALS_24M } from '../../src/core/bpV35Reference';
+import { mixProfileLabel, parse4plCt, format4plCell } from '../../src/core/mixLabels';
+import { articleById, visibleArticles } from '../../src/core/kb/visibility';
+import { canViewModule } from '../../src/core/rbac/moduleVisibility';
+import { MIX_COST_MODE_LABELS } from '../../src/core/payrollRoles';
 import {
   LIVE_EXPORT_SEAL,
   buildLiveDreExport,
@@ -560,4 +571,124 @@ describe('smoke live Operator', () => {
     },
     45_000,
   );
+});
+
+describe('smoke Mix Blend Alvo + piso CCT → BE mínimo viável', () => {
+  it('finds occupancy floor from cargos SC + OPEX (not 0.85 scalar)', () => {
+    const capacity = defaultParams.capacity.totalPositions;
+    expect(capacity).toBe(2968);
+
+    const cct = computeMinViableBe({
+      items: INITIAL_GRANULAR_DRE_ITEMS,
+      mix: BLEND_ALVO_MIX,
+      capacity,
+      costMode: 'cct',
+      payrollRoles: INITIAL_PAYROLL_ROLES,
+    });
+    const mediana = computeMinViableBe({
+      items: INITIAL_GRANULAR_DRE_ITEMS,
+      mix: BLEND_ALVO_MIX,
+      capacity,
+      costMode: 'mediana',
+      payrollRoles: INITIAL_PAYROLL_ROLES,
+    });
+    const caged = computeMinViableBe({
+      items: INITIAL_GRANULAR_DRE_ITEMS,
+      mix: BLEND_ALVO_MIX,
+      capacity,
+      costMode: 'caged',
+      payrollRoles: INITIAL_PAYROLL_ROLES,
+    });
+
+    expect(cct.mcPos).toBe(BLEND_ALVO_MC_POS);
+    expect(cct.bePositions).toBe(Math.round(cct.costMonthly / cct.mcPos));
+    expect(cct.bePct).toBeLessThan(mediana.bePct);
+    expect(mediana.bePct).toBeLessThan(caged.bePct);
+    expect(cct.minViablePositions).toBe(cct.bePositions);
+    expect(cct.bePct).toBeLessThanOrEqual(defaultParams.capacity.targetOccupancy * 100);
+    expect(cct.costMonthly).not.toBe(Math.round(124104 * 0.85));
+
+    expect(cct).toMatchObject({
+      mcPos: 74.15,
+      structureCost: 111783,
+      costMonthly: 110139,
+      bePositions: 1485,
+      bePct: 50,
+      minViablePositions: 1485,
+    });
+    expect(mediana.bePct).toBe(50.8);
+    expect(caged.bePct).toBe(51.3);
+  });
+});
+
+describe('smoke Mix Blend Conservador + piso CCT → BE mínimo viável', () => {
+  it('finds occupancy floor from cargos SC + OPEX / MC Conservador / 2968', () => {
+    const capacity = defaultParams.capacity.totalPositions;
+    expect(capacity).toBe(2968);
+    expect(BLEND_CONSERVADOR_MIX).toEqual({ p1: 25, p2: 30, p4: 30, p5: 15 });
+
+    const cct = computeMinViableBe({
+      items: INITIAL_GRANULAR_DRE_ITEMS,
+      mix: BLEND_CONSERVADOR_MIX,
+      capacity,
+      costMode: 'cct',
+      payrollRoles: INITIAL_PAYROLL_ROLES,
+    });
+    const mediana = computeMinViableBe({
+      items: INITIAL_GRANULAR_DRE_ITEMS,
+      mix: BLEND_CONSERVADOR_MIX,
+      capacity,
+      costMode: 'mediana',
+      payrollRoles: INITIAL_PAYROLL_ROLES,
+    });
+    const alvoCct = computeMinViableBe({
+      items: INITIAL_GRANULAR_DRE_ITEMS,
+      mix: BLEND_ALVO_MIX,
+      capacity,
+      costMode: 'cct',
+      payrollRoles: INITIAL_PAYROLL_ROLES,
+    });
+
+    expect(cct.mcPos).toBeLessThan(BLEND_ALVO_MC_POS);
+    expect(cct.bePositions).toBe(Math.round(cct.costMonthly / cct.mcPos));
+    expect(cct.bePct).toBeLessThan(mediana.bePct);
+    expect(cct.bePct).toBeGreaterThan(alvoCct.bePct);
+    expect(cct.minViablePositions).toBe(cct.bePositions);
+    expect(cct.bePct).toBeLessThanOrEqual(defaultParams.capacity.targetOccupancy * 100);
+
+    expect(cct).toMatchObject({
+      mcPos: 70.72,
+      structureCost: 111783,
+      costMonthly: 110139,
+      bePositions: 1557,
+      bePct: 52.5,
+      minViablePositions: 1557,
+    });
+  });
+});
+
+describe('smoke KB labels + M11 CoA', () => {
+  it('mestra UI helpers hide proxies', () => {
+    expect(mixProfileLabel('Blend_alvo_20_30_25_25')).toBe('Blend Alvo 20/30/25/25');
+    const pl = parse4plCt('6000_M12_12000_M24', 'Blend_alvo_20_30_25_25');
+    expect(format4plCell(pl.m12)).toBe('R$ 6.000');
+    expect(format4plCell(pl.m24)).toBe('R$ 12.000');
+    expect(format4plCell(pl.m12) + format4plCell(pl.m24)).not.toMatch(/_M12_/);
+  });
+
+  it('M11 is CoA not Mix alias', () => {
+    expect(canViewModule('cfo', 'M11')).toBe(true);
+    expect(canViewModule('comercial', 'M11')).toBe(false);
+  });
+
+  it('KB M6 article cites SITRAROIT', () => {
+    const blob = JSON.stringify(articleById('m6-pisos'));
+    expect(blob).toMatch(/SITRAROIT/);
+    expect(blob).not.toMatch(/cct_sc_/);
+    expect(visibleArticles('comercial').some((a) => a.moduleId === 'M6')).toBe(false);
+  });
+
+  it('mix cost pills have no currency', () => {
+    expect(Object.values(MIX_COST_MODE_LABELS).join(' ')).not.toMatch(/R\$/);
+  });
 });

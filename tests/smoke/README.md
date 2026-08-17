@@ -8,7 +8,7 @@ Unit/TDD → `src/**/*.test.ts`. Live HTTP **não** mora em `src/__tests__`.
 
 | Arquivo | Contratos |
 |---|---|
-| `finance-contracts.smoke.test.ts` | CoA 5.2.02, mapper, KPIs, M3 cria+edita, CSV↔PDF sync, Operator GET/POST/PUT/DELETE |
+| `finance-contracts.smoke.test.ts` | CoA 5.2.02, mapper, KPIs, M3 cria+edita, CSV↔PDF sync, Operator GET/POST/PUT/DELETE, Mix Blend Alvo + piso CCT BE, KB git catalog + M11 CoA |
 | `compras-research.smoke.test.ts` | POST live `/api/gemini/compras-research` 5.1.01.03 |
 
 Fallback Gemini **sem HTTP:** `pickComprasResearchFallback` em `src/core/compras/comprasResearchPack.ts` (teste em `compras-pesquisa-e2e.test.ts`).
@@ -83,15 +83,26 @@ Um payload: `src/utils/liveExport.ts` (`buildLiveDreExport`). Sem fallback `OFFI
 
 Smoke: cria `4.1.04.98` e edita `rec-armazenagem` → CSV contém código/Y1; PDF table = `formatBrlCell` dos mesmos números.
 
+### Mix Blend Alvo + piso CCT (BE mínimo viável)
+
+`computeMinViableBe` usa **folha da tabela de cargos SC** (M15) + OPEX sem HC. Pills **Piso CCT / Mediana SC / Média CAGED**. HC único; 3 colunas = 3 pisos.
+
+| Mix | Folha CCT | Custo total CCT | BE CCT |
+|---|---:|---:|---|
+| Blend Alvo 20/30/25/25 | (piso × HC) | R$ 110.139 | **1.485 pos (50,0%)** |
+| Blend Conservador 25/30/30/15 | mesma folha | R$ 110.139 | **1.557 pos (52,5%)** |
+
+Alvo mediana 50,8% · CAGED 51,3%. Empilhadeira **sem** NR-16 default. Frota 10 motoristas = `src/data/payrollFleetAnnex.csv` (fora Mix).
+
 ## Corrida
 
 ```
 npm run test:smoke   # 2026-08-17
 Test Files  2 passed
-Tests       23 passed
+Tests       25 passed
 ```
 
-Inclui live POST `4.1.04.98` + PUT 2500 + DELETE cleanup + CSV↔PDF sync. Atualizar esta seção após cada gate.
+Inclui live POST `4.1.04.98` + PUT 2500 + DELETE cleanup + CSV↔PDF sync + Mix Blend Alvo piso CCT BE. Atualizar esta seção após cada gate.
 
 ## Supabase
 
