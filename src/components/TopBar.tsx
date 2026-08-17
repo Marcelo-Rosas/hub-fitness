@@ -5,7 +5,6 @@ import { exportDre24mCSV } from '../utils/exportHandlers';
 import {
   Download,
   Plus,
-  GitCompare,
   FileSpreadsheet,
   FileText,
   CloudUpload,
@@ -15,7 +14,7 @@ import {
   Printer,
   PanelLeftClose,
   PanelLeftOpen,
-  BookOpen,
+  MoreHorizontal,
 } from 'lucide-react';
 
 interface TopBarProps {
@@ -24,8 +23,6 @@ interface TopBarProps {
   onOpenRoleModal: () => void;
   onOpenGeminiModal: () => void;
   onOpenPdfModal: () => void;
-  onOpenModuleReport: () => void;
-  onOpenOnboarding: () => void;
   onOpenNewScenario: () => void;
   onDriveExport: () => void;
 }
@@ -36,8 +33,6 @@ const TopBar: React.FC<TopBarProps> = ({
   onOpenRoleModal,
   onOpenGeminiModal,
   onOpenPdfModal,
-  onOpenModuleReport,
-  onOpenOnboarding,
   onOpenNewScenario,
   onDriveExport,
 }) => {
@@ -57,6 +52,7 @@ const TopBar: React.FC<TopBarProps> = ({
 
   const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false);
   const [isScenarioDropdownOpen, setIsScenarioDropdownOpen] = useState(false);
+  const [isOverflowOpen, setIsOverflowOpen] = useState(false);
 
   const currentRoleConfig = USER_ROLES.find((r) => r.id === activeRole);
 
@@ -120,82 +116,57 @@ const TopBar: React.FC<TopBarProps> = ({
           )}
         </div>
 
-        <button
-          onClick={onOpenNewScenario}
-          className="bg-[#1F3864] text-white px-3 py-1.5 rounded text-xs font-medium hover:opacity-90 transition-opacity flex items-center gap-1"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>＋ Novo</span>
-        </button>
-
-        <button
-          onClick={() => setActiveModule('M6')}
-          className="border border-gray-200 text-gray-600 px-3 py-1.5 rounded text-xs font-medium hover:bg-gray-50 transition-colors flex items-center gap-1"
-        >
-          <GitCompare className="w-3.5 h-3.5" />
-          <span>⇄ Comparar</span>
-        </button>
-
-        <button
-          onClick={onOpenGeminiModal}
-          className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-3 py-1.5 rounded text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-slate-900 animate-pulse" />
-          <span>Assistente CFO IA</span>
-        </button>
-
-        <button
-          onClick={onOpenPdfModal}
-          className="bg-[#006100] hover:bg-[#004d00] text-white px-3 py-1.5 rounded text-xs font-bold transition-all shadow-xs flex items-center gap-1.5"
-        >
-          <Printer className="w-3.5 h-3.5 text-white" />
-          <span>Relatório PDF Global</span>
-        </button>
-
-        <button
-          onClick={onOpenModuleReport}
-          className="bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 rounded text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-        >
-          <FileText className="w-3.5 h-3.5 text-emerald-200" />
-          <span>📄 Relatório {activeModule}</span>
-        </button>
-
-        <button
-          onClick={onOpenOnboarding}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-        >
-          <BookOpen className="w-3.5 h-3.5 text-white" />
-          <span>Guia & Onboarding 🚀</span>
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setIsOverflowOpen(!isOverflowOpen)}
+            className="p-1.5 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 cursor-pointer"
+            aria-label="Mais ações"
+            title="Mais ações"
+          >
+            <MoreHorizontal className="w-4 h-4" />
+          </button>
+          {isOverflowOpen && (
+            <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-xl py-1 z-50 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenNewScenario();
+                  setIsOverflowOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2 text-gray-800"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Novo cenário
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPitchMode(!pitchMode);
+                  setIsOverflowOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2 text-gray-800"
+              >
+                Pitch Mode {pitchMode ? 'ON' : 'OFF'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenGeminiModal();
+                  setIsOverflowOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 hover:bg-gray-50 flex items-center gap-2 text-gray-800"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                Assistente CFO IA
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Right Controls */}
       <div className="flex items-center gap-5">
-        <div
-          onClick={() => setPitchMode(!pitchMode)}
-          className="flex items-center gap-2 cursor-pointer select-none"
-        >
-          <span className="text-[11px] text-gray-400 uppercase font-bold tracking-wider">Pitch Mode</span>
-          <div
-            className={`w-10 h-5 rounded-full relative p-0.5 flex items-center transition-colors ${
-              pitchMode ? 'bg-amber-500' : 'bg-gray-200'
-            }`}
-          >
-            <div
-              className={`w-4 h-4 bg-white rounded-full shadow-xs transition-transform ${
-                pitchMode ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-            <span
-              className={`absolute ${
-                pitchMode ? 'left-1 text-white' : 'right-1.5 text-gray-400'
-              } text-[8px] font-bold`}
-            >
-              {pitchMode ? 'ON' : 'OFF'}
-            </span>
-          </div>
-        </div>
-
         <div className="relative">
           <button
             onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}

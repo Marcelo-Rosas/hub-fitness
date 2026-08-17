@@ -83,14 +83,6 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
   const [newScenarioOccupancy, setNewScenarioOccupancy] = useState<number>(80);
   const [driveExportStatus, setDriveExportStatus] = useState<string | null>(null);
 
-  // Auto-open onboarding on first visit or show trigger
-  useEffect(() => {
-    const hasSeen = localStorage.getItem('hasSeenOnboarding_v35');
-    if (!hasSeen) {
-      setIsOnboardingOpen(true);
-    }
-  }, []);
-
   // Accordion Group collapse states
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     executivo: true,
@@ -434,8 +426,6 @@ Status de Governança:
             onOpenRoleModal={() => setIsRoleModalOpen(true)}
             onOpenGeminiModal={() => setIsGeminiModalOpen(true)}
             onOpenPdfModal={() => setIsPdfModalOpen(true)}
-            onOpenModuleReport={() => setIsModuleReportOpen(true)}
-            onOpenOnboarding={() => setIsOnboardingOpen(true)}
             onOpenNewScenario={() => setIsNewScenarioModalOpen(true)}
             onDriveExport={handleDriveExport}
           />
