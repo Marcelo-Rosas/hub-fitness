@@ -58,6 +58,36 @@ describe('applyScenarioDrivers', () => {
     expect(out.find((i) => i.id === 'other')!.monthlyAmountY1).toBe(1000);
   });
 
+  it('rentFactor scales M3 occupancy lines by CoA even without cst-* ids', () => {
+    const items = [
+      item({
+        id: 'dre-item-manual-rent',
+        section: 'despesa',
+        accountCode: '5.2.02.01',
+        monthlyAmountY1: 80000,
+        monthlyAmountY2: 84000,
+      }),
+      item({
+        id: 'dre-item-manual-condo',
+        section: 'despesa',
+        accountCode: '5.2.02.02',
+        monthlyAmountY1: 6500,
+        monthlyAmountY2: 6500,
+      }),
+      item({
+        id: 'dre-item-iptu',
+        section: 'despesa',
+        accountCode: '5.2.02.03',
+        monthlyAmountY1: 2000,
+        monthlyAmountY2: 2000,
+      }),
+    ];
+    const out = applyScenarioDrivers(items, { ...baseDrivers, rentFactor: 0.9 });
+    expect(out.find((i) => i.id === 'dre-item-manual-rent')!.monthlyAmountY1).toBe(72000);
+    expect(out.find((i) => i.id === 'dre-item-manual-condo')!.monthlyAmountY1).toBe(5850);
+    expect(out.find((i) => i.id === 'dre-item-iptu')!.monthlyAmountY1).toBe(2000);
+  });
+
   it('hcOpexFactor scales hc only', () => {
     const items = [
       item({ id: 'cst-pessoal-clt-pl', section: 'despesa', costBehavior: 'hc', monthlyAmountY1: 10000, monthlyAmountY2: 10000 }),

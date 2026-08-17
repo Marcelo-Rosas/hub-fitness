@@ -1,5 +1,15 @@
 import React, { useState, useMemo } from 'react';
-import { computeTechOpexMonthly, plAdditionalForMonth, summarizeLiveDre } from '../../core/engine';
+import {
+  computeTechOpexMonthly,
+  plAdditionalForMonth,
+  summarizeLiveDre,
+  ledgerAmount24m,
+  occupancyAmountForMonth,
+  isOccupancyCoa,
+  isRentAnalyticLine,
+  isRentOrCondoLine,
+  OCCUPANCY_SYNTHETIC_CODE,
+} from '../../core/engine';
 import { M2DreVarianceChart } from '../M2DreVarianceChart';
 import { usePlanner } from '../../context/PlannerContext';
 import { DreSection } from '../../types';
@@ -65,13 +75,13 @@ const AccountHint: React.FC<{ text?: string }> = ({ text }) => {
 export const M2Dre: React.FC = () => {
   const { granularDreItems, hubParams, dreMonths, activeScenario } = usePlanner();
   const live24 = useMemo(() => summarizeLiveDre(dreMonths), [dreMonths]);
-  const condoY1 = Math.round(hubParams.rent.areaM2 * hubParams.rent.condominiumPerM2);
-  const rentY1 = Math.round(hubParams.rent.areaM2 * hubParams.rent.pricePerM2);
+  const y1Of = (id: string) =>
+    granularDreItems.find((i) => i.id === id && i.active)?.monthlyAmountY1 ?? 0;
   const techOpexY1 = computeTechOpexMonthly(hubParams);
   const plAdicM7 = plAdditionalForMonth(hubParams, 7);
   const depreciacaoY1 =
-    granularDreItems.find((i) => i.id === 'cst-depreciacao')?.monthlyAmountY1 ??
-    Math.round(hubParams.capex.total / 56);
+    y1Of('cst-depreciacao') || Math.round(hubParams.capex.total / 56);
+  const occupancyM7 = occupancyAmountForMonth(granularDreItems, 7, hubParams);
 
   const [activeTab, setActiveTab] = useState<'sintetico' | 'granular' | 'variancia'>('sintetico');
   const [searchTerm, setSearchTerm] = useState('');
@@ -85,16 +95,18 @@ export const M2Dre: React.FC = () => {
 
   // M7 structure: COGS vs OPEX separated (BP v3.5 = R$ 178.609)
   const m7CustoBreakdown = [
-    { category: 'Custo Variável por Posição', value: 35505 },
-    { category: 'Mão de Obra Terceirizada (Chapa/Desova)', value: 12000 },
-    { category: 'OPEX Máquinas (Diesel/Manutenção)', value: 4400 },
+    { category: 'Custo Variável por Posição', value: y1Of('cst-cv-posicao') },
+    { category: 'Mão de Obra Terceirizada (Chapa/Desova)', value: y1Of('cst-mo-terceirizada') },
+    { category: 'OPEX Máquinas (Diesel/Manutenção)', value: y1Of('cst-opex-maquinas') },
   ];
   const m7DespesaBreakdown = [
-    { category: 'Pessoal CLT + Pró-labore Regular', value: 49500 },
+    { category: 'Pessoal CLT + Pró-labore Regular', value: y1Of('cst-pessoal-clt-pl') },
     { category: 'Pró-labore Adicional (Fator R)', value: plAdicM7 },
     { category: 'Depreciação CAPEX', value: depreciacaoY1 },
-    { category: `Aluguel Galpão A (pós-carência)`, value: rentY1 },
-    { category: `Condomínio logístico (R$ ${hubParams.rent.condominiumPerM2.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/m² × ${hubParams.rent.areaM2.toLocaleString('pt-BR')} m²)`, value: condoY1 },
+    {
+      category: `Ocupação ${OCCUPANCY_SYNTHETIC_CODE} (aluguel pós-carência + facilities)`,
+      value: occupancyM7,
+    },
     ...(techOpexY1 > 0
       ? [{ category: 'OPEX Tech (Logcomex + Cloud WMS)', value: techOpexY1 }]
       : []),
@@ -118,13 +130,22 @@ export const M2Dre: React.FC = () => {
   const groupedGranular = useMemo(() => {
     return SECTION_ORDER.map((section) => {
       const items = filteredGranularItems.filter((i) => i.section === section);
-      const total24 = items.reduce(
-        (acc, item) => acc + item.monthlyAmountY1 * 12 + item.monthlyAmountY2 * 12,
-        0
+      const occupancyItems =
+        section === 'despesa'
+          ? items.filter(
+              (i) => isOccupancyCoa(i.accountCode) || isRentOrCondoLine(i),
+            )
+          : [];
+      const occupancyIds = new Set(occupancyItems.map((i) => i.id));
+      const restItems = occupancyItems.length ? items.filter((i) => !occupancyIds.has(i.id)) : items;
+      const total24 = items.reduce((acc, item) => acc + ledgerAmount24m(item, hubParams), 0);
+      const occupancy24 = occupancyItems.reduce(
+        (acc, item) => acc + ledgerAmount24m(item, hubParams),
+        0,
       );
-      return { section, items, total24 };
+      return { section, items: restItems, occupancyItems, occupancy24, total24 };
     });
-  }, [filteredGranularItems]);
+  }, [filteredGranularItems, hubParams]);
 
   const toggleSection = (section: DreSection) => {
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
@@ -453,10 +474,109 @@ export const M2Dre: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="text-slate-200">
-                  {groupedGranular.map(({ section, items, total24 }) => {
+                  {groupedGranular.map(({ section, items, occupancyItems, occupancy24, total24 }) => {
                     const meta = SECTION_META[section];
                     const isExpanded = expandedSections[section];
-                    const compositionCount = items.reduce((n, i) => n + (i.composition?.length ?? 0), 0);
+                    const visibleItems = [...occupancyItems, ...items];
+                    const compositionCount = visibleItems.reduce((n, i) => n + (i.composition?.length ?? 0), 0);
+                    const occOpen = expandedAccounts[`coa:${OCCUPANCY_SYNTHETIC_CODE}`] ?? true;
+                    const occupancyY1 = occupancyItems.reduce((a, i) => a + i.monthlyAmountY1, 0);
+                    const occupancyY2 = occupancyItems.reduce((a, i) => a + i.monthlyAmountY2, 0);
+
+                    const renderItem = (item: (typeof items)[number], idx: number) => {
+                      const lineTotal24 = ledgerAmount24m(item, hubParams);
+                      const rowBg = idx % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800/40';
+                      const hasComp = (item.composition?.length ?? 0) > 0;
+                      const isOpen = expandedAccounts[item.id] ?? true;
+                      return (
+                        <React.Fragment key={item.id}>
+                          <tr className={`${rowBg} hover:bg-slate-800 transition-colors border-t border-slate-800/60`}>
+                            <td className="py-3 px-4 font-sans text-white">
+                              <div className="flex items-start gap-2">
+                                {hasComp ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleAccount(item.id)}
+                                    className="mt-0.5 text-slate-400 hover:text-white cursor-pointer"
+                                    aria-label={isOpen ? 'Recolher composição' : 'Expandir composição'}
+                                  >
+                                    {isOpen ? (
+                                      <ChevronDown className="w-3.5 h-3.5" />
+                                    ) : (
+                                      <ChevronRight className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+                                ) : (
+                                  <span className="w-3.5" />
+                                )}
+                                <div className="min-w-0 flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-semibold text-[13px] leading-snug">{item.name}</span>
+                                  {item.accountCode && (
+                                    <span className="font-mono text-[10px] text-slate-500">{item.accountCode}</span>
+                                  )}
+                                  <AccountHint text={item.notes} />
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 text-center text-slate-300 font-sans text-[12px] tabular-nums">
+                              {item.costCenterId ?? '—'}
+                            </td>
+                            <td className="py-3 px-3 text-center">
+                              <span className={`inline-block min-w-20 px-2 py-0.5 rounded text-[10px] font-bold ${meta.badgeClass}`}>
+                                {section.toUpperCase()}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono text-[13px] tabular-nums text-slate-100">
+                              R$ {formatBRL(item.monthlyAmountY1)}
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono text-[13px] tabular-nums text-slate-100">
+                              R$ {formatBRL(item.monthlyAmountY2)}
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono text-[13px] tabular-nums font-bold text-emerald-400">
+                              R$ {formatBRL(lineTotal24)}
+                            </td>
+                          </tr>
+                          {hasComp &&
+                            isOpen &&
+                            item.composition!.map((comp) => {
+                              const comp24 = isRentAnalyticLine(item)
+                                ? ledgerAmount24m(
+                                    { ...item, monthlyAmountY1: comp.monthlyAmountY1, monthlyAmountY2: comp.monthlyAmountY2 },
+                                    hubParams,
+                                  )
+                                : comp.monthlyAmountY1 * 12 + comp.monthlyAmountY2 * 12;
+                              return (
+                                <tr
+                                  key={comp.id}
+                                  className="bg-slate-950/70 border-t border-slate-800/40 text-slate-300"
+                                >
+                                  <td className="py-2 px-4">
+                                    <div className="pl-9 flex items-center gap-1 min-w-0">
+                                      <span className="text-[12px] leading-snug">{comp.name}</span>
+                                      <AccountHint text={comp.formula} />
+                                    </div>
+                                  </td>
+                                  <td className="py-2 px-3 text-center text-[11px] text-slate-500">
+                                    {item.costCenterId ?? '—'}
+                                  </td>
+                                  <td className="py-2 px-3 text-center text-[10px] uppercase tracking-wide text-slate-500">
+                                    item
+                                  </td>
+                                  <td className="py-2 px-3 text-right font-mono text-[12px] tabular-nums text-slate-300">
+                                    R$ {formatBRL(comp.monthlyAmountY1)}
+                                  </td>
+                                  <td className="py-2 px-3 text-right font-mono text-[12px] tabular-nums text-slate-300">
+                                    R$ {formatBRL(comp.monthlyAmountY2)}
+                                  </td>
+                                  <td className="py-2 px-3 text-right font-mono text-[12px] tabular-nums text-slate-400">
+                                    R$ {formatBRL(comp24)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </React.Fragment>
+                      );
+                    };
 
                     return (
                       <React.Fragment key={section}>
@@ -474,7 +594,7 @@ export const M2Dre: React.FC = () => {
                               )}
                               <span>{meta.label}</span>
                               <span className="text-[10px] font-bold opacity-70 normal-case tracking-normal">
-                                ({items.length} {items.length === 1 ? 'conta' : 'contas'}
+                                ({visibleItems.length} {visibleItems.length === 1 ? 'conta' : 'contas'}
                                 {compositionCount > 0 ? ` · ${compositionCount} itens` : ''})
                               </span>
                             </button>
@@ -492,11 +612,11 @@ export const M2Dre: React.FC = () => {
                             24 meses
                           </td>
                           <td className={`py-2.5 px-3 text-right font-mono text-sm font-black ${meta.accent}`}>
-                            {items.length ? `R$ ${formatBRL(total24)}` : 'R$ 0'}
+                            {visibleItems.length ? `R$ ${formatBRL(total24)}` : 'R$ 0'}
                           </td>
                         </tr>
 
-                        {isExpanded && items.length === 0 && (
+                        {isExpanded && visibleItems.length === 0 && (
                           <tr className="bg-slate-900">
                             <td colSpan={6} className="py-6 text-center text-slate-500 text-xs">
                               Nenhuma conta de {meta.label.toLowerCase()} para os filtros selecionados.
@@ -504,98 +624,43 @@ export const M2Dre: React.FC = () => {
                           </tr>
                         )}
 
-                        {isExpanded &&
-                          items.map((item, idx) => {
-                            const lineTotal24 = item.monthlyAmountY1 * 12 + item.monthlyAmountY2 * 12;
-                            const rowBg = idx % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800/40';
-                            const hasComp = (item.composition?.length ?? 0) > 0;
-                            const isOpen = expandedAccounts[item.id] ?? true;
+                        {isExpanded && occupancyItems.length > 0 && (
+                          <tr className="bg-amber-950/40 border-t border-amber-900/40">
+                            <td className="py-3 px-4 font-sans text-white">
+                              <button
+                                type="button"
+                                onClick={() => toggleAccount(`coa:${OCCUPANCY_SYNTHETIC_CODE}`)}
+                                className="flex items-center gap-2 cursor-pointer"
+                              >
+                                {occOpen ? (
+                                  <ChevronDown className="w-3.5 h-3.5 text-amber-300" />
+                                ) : (
+                                  <ChevronRight className="w-3.5 h-3.5 text-amber-300" />
+                                )}
+                                <span className="font-semibold text-[13px]">Despesas de ocupação</span>
+                                <span className="font-mono text-[10px] text-amber-300">{OCCUPANCY_SYNTHETIC_CODE}</span>
+                              </button>
+                            </td>
+                            <td className="py-3 px-3 text-center text-slate-400 text-[12px]">CC 002</td>
+                            <td className="py-3 px-3 text-center">
+                              <span className="inline-block min-w-20 px-2 py-0.5 rounded text-[10px] font-bold border border-amber-700 text-amber-200">
+                                SINTÉTICA
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono text-[13px] tabular-nums text-slate-100">
+                              R$ {formatBRL(occupancyY1)}
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono text-[13px] tabular-nums text-slate-100">
+                              R$ {formatBRL(occupancyY2)}
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono text-[13px] tabular-nums font-bold text-emerald-400">
+                              R$ {formatBRL(occupancy24)}
+                            </td>
+                          </tr>
+                        )}
 
-                            return (
-                              <React.Fragment key={item.id}>
-                                <tr className={`${rowBg} hover:bg-slate-800 transition-colors border-t border-slate-800/60`}>
-                                  <td className="py-3 px-4 font-sans text-white">
-                                    <div className="flex items-start gap-2">
-                                      {hasComp ? (
-                                        <button
-                                          type="button"
-                                          onClick={() => toggleAccount(item.id)}
-                                          className="mt-0.5 text-slate-400 hover:text-white cursor-pointer"
-                                          aria-label={isOpen ? 'Recolher composição' : 'Expandir composição'}
-                                        >
-                                          {isOpen ? (
-                                            <ChevronDown className="w-3.5 h-3.5" />
-                                          ) : (
-                                            <ChevronRight className="w-3.5 h-3.5" />
-                                          )}
-                                        </button>
-                                      ) : (
-                                        <span className="w-3.5" />
-                                      )}
-                                      <div className="min-w-0 flex items-center gap-1.5 flex-wrap">
-                                        <span className="font-semibold text-[13px] leading-snug">{item.name}</span>
-                                        {item.accountCode && (
-                                          <span className="font-mono text-[10px] text-slate-500">{item.accountCode}</span>
-                                        )}
-                                        <AccountHint text={item.notes} />
-                                      </div>
-                                    </div>
-                                  </td>
-                                  <td className="py-3 px-3 text-center text-slate-300 font-sans text-[12px] tabular-nums">
-                                    {item.costCenterId ?? '—'}
-                                  </td>
-                                  <td className="py-3 px-3 text-center">
-                                    <span className={`inline-block min-w-20 px-2 py-0.5 rounded text-[10px] font-bold ${meta.badgeClass}`}>
-                                      {section.toUpperCase()}
-                                    </span>
-                                  </td>
-                                  <td className="py-3 px-3 text-right font-mono text-[13px] tabular-nums text-slate-100">
-                                    R$ {formatBRL(item.monthlyAmountY1)}
-                                  </td>
-                                  <td className="py-3 px-3 text-right font-mono text-[13px] tabular-nums text-slate-100">
-                                    R$ {formatBRL(item.monthlyAmountY2)}
-                                  </td>
-                                  <td className="py-3 px-3 text-right font-mono text-[13px] tabular-nums font-bold text-emerald-400">
-                                    R$ {formatBRL(lineTotal24)}
-                                  </td>
-                                </tr>
-
-                                {hasComp &&
-                                  isOpen &&
-                                  item.composition!.map((comp) => {
-                                    const comp24 = comp.monthlyAmountY1 * 12 + comp.monthlyAmountY2 * 12;
-                                    return (
-                                      <tr
-                                        key={comp.id}
-                                        className="bg-slate-950/70 border-t border-slate-800/40 text-slate-300"
-                                      >
-                                        <td className="py-2 px-4">
-                                          <div className="pl-9 flex items-center gap-1 min-w-0">
-                                            <span className="text-[12px] leading-snug">{comp.name}</span>
-                                            <AccountHint text={comp.formula} />
-                                          </div>
-                                        </td>
-                                        <td className="py-2 px-3 text-center text-[11px] text-slate-500">
-                                          {item.costCenterId ?? '—'}
-                                        </td>
-                                        <td className="py-2 px-3 text-center text-[10px] uppercase tracking-wide text-slate-500">
-                                          item
-                                        </td>
-                                        <td className="py-2 px-3 text-right font-mono text-[12px] tabular-nums text-slate-300">
-                                          R$ {formatBRL(comp.monthlyAmountY1)}
-                                        </td>
-                                        <td className="py-2 px-3 text-right font-mono text-[12px] tabular-nums text-slate-300">
-                                          R$ {formatBRL(comp.monthlyAmountY2)}
-                                        </td>
-                                        <td className="py-2 px-3 text-right font-mono text-[12px] tabular-nums text-slate-400">
-                                          R$ {formatBRL(comp24)}
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                              </React.Fragment>
-                            );
-                          })}
+                        {isExpanded && occOpen && occupancyItems.map((item, idx) => renderItem(item, idx))}
+                        {isExpanded && items.map((item, idx) => renderItem(item, occupancyItems.length + idx))}
                       </React.Fragment>
                     );
                   })}

@@ -104,7 +104,7 @@ export function applyOccupancyToDreItems(
 
   return items.map((item) => {
     if (item.manualOverride) return item;
-    if (item.id === 'cst-aluguel') {
+    if (isRentAnalyticLine(item)) {
       return {
         ...item,
         monthlyAmountY1: occ.rentY1,
@@ -121,7 +121,7 @@ export function applyOccupancyToDreItems(
         ],
       };
     }
-    if (item.id === 'cst-condominio') {
+    if (isCondoAnalyticLine(item)) {
       return {
         ...item,
         monthlyAmountY1: occ.condoY1,
@@ -147,6 +147,68 @@ export const TECH_OPEX_ACCOUNT_ID = 'cst-opex-tech';
 export const CLIA_LEDGER_ITEM_ID = 'rec-4pl-ct';
 export const RENT_LEDGER_ITEM_ID = 'cst-aluguel';
 export const CONDO_LEDGER_ITEM_ID = 'cst-condominio';
+/** Sintética de ocupação — rollup DRE; não recebe lançamento. */
+export const OCCUPANCY_SYNTHETIC_CODE = '5.2.02';
+/** Analítica de aluguel — única linha com carência hubParams.rent.carenciaAluguelMeses. */
+export const RENT_ANALYTIC_CODE = '5.2.02.01';
+export const CONDO_ANALYTIC_CODE = '5.2.02.02';
+
+export function isOccupancyCoa(accountCode?: string): boolean {
+  if (!accountCode) return false;
+  return accountCode === OCCUPANCY_SYNTHETIC_CODE || accountCode.startsWith(`${OCCUPANCY_SYNTHETIC_CODE}.`);
+}
+
+export function isRentAnalyticLine(item: Pick<DreGranularItem, 'id' | 'accountCode'>): boolean {
+  return item.id === RENT_LEDGER_ITEM_ID || item.accountCode === RENT_ANALYTIC_CODE;
+}
+
+export function isCondoAnalyticLine(item: Pick<DreGranularItem, 'id' | 'accountCode'>): boolean {
+  return item.id === CONDO_LEDGER_ITEM_ID || item.accountCode === CONDO_ANALYTIC_CODE;
+}
+
+export function isRentOrCondoLine(item: Pick<DreGranularItem, 'id' | 'accountCode'>): boolean {
+  return isRentAnalyticLine(item) || isCondoAnalyticLine(item);
+}
+
+/** Pai sintético de 4 níveis: 5.2.02.01 → 5.2.02. */
+export function coaSyntheticParent(accountCode?: string): string | undefined {
+  if (!accountCode) return undefined;
+  const parts = accountCode.split('.');
+  if (parts.length <= 3) return accountCode;
+  return parts.slice(0, 3).join('.');
+}
+
+export function occupancyAmountForMonth(
+  items: DreGranularItem[],
+  month: number,
+  params: HubParams = defaultParams,
+): number {
+  return items
+    .filter(
+      (item) =>
+        item.active &&
+        (isOccupancyCoa(item.accountCode) || isRentAnalyticLine(item) || isCondoAnalyticLine(item)),
+    )
+    .reduce((acc, item) => acc + ledgerAmountForMonth(item, month, params), 0);
+}
+
+/** Valor da linha no mês (Y1/Y2 + carência 5.2.02.01). Sem rampa/ocupação de receita. */
+export function ledgerAmountForMonth(
+  item: DreGranularItem,
+  month: number,
+  params: HubParams = defaultParams,
+): number {
+  if (!item.active) return 0;
+  const y = month <= 12 ? item.monthlyAmountY1 : item.monthlyAmountY2;
+  if (isRentAnalyticLine(item) && month <= params.rent.carenciaAluguelMeses) return 0;
+  return y;
+}
+
+export function ledgerAmount24m(item: DreGranularItem, params: HubParams = defaultParams): number {
+  let total = 0;
+  for (let m = 1; m <= 24; m++) total += ledgerAmountForMonth(item, m, params);
+  return total;
+}
 
 export function isLedgerItemLocked(item: Pick<DreGranularItem, 'id' | 'engineLocked'>): boolean {
   return item.engineLocked === true || item.id === CLIA_LEDGER_ITEM_ID;
@@ -245,10 +307,6 @@ export function projectDreFromLedger(
   const activeReceitasY2 = sum('receita', 2);
   const activeCustosY1 = sum('custo', 1);
   const activeCustosY2 = sum('custo', 2);
-  const activeDespesasY1 = sum('despesa', 1);
-  const activeDespesasY2 = sum('despesa', 2);
-  const rentY1 = items.find((i) => i.id === RENT_LEDGER_ITEM_ID && i.active)?.monthlyAmountY1 ?? 0;
-  const carencia = params.rent.carenciaAluguelMeses;
 
   const months: DreMonth[] = [];
   for (let m = 1; m <= 24; m++) {
@@ -269,12 +327,22 @@ export function projectDreFromLedger(
       baseCusto = baseCusto * occFactor;
     }
 
-    let baseDespesa = isY1 ? activeDespesasY1 : activeDespesasY2;
-    if (m <= carencia) {
-      baseDespesa = Math.max(0, baseDespesa - rentY1);
-      const r = params.ramp.expenseRampM1M6;
-      baseDespesa = baseDespesa * rampFactor(r.start, r.end, m);
+    let occupancyDesp = 0;
+    let otherDesp = 0;
+    for (const item of items) {
+      if (!item.active || item.section !== 'despesa') continue;
+      const amt = ledgerAmountForMonth(item, m, params);
+      if (isOccupancyCoa(item.accountCode) || isRentAnalyticLine(item) || isCondoAnalyticLine(item)) {
+        occupancyDesp += amt;
+      } else {
+        otherDesp += amt;
+      }
     }
+    if (m <= 6) {
+      const r = params.ramp.expenseRampM1M6;
+      otherDesp = otherDesp * rampFactor(r.start, r.end, m);
+    }
+    const baseDespesa = occupancyDesp + otherDesp;
 
     const das = baseRev * params.pricing.dasPct;
     months.push({

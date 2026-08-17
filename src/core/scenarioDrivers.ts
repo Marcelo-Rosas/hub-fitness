@@ -6,6 +6,7 @@ import {
   applyOccupancyToDreItems,
   applyTechOpexToDreItems,
   CLIA_LEDGER_ITEM_ID,
+  isRentOrCondoLine,
   projectDreFromLedger,
 } from './engine';
 
@@ -36,7 +37,6 @@ export const DEFAULT_SCENARIO_DRIVERS: ScenarioDrivers = {
   techOpexActive: false,
 };
 
-const RENT_IDS = new Set(['cst-aluguel', 'cst-condominio']);
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
@@ -83,7 +83,7 @@ export function applyScenarioDrivers(
     if (item.manualOverride) return item;
     if (item.engineLocked || item.id === CLIA_LEDGER_ITEM_ID) return item;
 
-    if (RENT_IDS.has(item.id) && d.rentFactor !== 1) {
+    if (isRentOrCondoLine(item) && d.rentFactor !== 1) {
       return {
         ...item,
         monthlyAmountY1: scale(item.monthlyAmountY1, d.rentFactor),

@@ -185,6 +185,10 @@ export const M3ReceitaVas: React.FC<{ hideHeader?: boolean }> = ({ hideHeader = 
       </div>
 
       {/* TWO-TIER CATALOG TABLE */}
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-950">
+        Catálogo SANCO / VAS <strong>não</strong> alimenta DRE. Preço/volume aqui = governança CPQ (M14).
+        Contas 4.1 / 5.2 editam em <strong>Cadastro Financeiro (M3)</strong> → ledger Operator → M2.
+      </div>
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-2">
