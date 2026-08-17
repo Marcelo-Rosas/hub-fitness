@@ -7,10 +7,12 @@ alwaysApply: true
 # Smoke financeiro (canônico)
 
 - Pasta: `tests/smoke/`
-- **Um** arquivo de contratos: `tests/smoke/finance-contracts.smoke.test.ts`
-- Unit/TDD de módulo: continua em `src/**/*.test.ts` (não misturar)
+- Arquivos `*.smoke.test.ts` **por domínio** (não live HTTP em `src/__tests__`)
+- Financeiro: `finance-contracts.smoke.test.ts`
+- Compras Gemini: `compras-research.smoke.test.ts`
+- Unit/TDD de módulo: `src/**/*.test.ts`
 - Gate: `npm run test:smoke` **antes** de commit/push/Railway
-- Relatório da corrida: `tests/smoke/README.md`
-- Live: `GET /api/health`, `/api/operator/scenarios`, `/api/operator/finance/bundle` em `https://hub.vectracargo.com.br` (override `SMOKE_LIVE_URL`)
-- Novo contrato DRE/CoA/ledger → acrescentar **nesse** arquivo, não criar `*.test.ts` paralelo de persistência
-- Proibido: checklist só em markdown sem assert; smoke espalhado em `src/core/*Contract*`
+- Relatório: `tests/smoke/README.md`
+- Live: `SMOKE_LIVE_URL` (default `https://hub.vectracargo.com.br`) — **nunca** `127.0.0.1` no gate
+- Novo contrato DRE/CoA/ledger → `finance-contracts.smoke.test.ts`
+- Proibido: checklist só em markdown; smoke espalhado em `src/core/*Contract*`

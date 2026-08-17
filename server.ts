@@ -12,12 +12,8 @@ import { registerApproveRoutes } from "./src/core/intranet/registerApproveRoutes
 import { registerOperatorRoutes } from "./src/core/operator/registerOperatorRoutes";
 import { getIntranetStore } from "./src/core/intranet/intranetStore";
 import { startOutboxDispatcher } from "./src/core/intranet/outboxDispatcher";
-import { accountByCode, buildCoaResearchPrompt, clampComprasResearchPack, materialCategoryHint } from "./src/core/compras/researchFromCoa";
-import comprasExamplePack from "./src/data/examples/compras-deep-research.example.json";
-import comprasRfqStretch from "./src/data/examples/compras-rfq-stretch.json";
-import comprasRfqPalete from "./src/data/examples/compras-rfq-palete.json";
-import comprasRfqEmpilhadeira from "./src/data/examples/compras-rfq-empilhadeira.json";
-import comprasResearchFitasPet from "./src/data/examples/compras-research-fitas-pet.json";
+import { accountByCode, buildCoaResearchPrompt } from "./src/core/compras/researchFromCoa";
+import { finalizeComprasResearchPack, pickComprasResearchFallback } from "./src/core/compras/comprasResearchPack";
 
 dotenv.config();
 
@@ -352,51 +348,7 @@ app.post("/api/gemini/compras-research", async (req, res) => {
   }
 
   const prompt = buildCoaResearchPrompt({ account, amplifyNote });
-
-  const finalizePack = (pack: Record<string, unknown>) => {
-    const category = materialCategoryHint(accountCode);
-    const taggedItems = Array.isArray(pack.items)
-      ? (pack.items as Record<string, unknown>[]).map((it) => ({
-          ...it,
-          // CoA manda na categoria — evita Locação/Stretch cair como "Fitas PET".
-          category,
-          accounting_hint: accountCode,
-        }))
-      : pack.items;
-    return clampComprasResearchPack({ ...pack, items: taggedItems }, 3);
-  };
-
-  const pickFallback = () => {
-    const wrap = (pack: Record<string, unknown>) =>
-      finalizePack({
-        ...pack,
-        // Não forçar example:true em pack de pesquisa com preço.
-        example: pack.example === true,
-        research_meta: {
-          account_code: accountCode,
-          account_name: account.name,
-          note: "Fallback offline/simulado — configure GEMINI_API_KEY para pesquisa live.",
-          amplify: amplifyNote || null,
-        },
-      });
-
-    if (accountCode.startsWith("5.1.01.01")) return wrap(comprasRfqStretch as Record<string, unknown>);
-    // Pesquisa (estimativa c/ preço) ≠ folha RFQ (preço 0).
-    if (accountCode === "5.1.01.03") return wrap(comprasResearchFitasPet as Record<string, unknown>);
-    if (accountCode === "5.1.01.10") return wrap(comprasRfqPalete as Record<string, unknown>);
-    if (accountCode === "5.1.01.11") return wrap(comprasRfqPalete as Record<string, unknown>);
-    if (accountCode.startsWith("5.1.05") || accountCode.includes("empilh") || accountCode.startsWith("5.1.02")) {
-      return wrap(comprasRfqEmpilhadeira as Record<string, unknown>);
-    }
-    if (accountCode.includes("palete")) {
-      return wrap(comprasRfqPalete as Record<string, unknown>);
-    }
-    // Contas sem folha dedicada: 1º item do example (não retaggar o pack inteiro).
-    const first = Array.isArray((comprasExamplePack as { items?: unknown[] }).items)
-      ? [(comprasExamplePack as { items: Record<string, unknown>[] }).items[0]]
-      : [];
-    return wrap({ ...(comprasExamplePack as Record<string, unknown>), items: first });
-  };
+  const pickFallback = () => pickComprasResearchFallback(accountCode, amplifyNote);
 
   if (!ai) {
     return res.json({
@@ -432,7 +384,7 @@ REGRA DURA: exatamente 1 item e exatamente 3 suppliers/quotes no total.`,
       });
     }
     const rawPack = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
-    const pack = finalizePack(rawPack);
+    const pack = finalizeComprasResearchPack(accountCode, rawPack);
     return res.json({ success: true, isSimulated: false, pack, prompt });
   } catch (error: any) {
     return res.json({

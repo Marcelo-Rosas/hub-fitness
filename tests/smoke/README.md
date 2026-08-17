@@ -1,44 +1,37 @@
-# Smoke financeiro — HUB-FITNESS
+# Smoke — HUB-FITNESS
 
-**SSOT de asserts:** `finance-contracts.smoke.test.ts` (um arquivo).  
+**Pasta:** `tests/smoke/` (`*.smoke.test.ts` por domínio).  
 **Gate:** `npm run test:smoke`  
-**Live default:** `https://hub.vectracargo.com.br` (`SMOKE_LIVE_URL` override).
+**Live:** `https://hub.vectracargo.com.br` (`SMOKE_LIVE_URL`). **Nunca** `127.0.0.1` no gate.
 
-Unit/TDD de módulo **não** mora aqui → `src/**/*.test.ts`.
+Unit/TDD → `src/**/*.test.ts`. Live HTTP **não** mora em `src/__tests__`.
 
-## Contratos cobertos
-
-| Bloco | O que trava |
+| Arquivo | Contratos |
 |---|---|
-| CoA 5.2.02 → DRE | sintética sem lançamento; carência 6m em `5.2.02.01`; condo/IPTU/energia cheios M1; 24m = 6×Y1+12×Y2 |
-| Mapper → engine | PUT round-trip; `manualOverride` sobrevive `applyOccupancy`; seed só Analítica |
-| Drivers | `rentFactor` por CoA `.01`/`.02`; IPTU `.03` intocado |
-| KPI live | `summarizeLiveDre` ≠ freeze CSV 11,9% |
-| Operator live | `/api/health`, `/api/operator/scenarios` ≥4, bundle 5.2.02 Sintética + ledger analíticas |
+| `finance-contracts.smoke.test.ts` | CoA 5.2.02, mapper, KPIs, Operator GET |
+| `compras-research.smoke.test.ts` | POST live `/api/gemini/compras-research` 5.1.01.03 |
+
+Fallback Gemini **sem HTTP:** `pickComprasResearchFallback` em `src/core/compras/comprasResearchPack.ts` (teste em `compras-pesquisa-e2e.test.ts`).
 
 ## Corrida 2026-08-17
 
 ```
-npx vitest run tests/smoke
-✓ tests/smoke/finance-contracts.smoke.test.ts (14)
-  live GET /api/health
-  live GET /api/operator/scenarios ≥ 4
-  live GET /api/operator/finance/bundle (5.2.02 Sintética; 5.2.02.01/02 no ledger)
+npx vitest run
+Test Files  19 passed
+Tests       165 passed
 ```
 
-**14/14 PASS.** Commit gate ok.
-
-Suite completa `npx vitest run`: 163 pass / 1 fail `compras-pesquisa-e2e` live Gemini (`POST /api/gemini/compras-research` `res.ok=false`) — **fora** deste smoke; não bloqueia DRE/CoA.
+Smoke live: health, scenarios, finance bundle, POST compras-research 5.1.01.03 (3 Fitas PET).
 
 ## Supabase
 
-Operator `qrmdgvxrdvapdvmmktkj`: 11 migrations já aplicadas (última `ledger_fator_r_flags`). **Sem SQL novo** nesta entrega. Re-apply = drift de histórico.
+Operator: 11 migrations aplicadas. Sem SQL novo nesta correção.
 
 ## Ship
 
 1. `npm run test:smoke`
 2. commit + push `main`
-3. Railway `up` cwd (build novo)
+3. Railway `up` cwd
 4. Wrangler só se Worker mudou
-5. `apply_migration` só se `supabase/migrations/**` mudou
-6. Atualizar **esta** seção com data + PASS/FAIL
+5. `apply_migration` só se SQL novo
+6. Atualizar esta seção

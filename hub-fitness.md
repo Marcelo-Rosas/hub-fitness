@@ -27,7 +27,7 @@ Documento vivo. Agentes e humanos: **ler antes de ship**. Novas regras → acres
 
 **Ordem tipica:** `npm run test:smoke` → commit → push → Railway (commit novo) → Wrangler (se Worker) → Supabase apply (se SQL) → health `https://hub.vectracargo.com.br/api/health`.
 
-**Smoke (canônico):** pasta `tests/smoke/` — **um** arquivo `finance-contracts.smoke.test.ts` (CoA ↔ ledger ↔ engine ↔ Operator live). Unit internals ficam em `src/**/*.test.ts`. Gate de ship: `npm run test:smoke`. Relatório: `tests/smoke/README.md`. Live URL: `SMOKE_LIVE_URL` (default `https://hub.vectracargo.com.br`).
+**Smoke (canônico):** pasta `tests/smoke/` (`*.smoke.test.ts` por domínio). Gate: `npm run test:smoke`. Relatório: `tests/smoke/README.md`. Live: `SMOKE_LIVE_URL` (default `https://hub.vectracargo.com.br`) — nunca `127.0.0.1`.
 
 ---
 
@@ -112,6 +112,6 @@ UI/copy: bind a `hubParams` / milestones / engine — não petrificar BP v3.5 em
 
 | Data | Mudança |
 |------|---------|
-| 2026-08-17 | Smoke canônico: `tests/smoke/finance-contracts.smoke.test.ts` + `npm run test:smoke` |
+| 2026-08-17 | Compras smoke live no domínio público; fallback Gemini extraído de `server.ts` |
 | 2026-08-17 | Ocupação DRE: 5.2.02 sintética; carência só 5.2.02.01 (6m); 24m granular via `ledgerAmount24m` |
 | 2026-08-15 | Criação: ship discipline + canônicos pós Plan B / hardcode purge |
