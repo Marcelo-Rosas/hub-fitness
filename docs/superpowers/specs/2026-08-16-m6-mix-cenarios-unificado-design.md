@@ -1,7 +1,7 @@
 # Spec — M6 unificado: Mix & Cenários (P2 Mix→COGS + shell)
 
 **Data:** 2026-08-16  
-**Status:** aprovado (2026-08-16)  
+**Status:** aprovado (2026-08-16) — **shell/abas/redirect M11 revogados** em [`2026-08-17-knowledge-base-m6-m11-design.md`](./2026-08-17-knowledge-base-m6-m11-design.md). Pipeline Mix preview→Commit e Tornado **continuam**.  
 **URL:** `https://hub.vectracargo.com.br`  
 **Approach:** 1 — Shell fino (`M6MixCenarios` + painéis reutilizados)
 
