@@ -19,7 +19,8 @@ export type ModuleId =
   | 'M16'
   | 'M17'
   | 'M18'
-  | 'M19';
+  | 'M19'
+  | 'KB';
 
 const ALL: ModuleId[] = [
   'M1',
@@ -41,6 +42,7 @@ const ALL: ModuleId[] = [
   'M17',
   'M18',
   'M19',
+  'KB',
 ];
 
 /** Matriz visão sidebar — spec 2026-08-15-rbac-module-visibility-design. */
@@ -48,15 +50,14 @@ export const MODULE_VISIBILITY: Record<UserRole, readonly ModuleId[]> = {
   cfo: ALL,
   socio: ALL,
   comite: ALL,
-  comercial: ['M1', 'M12', 'M13', 'M14', 'M16'],
-  compras: ['M1', 'M10', 'M19'],
+  comercial: ['M1', 'M12', 'M13', 'M14', 'M16', 'KB'],
+  compras: ['M1', 'M10', 'M19', 'KB'],
 };
 
 export function canViewModule(role: UserRole, moduleId: string): boolean {
   const list = MODULE_VISIBILITY[role];
   if (!list) return false;
-  const resolved = moduleId === 'M11' ? 'M6' : moduleId;
-  return list.includes(resolved as ModuleId);
+  return list.includes(moduleId as ModuleId);
 }
 
 export function visibleModules(role: UserRole): ModuleId[] {

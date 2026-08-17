@@ -20,10 +20,12 @@ describe('moduleVisibility', () => {
     expect(canViewModule('compras', 'M19')).toBe(true);
   });
 
-  it('M11 deep-link view resolves like M6', () => {
+  it('M11 is own finance module, not an alias of M6', () => {
     expect(canViewModule('cfo', 'M11')).toBe(true);
+    expect(canViewModule('cfo', 'M6')).toBe(true);
     expect(canViewModule('comercial', 'M11')).toBe(false);
     expect(canViewModule('comercial', 'M6')).toBe(false);
+    expect(canViewModule('comercial', 'KB')).toBe(true);
   });
 
   it('cfo vê M2 e M19', () => {
@@ -35,7 +37,7 @@ describe('moduleVisibility', () => {
     const list = visibleModules('compras');
     expect(list).toContain('M1');
     expect(list).not.toContain('M2');
-    expect(list).toEqual(['M1', 'M10', 'M19']);
+    expect(list).toEqual(['M1', 'M10', 'M19', 'KB']);
   });
 
   it('firstVisibleModule fallback', () => {

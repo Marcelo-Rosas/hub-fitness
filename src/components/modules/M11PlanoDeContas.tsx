@@ -267,7 +267,7 @@ export const M11PlanoDeContas: React.FC<{ readOnly?: boolean }> = ({ readOnly = 
 
       {readOnly && (
         <div className="bg-slate-100 border border-slate-300 text-slate-700 px-3 py-2 rounded-lg text-xs font-semibold">
-          Somente leitura nesta aba (M6). CRUD de contas e centros de custo: módulo M3 Cadastro financeiro.
+          Edição de contas e centros: Cadastro financeiro (M3).
         </div>
       )}
 

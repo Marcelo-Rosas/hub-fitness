@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useMemo, useEffect } from 'react';
-import { UserRole, AuthUser, Scenario, ScenarioDrivers, VasDriver, AuditLog, GovernanceCheck, DreMonth, CellData, DreGranularItem, MappedVsImplementedCostItem, SupplierCompany, SupplierQuote, ClientMixWeights } from '../types';
+import { UserRole, AuthUser, Scenario, ScenarioDrivers, VasDriver, AuditLog, GovernanceCheck, DreMonth, CellData, DreGranularItem, MappedVsImplementedCostItem, SupplierCompany, SupplierQuote, ClientMixWeights, MixCostMode, PayrollRole } from '../types';
 import { USER_ROLES, INITIAL_SCENARIOS, INITIAL_VAS_DRIVERS, INITIAL_AUDIT_LOGS, INITIAL_GOVERNANCE_CHECKS, INITIAL_GRANULAR_DRE_ITEMS, INITIAL_MAPPED_VS_IMPLEMENTED_COSTS, INITIAL_SUPPLIER_COMPANIES, INITIAL_SUPPLIER_QUOTES } from '../data/initialData';
 import { HubParams, defaultParams } from '../core/params';
 import {
@@ -17,6 +17,11 @@ import {
 import { applyScenarioDrivers, deriveScenarioKpis } from '../core/scenarioDrivers';
 import { OFFICIAL_TOTALS_24M } from '../core/bpV35Reference';
 import { PLANO_DE_CONTAS_ITEMS, COST_CENTERS, AccountItem, CostCenter } from '../data/planoDeContasData';
+import { INITIAL_PAYROLL_ROLES } from '../data/payrollRoles';
+import {
+  deletePayrollRole as removePayrollRole,
+  upsertPayrollRole as patchPayrollRole,
+} from '../core/payrollRoles';
 import type { IngestParseResult } from '../ingest';
 import { canEditFinance } from '../core/rbac/moduleEdit';
 import {
@@ -26,6 +31,7 @@ import {
   mixRatioFromMc,
   weightedMcPosFromMix,
 } from '../core/mixPreview';
+import { resolvePlannerSearch } from '../core/m6LegacyRoutes';
 
 export const MOCK_BOARD_USERS: Record<string, AuthUser & { pass: string }> = {
   'cfo@hubfitness.com.br': {
@@ -155,6 +161,11 @@ interface PlannerContextType {
   previewMixItems: DreGranularItem[];
   commitMixPreview: (overrideMix?: ClientMixWeights) => void;
   discardMixPreview: () => void;
+  mixCostMode: MixCostMode;
+  setMixCostMode: (mode: MixCostMode) => void;
+  payrollRoles: PayrollRole[];
+  upsertPayrollRole: (role: PayrollRole) => void;
+  deletePayrollRole: (id: string) => void;
   hubParams: HubParams;
   setHubParams: (updater: HubParams | ((prev: HubParams) => HubParams)) => void;
   cliaSpineMonthly: (monthNum: number) => number;
@@ -258,9 +269,21 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [supplierQuotes, setSupplierQuotes] = useState<SupplierQuote[]>(INITIAL_SUPPLIER_QUOTES);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(INITIAL_AUDIT_LOGS);
   const [activeModule, setActiveModule] = useState<string>(() => {
-    const fromUrl = new URLSearchParams(window.location.search).get('module');
+    const route = resolvePlannerSearch(window.location.search);
+    if (route.module === 'KB') return 'KB';
+    const fromUrl = route.module;
     return fromUrl && /^M\d{1,2}$/.test(fromUrl) ? fromUrl : 'M1';
   });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has('tab')) return;
+    const route = resolvePlannerSearch(window.location.search);
+    const next = new URLSearchParams();
+    next.set('module', route.module);
+    if (route.article) next.set('article', route.article);
+    window.history.replaceState(null, '', `?${next.toString()}`);
+  }, []);
   const [inspectorCell, setInspectorCell] = useState<InspectorCellInfo | null>(null);
   const [spinOffActive, setSpinOffActive] = useState<boolean>(false);
   const [prolaboreMonthly, setProlaboreMonthly] = useState<number>(defaultParams.fiscal.plBaseMonthly);
@@ -359,6 +382,8 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [activeMix, setActiveMix] = useState<ClientMixWeights>(blendMixDefault);
   const [committedMixRatio, setCommittedMixRatio] = useState(1);
   const [committedMixWeights, setCommittedMixWeights] = useState<ClientMixWeights>(blendMixDefault);
+  const [mixCostMode, setMixCostMode] = useState<MixCostMode>('mediana');
+  const [payrollRoles, setPayrollRoles] = useState<PayrollRole[]>(INITIAL_PAYROLL_ROLES);
 
   const updateActiveMix = (newMix: Partial<ClientMixWeights>) => {
     setActiveMix((prev) => ({ ...prev, ...newMix }));
@@ -581,6 +606,14 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const discardMixPreview = () => {
     setActiveMix(committedMixWeights);
+  };
+
+  const upsertPayrollRole = (role: PayrollRole) => {
+    setPayrollRoles((prev) => patchPayrollRole(prev, role));
+  };
+
+  const deletePayrollRoleFn = (id: string) => {
+    setPayrollRoles((prev) => removePayrollRole(prev, id));
   };
 
   /** @deprecated Prefer updateActiveMix + commitMixPreview. */
@@ -1172,6 +1205,11 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     previewMixItems,
     commitMixPreview,
     discardMixPreview,
+    mixCostMode,
+    setMixCostMode,
+    payrollRoles,
+    upsertPayrollRole,
+    deletePayrollRole: deletePayrollRoleFn,
     hubParams,
     setHubParams,
     cliaSpineMonthly,
@@ -1210,6 +1248,8 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     activeMix,
     committedMixRatio,
     committedMixWeights,
+    mixCostMode,
+    payrollRoles,
     isMixDirty,
     previewMixItems,
     hubParams,
