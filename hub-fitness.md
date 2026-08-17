@@ -25,7 +25,9 @@ Documento vivo. Agentes e humanos: **ler antes de ship**. Novas regras → acres
 - Deixar migration só no repo / só no remoto (drift)  
 - Empilhar 3+ mudanças shipáveis “pra depois”
 
-**Ordem tipica:** testes → commit → push → Railway (commit novo) → Wrangler (se Worker) → Supabase apply (se SQL) → health `https://hub.vectracargo.com.br/api/health`.
+**Ordem tipica:** `npm run test:smoke` → commit → push → Railway (commit novo) → Wrangler (se Worker) → Supabase apply (se SQL) → health `https://hub.vectracargo.com.br/api/health`.
+
+**Smoke (canônico):** pasta `tests/smoke/` — **um** arquivo `finance-contracts.smoke.test.ts` (CoA ↔ ledger ↔ engine ↔ Operator live). Unit internals ficam em `src/**/*.test.ts`. Gate de ship: `npm run test:smoke`. Relatório: `tests/smoke/README.md`. Live URL: `SMOKE_LIVE_URL` (default `https://hub.vectracargo.com.br`).
 
 ---
 
@@ -110,5 +112,6 @@ UI/copy: bind a `hubParams` / milestones / engine — não petrificar BP v3.5 em
 
 | Data | Mudança |
 |------|---------|
+| 2026-08-17 | Smoke canônico: `tests/smoke/finance-contracts.smoke.test.ts` + `npm run test:smoke` |
 | 2026-08-17 | Ocupação DRE: 5.2.02 sintética; carência só 5.2.02.01 (6m); 24m granular via `ledgerAmount24m` |
 | 2026-08-15 | Criação: ship discipline + canônicos pós Plan B / hardcode purge |

@@ -34,7 +34,8 @@ Leia **somente** o arquivo do domínio da tarefa:
 
 ## Convenções (não perguntar)
 
-- **Canônico vivo:** `hub-fitness.md` (raiz) + `.cursor/rules/hub-fitness.mdc` — ship = commit/push + Wrangler + migrations, sem acumular
+- **Canônico vivo:** `hub-fitness.md` (raiz) + `.cursor/rules/hub-fitness.mdc` — ship = `test:smoke` + commit/push + Wrangler + migrations, sem acumular
+- Smoke: `tests/smoke/finance-contracts.smoke.test.ts` — `npm run test:smoke`
 - Módulos: `src/components/modules/M*.tsx` + `App.tsx` switch + `Shell.tsx` grupos
 - Estado planner: `src/context/PlannerContext.tsx`
 - Core: `src/core/` (regimes, capacityLedger, advisor)

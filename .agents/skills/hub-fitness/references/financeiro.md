@@ -30,14 +30,10 @@ M2 DRE · M3 Cadastro · M4 Caixa · M5 Fator R · M11 Plano de Contas/Mix · M1
 
 Planilha CSV **não** alimenta M2 depois do ledger existir. Drift card×tabela = bug de contrato.
 
-## Persistência entre contratos (checklist manual)
+## Persistência entre contratos
 
-1. **M3 Cadastro** (não VAS): editar Y1 de `5.2.02.01` → PUT `/api/operator/finance/ledger/:id` → reload → mesmo valor.
-2. **M2 sintético M7**: linha ocupação = rollup `5.2.02.*` (carência já passou) = soma ledger, não `hubParams.rent`.
-3. **M2 granular 24m** de aluguel = `6×Y1 + 12×Y2`. Pai sintético `5.2.02` soma as analíticas.
-4. **M3 VAS / SANCO**: mudar preço **não** muda DRE (catálogo CPQ). Receita kitting = linha ledger `4.1.02.01`.
-5. **M6 rentFactor**: linha M3 com `accountCode` 5.2.02.01/02 (mesmo sem id `cst-*`) escala; IPTU 5.2.02.03 não.
-6. Reload planner: `chart_accounts` + `ledger_lines` + `scenario_defs` batem com M2 `dreMonths`.
+SSOT: `tests/smoke/finance-contracts.smoke.test.ts` + `npm run test:smoke`. Relatório: `tests/smoke/README.md`.
+VAS/SANCO não entra no DRE (catálogo CPQ). Edição DRE = M3 Cadastro → ledger.
 
 ## Ponte
 B billing — eventos físicos/comerciais viram `billing_records` no Operator.

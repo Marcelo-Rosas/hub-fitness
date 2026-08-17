@@ -32,3 +32,4 @@ Forbidden: push without Wrangler when Worker changed; migration only in git or o
 - Worker: `workers/hub-fitness-proxy/wrangler.jsonc`
 - Migrations: `supabase/migrations/`
 - Live: `https://hub.vectracargo.com.br`
+- Smoke: `tests/smoke/` — `npm run test:smoke` before ship; SSOT `finance-contracts.smoke.test.ts`

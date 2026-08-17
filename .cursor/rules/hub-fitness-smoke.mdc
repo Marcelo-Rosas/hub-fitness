@@ -1,0 +1,16 @@
+---
+description: HUB-FITNESS smoke — pasta única, um arquivo de contratos, gate de ship
+globs: tests/smoke/**,src/core/**/*.ts,src/components/modules/M2*.tsx,src/components/modules/M3*.tsx
+alwaysApply: true
+---
+
+# Smoke financeiro (canônico)
+
+- Pasta: `tests/smoke/`
+- **Um** arquivo de contratos: `tests/smoke/finance-contracts.smoke.test.ts`
+- Unit/TDD de módulo: continua em `src/**/*.test.ts` (não misturar)
+- Gate: `npm run test:smoke` **antes** de commit/push/Railway
+- Relatório da corrida: `tests/smoke/README.md`
+- Live: `GET /api/health`, `/api/operator/scenarios`, `/api/operator/finance/bundle` em `https://hub.vectracargo.com.br` (override `SMOKE_LIVE_URL`)
+- Novo contrato DRE/CoA/ledger → acrescentar **nesse** arquivo, não criar `*.test.ts` paralelo de persistência
+- Proibido: checklist só em markdown sem assert; smoke espalhado em `src/core/*Contract*`
