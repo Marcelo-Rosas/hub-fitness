@@ -389,14 +389,31 @@ export function fatorRFolhaMensalFromLedger(
         item.isFatorRExcluded !== true &&
         item.isFatorRNumerator === true,
     )
-    .reduce((acc, item) => acc + item.monthlyAmountY1, 0);
+    .reduce((acc, item) => {
+      const val = monthNum <= 12 ? item.monthlyAmountY1 : item.monthlyAmountY2;
+      return acc + val;
+    }, 0);
   return baseHc + plAdditionalForMonth(params, monthNum);
 }
 
+/** Contrato E — BE do Mix: fixos + hc + MO terceirizada (custo/despesa).
+ *  Exclui CV/posição e insumos. Âncora seed = R$ 143.104 (BE ≈ 65,0%). */
+export function semiFixedOpexMonthlyFromLedger(items: DreGranularItem[]): number {
+  return items
+    .filter(
+      (i) =>
+        i.active &&
+        (i.section === 'custo' || i.section === 'despesa') &&
+        (i.costBehavior === 'fixed' ||
+          i.costBehavior === 'hc' ||
+          i.id === 'cst-mo-terceirizada'),
+    )
+    .reduce((acc, i) => acc + i.monthlyAmountY1, 0);
+}
+
 /**
- * OPEX fixo mensal para Break-Even (M11): custos + despesas fixas do ledger base.
- * Inclui ex. OPEX máquinas (custo fixo) e aluguel/condomínio (despesa fixa).
- * Exclui PL adicional gatilho (degrau separado no Fator R).
+ * Contrato E′ — piso de caixa (fixos + HC, exclui PL adicional e MO terc.).
+ * NÃO usar no BE do Mix (Opção A: usar semiFixedOpexMonthlyFromLedger).
  */
 export function fixedOpexMonthlyFromLedger(items: DreGranularItem[]): number {
   return mixStructureCostMonthlyFromLedger(items);

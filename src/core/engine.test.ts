@@ -352,6 +352,12 @@ describe('fatorRFolhaMensalFromLedger', () => {
     expect(folha).toBeGreaterThan(49_500 + 7_000);
   });
 
+  it('M13+ numerador usa Y2 nas linhas elegíveis', () => {
+    const m4 = fatorRFolhaMensalFromLedger(INITIAL_GRANULAR_DRE_ITEMS, defaultParams, 4);
+    const m24 = fatorRFolhaMensalFromLedger(INITIAL_GRANULAR_DRE_ITEMS, defaultParams, 24);
+    expect(m24).toBeGreaterThan(m4);
+  });
+
   it('hcOpexFactor infla folha no pipeline — Fator R deve usar ledger base (P0)', () => {
     const drivers: ScenarioDrivers = {
       occupancyRate: 0.75,
