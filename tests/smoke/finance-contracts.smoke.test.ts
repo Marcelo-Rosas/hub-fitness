@@ -610,14 +610,14 @@ describe('smoke Mix Blend Alvo + piso CCT → BE mínimo viável', () => {
 
     expect(cct).toMatchObject({
       mcPos: 74.15,
-      structureCost: 111783,
-      costMonthly: 110139,
-      bePositions: 1485,
-      bePct: 50,
-      minViablePositions: 1485,
+      structureCost: 109809,
+      costMonthly: 107593,
+      bePositions: 1451,
+      bePct: 48.9,
+      minViablePositions: 1451,
     });
-    expect(mediana.bePct).toBe(50.8);
-    expect(caged.bePct).toBe(51.3);
+    expect(mediana.bePct).toBe(49.9);
+    expect(caged.bePct).toBe(50.4);
   });
 });
 
@@ -658,11 +658,11 @@ describe('smoke Mix Blend Conservador + piso CCT → BE mínimo viável', () => 
 
     expect(cct).toMatchObject({
       mcPos: 70.72,
-      structureCost: 111783,
-      costMonthly: 110139,
-      bePositions: 1557,
-      bePct: 52.5,
-      minViablePositions: 1557,
+      structureCost: 109809,
+      costMonthly: 107593,
+      bePositions: 1521,
+      bePct: 51.2,
+      minViablePositions: 1521,
     });
   });
 });

@@ -16,6 +16,8 @@ import {
   expandCompositionFilhas,
   applyCliaToDreItems,
   projectDreFromLedger,
+  fatorRFolhaMensalFromLedger,
+  fixedOpexMonthlyFromLedger,
   isLedgerItemLocked,
   canPostToAccount,
   isAccountInUse,
@@ -23,7 +25,10 @@ import {
   TECH_OPEX_ACCOUNT_ID,
 } from './engine';
 import { FORTE_ENTREPOSTO_30D, FORTE_DTC_20D } from '../data/benchmarkData';
+import { INITIAL_GRANULAR_DRE_ITEMS } from '../data/initialData';
 import { OFFICIAL_TOTALS_24M } from './bpV35Reference';
+import { applyScenarioDrivers } from './scenarioDrivers';
+import type { ScenarioDrivers } from '../types';
 
 function beWithin(actual: number, expected: number, tolerancePct: number) {
   const diff = Math.abs(actual - expected) / expected;
@@ -320,5 +325,70 @@ describe('ledger DRE ao vivo', () => {
         },
       ]),
     ).toBe(true);
+  });
+});
+
+describe('fatorRFolhaMensalFromLedger', () => {
+  it('soma só linhas com isFatorRNumerator explícito', () => {
+    const folha = fatorRFolhaMensalFromLedger(INITIAL_GRANULAR_DRE_ITEMS, defaultParams, 4);
+    expect(folha).toBe(49_500 + 7_000);
+  });
+
+  it('ignora hc sem flag isFatorRNumerator', () => {
+    const items = INITIAL_GRANULAR_DRE_ITEMS.map((i) =>
+      i.id === 'cst-pessoal-clt-pl' ? { ...i, isFatorRNumerator: undefined } : i,
+    );
+    const folha = fatorRFolhaMensalFromLedger(items, defaultParams, 4);
+    expect(folha).toBe(7_000);
+  });
+
+  it('MO terceirizada ENTRA quando excluded=false e numerator=true (regressão)', () => {
+    const withMo = INITIAL_GRANULAR_DRE_ITEMS.map((i) =>
+      i.id === 'cst-mo-terceirizada'
+        ? { ...i, isFatorRNumerator: true, isFatorRExcluded: false }
+        : i,
+    );
+    const folha = fatorRFolhaMensalFromLedger(withMo, defaultParams, 4);
+    expect(folha).toBeGreaterThan(49_500 + 7_000);
+  });
+
+  it('hcOpexFactor infla folha no pipeline — Fator R deve usar ledger base (P0)', () => {
+    const drivers: ScenarioDrivers = {
+      occupancyRate: 0.75,
+      rentFactor: 1,
+      cogsVariableFactor: 1,
+      hcOpexFactor: 1.3,
+      techOpexActive: false,
+    };
+    const baseFolha = fatorRFolhaMensalFromLedger(INITIAL_GRANULAR_DRE_ITEMS, defaultParams, 7);
+    const driven = applyScenarioDrivers(INITIAL_GRANULAR_DRE_ITEMS, drivers);
+    const pipelineFolha = fatorRFolhaMensalFromLedger(driven, defaultParams, 7);
+    expect(pipelineFolha).toBeGreaterThan(baseFolha);
+    expect(fatorRFolhaMensalFromLedger(INITIAL_GRANULAR_DRE_ITEMS, defaultParams, 7)).toBe(baseFolha);
+  });
+});
+
+describe('fixedOpexMonthlyFromLedger', () => {
+  it('inclui custo+despesa fixos + HC, exclui PL adicional', () => {
+    const total = fixedOpexMonthlyFromLedger(INITIAL_GRANULAR_DRE_ITEMS);
+    // 49.500 (CLT) + 4.400 (máquinas) + 3.704 (deprec) + 60.000 (aluguel) + 6.500 (condomínio)
+    expect(total).toBe(124_104);
+    const comPlAdicional = fixedOpexMonthlyFromLedger(
+      INITIAL_GRANULAR_DRE_ITEMS.map((i) =>
+        i.id === 'cst-pl-adicional' ? { ...i, monthlyAmountY1: 99_000 } : i,
+      ),
+    );
+    expect(comPlAdicional).toBe(total);
+  });
+
+  it('exclui linhas variable do seed', () => {
+    const comMo = fixedOpexMonthlyFromLedger(
+      INITIAL_GRANULAR_DRE_ITEMS.map((i) =>
+        i.id === 'cst-mo-terceirizada'
+          ? { ...i, type: 'fixo' as const, costBehavior: 'fixed' as const }
+          : i,
+      ),
+    );
+    expect(comMo).toBe(124_104 + 12_000);
   });
 });

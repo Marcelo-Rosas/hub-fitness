@@ -20,6 +20,7 @@ import { PLANO_DE_CONTAS_ITEMS, COST_CENTERS, AccountItem, CostCenter } from '..
 import { INITIAL_PAYROLL_ROLES } from '../data/payrollRoles';
 import {
   deletePayrollRole as removePayrollRole,
+  patchPayrollRoleField,
   upsertPayrollRole as patchPayrollRole,
 } from '../core/payrollRoles';
 import type { IngestParseResult } from '../ingest';
@@ -165,6 +166,7 @@ interface PlannerContextType {
   setMixCostMode: (mode: MixCostMode) => void;
   payrollRoles: PayrollRole[];
   upsertPayrollRole: (role: PayrollRole) => void;
+  patchPayrollRoleById: (roleId: string, field: keyof PayrollRole, raw: string) => void;
   deletePayrollRole: (id: string) => void;
   hubParams: HubParams;
   setHubParams: (updater: HubParams | ((prev: HubParams) => HubParams)) => void;
@@ -261,7 +263,7 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const financePersistTimers = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const [activeScenarioId, setActiveScenarioId] = useState<string>('sc-baseline');
   const [vasDrivers, setVasDrivers] = useState<VasDriver[]>(INITIAL_VAS_DRIVERS);
-  const [granularDreItems, setGranularDreItems] = useState<DreGranularItem[]>(INITIAL_GRANULAR_DRE_ITEMS);
+  const [ledgerBaseItems, setLedgerBaseItems] = useState<DreGranularItem[]>(INITIAL_GRANULAR_DRE_ITEMS);
   const [chartOfAccounts, setChartOfAccounts] = useState<AccountItem[]>(PLANO_DE_CONTAS_ITEMS);
   const [costCenters, setCostCenters] = useState<CostCenter[]>(COST_CENTERS);
   const [mappedVsImplementedCosts, setMappedVsImplementedCosts] = useState<MappedVsImplementedCostItem[]>(INITIAL_MAPPED_VS_IMPLEMENTED_COSTS);
@@ -355,7 +357,7 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
         setChartOfAccounts(data.accounts);
         setCostCenters(data.costCenters);
-        setGranularDreItems(data.ledger);
+        setLedgerBaseItems(data.ledger);
         setFinanceSource('operator');
       } catch {
         /* keep seed */
@@ -393,10 +395,10 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const isMixDirty = isMixRatioDirty(activeRatio, committedMixRatio);
   const mixScale = committedMixRatio === 0 ? 1 : activeRatio / committedMixRatio;
   const previewMixItems = useMemo(
-    () => applyMixPreview(granularDreItems, mixScale),
-    [granularDreItems, mixScale],
+    () => applyMixPreview(ledgerBaseItems, mixScale),
+    [ledgerBaseItems, mixScale],
   );
-  const pipelineBase = isMixDirty ? previewMixItems : granularDreItems;
+  const pipelineBase = isMixDirty ? previewMixItems : ledgerBaseItems;
 
   const occupancyDreItems = useMemo(
     () => applyOccupancyToDreItems(pipelineBase, hubParams),
@@ -441,14 +443,14 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const monthNum = lastMonth.month;
     const rbt12Start = Math.max(0, activeMonths.length - 12);
     const rbt12 = activeMonths.slice(rbt12Start).reduce((acc, m) => acc + m.receitaServicos, 0);
-    const avgFolhaMensal = fatorRFolhaMensalFromLedger(granularDreItems, hubParams, monthNum);
+    const avgFolhaMensal = fatorRFolhaMensalFromLedger(ledgerBaseItems, hubParams, monthNum);
     const folhaAcumulada12m = avgFolhaMensal * Math.min(activeMonths.length, 12);
 
     if (rbt12 === 0) return hubParams.fiscal.fatorRFloor;
 
     const ratio = (folhaAcumulada12m / rbt12) * 100;
     return Number(ratio.toFixed(2));
-  }, [dreMonths, granularDreItems, hubParams]);
+  }, [dreMonths, ledgerBaseItems, hubParams]);
 
   const activeScenario = useMemo(() => {
     const kpis = deriveScenarioKpis(dreMonths, hubParams);
@@ -583,9 +585,9 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (overrideMix) setActiveMix(overrideMix);
     const ratio = mixRatioFromMc(weightedMcPosFromMix(mix));
     const scale = committedMixRatio === 0 ? 1 : ratio / committedMixRatio;
-    const preview = applyMixPreview(granularDreItems, scale);
-    const changed = diffMixPreview(preview, granularDreItems);
-    setGranularDreItems(preview);
+    const preview = applyMixPreview(ledgerBaseItems, scale);
+    const changed = diffMixPreview(preview, ledgerBaseItems);
+    setLedgerBaseItems(preview);
     setCommittedMixRatio(ratio);
     setCommittedMixWeights(mix);
     addAuditLog(
@@ -610,6 +612,10 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const upsertPayrollRole = (role: PayrollRole) => {
     setPayrollRoles((prev) => patchPayrollRole(prev, role));
+  };
+
+  const patchPayrollRoleById = (roleId: string, field: keyof PayrollRole, raw: string) => {
+    setPayrollRoles((prev) => patchPayrollRoleField(prev, roleId, field, raw));
   };
 
   const deletePayrollRoleFn = (id: string) => {
@@ -745,7 +751,7 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       id: `dre-item-${Date.now()}`,
       manualOverride: true,
     };
-    setGranularDreItems((prev) => [...prev, newItem]);
+    setLedgerBaseItems((prev) => [...prev, newItem]);
     addAuditLog(`DRE Granular (${newItem.section.toUpperCase()})`, '-', `Criado item '${newItem.name}' (R$ ${newItem.monthlyAmountY1.toLocaleString('pt-BR')}/mês)`);
     scheduleFinancePersist(`ledger:${newItem.id}`, () =>
       persistJson(`ledger ${newItem.name}`, '/api/operator/finance/ledger', {
@@ -761,7 +767,7 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setBlockedValueAttempt(`Edição bloqueada no perfil atual (${activeRole}). Apenas CFO e Sócios podem alterar itens.`);
       return;
     }
-    const current = granularDreItems.find((i) => i.id === id);
+    const current = ledgerBaseItems.find((i) => i.id === id);
     if (current && isLedgerItemLocked(current)) {
       setBlockedValueAttempt('Linha CLIA está travada pelo engine. Não é possível editar.');
       return;
@@ -773,7 +779,7 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return;
       }
     }
-    setGranularDreItems((prev) => {
+    setLedgerBaseItems((prev) => {
       const exists = prev.some((item) => item.id === id);
       if (!exists) {
         const injected = derivedGranularDreItems.find((item) => item.id === id);
@@ -812,13 +818,13 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setBlockedValueAttempt(`Exclusão bloqueada no perfil atual (${activeRole}).`);
       return;
     }
-    const target = granularDreItems.find((i) => i.id === id);
+    const target = ledgerBaseItems.find((i) => i.id === id);
     if (!target) return;
     if (isLedgerItemLocked(target)) {
       setBlockedValueAttempt('Linha CLIA está travada pelo engine. Não é possível excluir.');
       return;
     }
-    setGranularDreItems((prev) => prev.filter((i) => i.id !== id));
+    setLedgerBaseItems((prev) => prev.filter((i) => i.id !== id));
     addAuditLog('DRE Granular', target.name, 'Excluído');
     scheduleFinancePersist(`ledger-del:${id}`, () =>
       persistJson(`delete ledger ${id}`, `/api/operator/finance/ledger/${encodeURIComponent(id)}`, {
@@ -832,7 +838,7 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setBlockedValueAttempt(`Alternância de status bloqueada para perfil ${activeRole}.`);
       return;
     }
-    setGranularDreItems((prev) =>
+    setLedgerBaseItems((prev) =>
       prev.map((item) => {
         if (item.id === id) {
           const newStatus = !item.active;
@@ -857,7 +863,7 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setBlockedValueAttempt(`Restauração bloqueada para perfil ${activeRole}.`);
       return;
     }
-    setGranularDreItems(INITIAL_GRANULAR_DRE_ITEMS);
+    setLedgerBaseItems(INITIAL_GRANULAR_DRE_ITEMS);
     setChartOfAccounts(PLANO_DE_CONTAS_ITEMS);
     setCostCenters(COST_CENTERS);
     addAuditLog('DRE Granular', '-', 'Restauradas premissas padrão v3.5 do Plano de Negócios');
@@ -912,7 +918,7 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setBlockedValueAttempt('Exclusão de conta bloqueada para o perfil atual.');
       return false;
     }
-    if (isAccountInUse(code, granularDreItems)) {
+    if (isAccountInUse(code, ledgerBaseItems)) {
       setBlockedValueAttempt(`Conta ${code} está em uso no cadastro financeiro. Remova o lançamento antes.`);
       return false;
     }
@@ -993,7 +999,7 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     // Sync values into granular DRE
     if (quote.materialCategory === 'Filme Stretch') {
-      const targetItem = granularDreItems.find((i) => i.id === 'cst-3');
+      const targetItem = ledgerBaseItems.find((i) => i.id === 'cst-3');
       if (targetItem) {
         updateDreGranularItem('cst-3', {
           monthlyAmountY1: quote.totalMonthlyWithFreight,
@@ -1021,7 +1027,7 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         )
       );
     } else if (quote.materialCategory === 'Locação Empilhadeiras') {
-      const targetItem = granularDreItems.find((i) => i.id === 'cst-4');
+      const targetItem = ledgerBaseItems.find((i) => i.id === 'cst-4');
       if (targetItem) {
         updateDreGranularItem('cst-4', {
           monthlyAmountY1: quote.totalMonthlyWithFreight,
@@ -1164,7 +1170,7 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     updateVasDriver,
     dreMonths,
     updateDreValue,
-    ledgerBaseItems: granularDreItems,
+    ledgerBaseItems,
     granularDreItems: derivedGranularDreItems,
     addDreGranularItem,
     updateDreGranularItem,
@@ -1209,6 +1215,7 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setMixCostMode,
     payrollRoles,
     upsertPayrollRole,
+    patchPayrollRoleById,
     deletePayrollRole: deletePayrollRoleFn,
     hubParams,
     setHubParams,

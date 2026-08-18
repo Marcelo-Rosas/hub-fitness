@@ -6,6 +6,8 @@ const analista = annexByCbo('2527-15');
 const emp = annexByCbo('7822-20');
 const conf = annexByCbo('4142-15');
 
+const auxLog = annexByCbo('4141-40');
+
 /** Galpão HUB-FITNESS. Pisos 3 refs; HC único. Empilhadeira sem NR-16 default. */
 export const INITIAL_PAYROLL_ROLES: PayrollRole[] = [
   {
@@ -25,12 +27,13 @@ export const INITIAL_PAYROLL_ROLES: PayrollRole[] = [
   {
     id: 'pr-admin',
     cargo: 'Assistente Admin / SAC / Faturamento NF-e',
-    detail: 'Emissão de conhecimentos, agendamento e atendimento B2B/B2C · sem CBO CCT',
+    detail: 'Emissão de conhecimentos, agendamento e atendimento B2B/B2C · CBO 4141-40',
     cc: 'CC 001',
+    cbo: auxLog.cbo,
     accountCode: PAYROLL_COA.salarios,
-    salarioCct: 2800,
-    salarioMediana: 2800,
-    salarioCaged: 2800,
+    salarioCct: auxLog.salarioCct,
+    salarioMediana: auxLog.salarioMediana,
+    salarioCaged: auxLog.salarioCaged,
     contractKind: 'clt',
     perilPct: 0,
     hc: 2,

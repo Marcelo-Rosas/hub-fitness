@@ -5,11 +5,13 @@ import {
   computeTornadoBars,
   DEFAULT_SCENARIO_DRIVERS,
   deriveScenarioKpis,
+  pickComparatorScenarios,
+  projectScenario,
 } from './scenarioDrivers';
 import type { DreGranularItem, ScenarioDrivers } from '../types';
 import { projectDreFromLedger } from './engine';
 import { defaultParams } from './params';
-import { INITIAL_GRANULAR_DRE_ITEMS } from '../data/initialData';
+import { INITIAL_GRANULAR_DRE_ITEMS, INITIAL_SCENARIOS } from '../data/initialData';
 
 const baseDrivers: ScenarioDrivers = {
   occupancyRate: 0.75,
@@ -156,6 +158,42 @@ describe('deriveScenarioKpis', () => {
     expect(k.llM7Plus).toBe(mean);
     expect(k.capexTotal).toBe(defaultParams.capex.total);
   });
+
+  it('llTotal24m is sum of lucroLiquido M1–M24', () => {
+    const months = projectDreFromLedger(INITIAL_GRANULAR_DRE_ITEMS, 0.75, defaultParams);
+    const k = deriveScenarioKpis(months, defaultParams);
+    const sum = Math.round(months.reduce((a, m) => a + m.lucroLiquido, 0));
+    expect(k.llTotal24m).toBe(sum);
+  });
+});
+
+describe('pickComparatorScenarios', () => {
+  it('right column follows the clicked scenario, not always pessimistic', () => {
+    const vsOpt = pickComparatorScenarios(INITIAL_SCENARIOS, 'sc-optimistic');
+    expect(vsOpt.left.isBaseline).toBe(true);
+    expect(vsOpt.right.id).toBe('sc-optimistic');
+    expect(vsOpt.right.drivers.occupancyRate).toBe(0.9);
+
+    const vsPess = pickComparatorScenarios(INITIAL_SCENARIOS, 'sc-pessimistic');
+    expect(vsPess.right.id).toBe('sc-pessimistic');
+    expect(vsPess.right.drivers.occupancyRate).toBe(0.35);
+
+    const vsBase = pickComparatorScenarios(INITIAL_SCENARIOS, 'sc-baseline');
+    expect(vsBase.left.id).toBe(vsBase.right.id);
+  });
+
+  it('active drivers change LL 24m vs baseline in the same engine', () => {
+    const { left, right } = pickComparatorScenarios(INITIAL_SCENARIOS, 'sc-optimistic');
+    const leftLl = deriveScenarioKpis(
+      projectScenario(INITIAL_GRANULAR_DRE_ITEMS, left.drivers, defaultParams),
+      defaultParams,
+    ).llTotal24m;
+    const rightLl = deriveScenarioKpis(
+      projectScenario(INITIAL_GRANULAR_DRE_ITEMS, right.drivers, defaultParams),
+      defaultParams,
+    ).llTotal24m;
+    expect(rightLl).not.toBe(leftLl);
+  });
 });
 
 describe('computeTornadoBars', () => {
@@ -170,5 +208,24 @@ describe('computeTornadoBars', () => {
     expect(rent!.downside).not.toBe(0);
     expect(rent!.upside).not.toBe(0);
     expect(Math.abs(rent!.downside)).not.toBe(35000);
+  });
+
+  it('uses sum LL M1–M24 (llTotal24m), not mean M7–M12', () => {
+    const baseDrivers = { ...DEFAULT_SCENARIO_DRIVERS, occupancyRate: 0.75 };
+    const bars = computeTornadoBars({
+      items: INITIAL_GRANULAR_DRE_ITEMS,
+      baseDrivers,
+      params: defaultParams,
+    });
+    const baseMonths = projectScenario(INITIAL_GRANULAR_DRE_ITEMS, baseDrivers, defaultParams);
+    const baseKpis = deriveScenarioKpis(baseMonths, defaultParams);
+    const downDrivers = { ...baseDrivers, rentFactor: baseDrivers.rentFactor * 1.1 };
+    const downKpis = deriveScenarioKpis(
+      projectScenario(INITIAL_GRANULAR_DRE_ITEMS, downDrivers, defaultParams),
+      defaultParams,
+    );
+    const rent = bars.find((b) => b.factor.includes('Aluguel'))!;
+    expect(rent.downside).toBe(downKpis.llTotal24m - baseKpis.llTotal24m);
+    expect(rent.downside).not.toBe(downKpis.llM7Plus - baseKpis.llM7Plus);
   });
 });

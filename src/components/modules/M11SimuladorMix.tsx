@@ -44,9 +44,29 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import type { MixCostMode, PayrollRole } from '../../types';
-import { emptyPayrollRole, MIX_COST_MODE_LABELS, MIX_COST_MODES, payrollAmount, payrollTotal } from '../../core/payrollRoles';
+import {
+  availablePayrollCatalogEntries,
+  findPayrollCatalogEntry,
+  payrollCatalogLabel,
+  payrollRoleFromCatalogEntry,
+} from '../../core/payrollCargoCatalog';
+import {
+  MIX_COST_MODE_LABELS,
+  PAYROLL_SIMPLES_PACK_PCT,
+  payrollAmount,
+  payrollEncargosGrandTotal,
+  payrollEncargosPerHc,
+  payrollEncargosTotal,
+  payrollTotal,
+} from '../../core/payrollRoles';
 import { HubChartCard } from '../charts/HubChartCard';
 import { HUB_CHART, HubChartLegendPill, hubTick, hubTooltipStyle } from '../charts/hubChartTheme';
+
+const PAYROLL_BENCHMARK_GROUPS = [
+  { field: 'salarioCct' as const, mode: 'cct' as const, label: 'CCT' },
+  { field: 'salarioMediana' as const, mode: 'mediana' as const, label: 'Mediana SC' },
+  { field: 'salarioCaged' as const, mode: 'caged' as const, label: 'CAGED' },
+];
 
 export const M11SimuladorMix: React.FC<{
   embedPanel?: 'simulator';
@@ -62,13 +82,14 @@ export const M11SimuladorMix: React.FC<{
     committedMixWeights,
     hubParams,
     ledgerBaseItems,
+    previewMixItems,
     activeScenario,
     activeScenarioId,
     updateScenarioDrivers,
     mixCostMode,
-    setMixCostMode,
     payrollRoles,
     upsertPayrollRole,
+    patchPayrollRoleById,
     deletePayrollRole,
   } = usePlanner();
 
@@ -89,7 +110,11 @@ export const M11SimuladorMix: React.FC<{
 
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [appliedNotification, setAppliedNotification] = useState<string | null>(null);
-  const mestraLedger = ledgerBaseItems.length ? ledgerBaseItems : INITIAL_GRANULAR_DRE_ITEMS;
+  const [addCargoCatalogId, setAddCargoCatalogId] = useState('');
+  const mestraLedger = useMemo(() => {
+    const base = ledgerBaseItems.length ? ledgerBaseItems : INITIAL_GRANULAR_DRE_ITEMS;
+    return isMixDirty && previewMixItems.length ? previewMixItems : base;
+  }, [ledgerBaseItems, isMixDirty, previewMixItems]);
 
   const totalMixSum = mixWeights.p1 + mixWeights.p2 + mixWeights.p4 + mixWeights.p5;
 
@@ -143,7 +168,7 @@ export const M11SimuladorMix: React.FC<{
     const occupiedPositions = occupiedPositionsFromRate(occupancyRate, totalCapacity);
     const occPct = Math.round(occupancyRate * 100);
 
-    const ledger = ledgerBaseItems.length ? ledgerBaseItems : INITIAL_GRANULAR_DRE_ITEMS;
+    const ledger = mestraLedger;
     const mixForBe = { p1: mixWeights.p1, p2: mixWeights.p2, p4: mixWeights.p4, p5: mixWeights.p5 };
     const beCaged = computeMinViableBe({
       items: ledger,
@@ -262,24 +287,28 @@ export const M11SimuladorMix: React.FC<{
       llOccSelected,
       triggers,
     };
-  }, [mixWeights, hubParams, ledgerBaseItems, occupancyRate, mixCostMode, payrollRoles]);
+  }, [mixWeights, hubParams, mestraLedger, occupancyRate, mixCostMode, payrollRoles]);
 
-  const patchPayrollField = (role: PayrollRole, field: keyof PayrollRole, raw: string) => {
-    if (
-      field === 'salarioCct' ||
-      field === 'salarioMediana' ||
-      field === 'salarioCaged' ||
-      field === 'perilPct' ||
-      field === 'hc'
-    ) {
-      upsertPayrollRole({ ...role, [field]: Number(raw) || 0 });
-      return;
-    }
-    upsertPayrollRole({ ...role, [field]: raw });
+  const patchPayrollField = (roleId: string, field: keyof PayrollRole, raw: string) => {
+    patchPayrollRoleById(roleId, field, raw);
   };
 
+  const addableCargos = useMemo(
+    () => availablePayrollCatalogEntries(payrollRoles),
+    [payrollRoles],
+  );
+
+  useEffect(() => {
+    if (addCargoCatalogId && !addableCargos.some((e) => e.catalogId === addCargoCatalogId)) {
+      setAddCargoCatalogId(addableCargos[0]?.catalogId ?? '');
+    }
+  }, [addableCargos, addCargoCatalogId]);
+
   const handleAddPayrollRole = () => {
-    upsertPayrollRole(emptyPayrollRole(`pr-${Date.now()}`));
+    const entry = findPayrollCatalogEntry(addCargoCatalogId);
+    if (!entry) return;
+    upsertPayrollRole(payrollRoleFromCatalogEntry(entry, `pr-${Date.now()}`));
+    setAddCargoCatalogId('');
   };
 
   // Commit Mix → ledger (preview until here)
@@ -379,7 +408,7 @@ export const M11SimuladorMix: React.FC<{
   };
 
   return (
-    <div className="space-y-6">
+    <div className={embedded ? 'space-y-4' : 'space-y-6'}>
       {/* Toast Notification Banner */}
       {appliedNotification && (
         <div className="bg-emerald-900 text-white p-4 rounded-xl shadow-lg border border-emerald-700 flex items-center justify-between animate-in fade-in slide-in-from-top">
@@ -494,25 +523,6 @@ export const M11SimuladorMix: React.FC<{
       )}
 
       <>
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center gap-3">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Folha (cargos SC)
-            </span>
-            {MIX_COST_MODES.map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setMixCostMode(mode)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold border cursor-pointer ${
-                  mixCostMode === mode
-                    ? 'bg-indigo-600 text-white border-indigo-600'
-                    : 'bg-slate-50 text-slate-700 border-slate-200'
-                }`}
-              >
-                {MIX_COST_MODE_LABELS[mode]}
-              </button>
-            ))}
-          </div>
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* SLIDERS PANEL (5 COLUMNS) */}
             <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-5">
@@ -847,27 +857,84 @@ export const M11SimuladorMix: React.FC<{
                   Cargos e salários · benchmark logístico SC
                 </h3>
               </div>
-              <button
-                type="button"
-                disabled={!canEditOcc}
-                onClick={handleAddPayrollRole}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Adicionar cargo
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  disabled={!canEditOcc || addableCargos.length === 0}
+                  value={addCargoCatalogId}
+                  onChange={(e) => setAddCargoCatalogId(e.target.value)}
+                  className="max-w-[min(22rem,70vw)] h-8 px-2 text-[11px] border border-slate-600 bg-slate-800 text-white rounded-lg cursor-pointer disabled:opacity-40"
+                  aria-label="Cargo do plano de contas"
+                >
+                  <option value="">
+                    {addableCargos.length === 0
+                      ? 'Todos os cargos do catálogo já incluídos'
+                      : 'Plano de contas de cargos…'}
+                  </option>
+                  {addableCargos.map((entry) => (
+                    <option key={entry.catalogId} value={entry.catalogId}>
+                      {payrollCatalogLabel(entry)}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={!canEditOcc || !addCargoCatalogId}
+                  onClick={handleAddPayrollRole}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Adicionar cargo
+                </button>
+              </div>
             </div>
+            <p className="px-4 py-2 text-[11px] text-slate-600 bg-slate-50 border-b border-slate-200 leading-relaxed">
+              <strong className="text-slate-800">Piso bruto</strong> = benchmark R$/HC (sem encargos).{' '}
+              <strong className="text-slate-800">Encargos</strong> = pack Simples{' '}
+              {(PAYROLL_SIMPLES_PACK_PCT * 100).toFixed(1)}% (FGTS+13º+férias) × HC.{' '}
+              <strong className="text-slate-800">Folha</strong> = (piso + encargos/HC) × HC. INSS/RAT no DAS.
+            </p>
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left border-collapse">
+              <table className="w-full text-xs text-left border-collapse min-w-[960px]">
                 <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
                   <tr>
-                    <th className="py-2 px-3">Cargo</th>
-                    <th className="py-2 px-3">CC</th>
-                    <th className="py-2 px-3 text-right font-mono">HC</th>
-                    <th className="py-2 px-3 text-right font-mono">Piso CCT</th>
-                    <th className="py-2 px-3 text-right font-mono">Mediana SC</th>
-                    <th className="py-2 px-3 text-right font-mono">Média CAGED</th>
-                    <th className="py-2 px-3 w-10" />
+                    <th className="py-2 px-3 align-bottom" rowSpan={2}>
+                      Cargo
+                    </th>
+                    <th className="py-2 px-3 align-bottom" rowSpan={2}>
+                      CC
+                    </th>
+                    <th className="py-2 px-3 text-right font-mono align-bottom" rowSpan={2}>
+                      HC
+                    </th>
+                    {PAYROLL_BENCHMARK_GROUPS.map((g) => (
+                      <th
+                        key={g.mode}
+                        colSpan={3}
+                        className="py-2 px-2 text-center font-sans border-l border-slate-200 bg-slate-50/80"
+                      >
+                        {g.label}
+                      </th>
+                    ))}
+                    <th className="py-2 px-3 w-10" rowSpan={2} />
+                  </tr>
+                  <tr>
+                    {PAYROLL_BENCHMARK_GROUPS.flatMap((g) => [
+                      <th
+                        key={`${g.mode}-piso`}
+                        className="py-1.5 px-2 text-right font-mono text-[10px] border-l border-slate-200"
+                      >
+                        Piso bruto
+                        <span className="block font-normal text-slate-500">R$/HC</span>
+                      </th>,
+                      <th key={`${g.mode}-enc`} className="py-1.5 px-2 text-right font-mono text-[10px]">
+                        Encargos
+                        <span className="block font-normal text-slate-500">pack × HC</span>
+                      </th>,
+                      <th key={`${g.mode}-folha`} className="py-1.5 px-2 text-right font-mono text-[10px]">
+                        Folha
+                        <span className="block font-normal text-slate-500">mês</span>
+                      </th>,
+                    ])}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
@@ -877,13 +944,13 @@ export const M11SimuladorMix: React.FC<{
                         <input
                           disabled={!canEditOcc}
                           value={role.cargo}
-                          onChange={(e) => patchPayrollField(role, 'cargo', e.target.value)}
+                          onChange={(e) => patchPayrollField(role.id, 'cargo', e.target.value)}
                           className="w-full bg-transparent font-semibold text-slate-900 outline-none"
                         />
                         <input
                           disabled={!canEditOcc}
                           value={role.detail}
-                          onChange={(e) => patchPayrollField(role, 'detail', e.target.value)}
+                          onChange={(e) => patchPayrollField(role.id, 'detail', e.target.value)}
                           className="w-full bg-transparent text-[10px] text-slate-500 outline-none"
                         />
                       </td>
@@ -891,7 +958,7 @@ export const M11SimuladorMix: React.FC<{
                         <input
                           disabled={!canEditOcc}
                           value={role.cc}
-                          onChange={(e) => patchPayrollField(role, 'cc', e.target.value)}
+                          onChange={(e) => patchPayrollField(role.id, 'cc', e.target.value)}
                           className="w-20 bg-slate-50 border border-slate-200 rounded px-1 py-0.5 font-mono"
                         />
                       </td>
@@ -900,28 +967,43 @@ export const M11SimuladorMix: React.FC<{
                           type="number"
                           disabled={!canEditOcc}
                           value={role.hc}
-                          onChange={(e) => patchPayrollField(role, 'hc', e.target.value)}
+                          onChange={(e) => patchPayrollField(role.id, 'hc', e.target.value)}
                           className="w-14 bg-slate-50 border border-slate-200 rounded px-2 py-1 font-mono text-right"
                         />
                       </td>
-                      {(['salarioCct', 'salarioMediana', 'salarioCaged'] as const).map((field) => (
-                        <td key={field} className="py-2 px-3 text-right">
-                          <input
-                            type="number"
-                            disabled={!canEditOcc}
-                            value={role[field] ?? 0}
-                            onChange={(e) => patchPayrollField(role, field, e.target.value)}
-                            className="w-24 bg-amber-50 border border-amber-200 rounded px-2 py-1 font-mono text-right"
-                          />
-                          <span className="block text-[10px] text-slate-500 font-mono">
-                            folha{' '}
-                            {payrollAmount(
-                              role,
-                              field === 'salarioCct' ? 'cct' : field === 'salarioCaged' ? 'caged' : 'mediana',
-                            ).toLocaleString('pt-BR')}
-                          </span>
-                        </td>
-                      ))}
+                      {PAYROLL_BENCHMARK_GROUPS.map((g) => {
+                        const encPerHc = payrollEncargosPerHc(role, g.mode);
+                        const encTotal = payrollEncargosTotal(role, g.mode);
+                        const folha = payrollAmount(role, g.mode);
+                        return (
+                          <React.Fragment key={`${role.id}-${g.mode}-${role.hc}`}>
+                            <td className="py-2 px-2 text-right border-l border-slate-100">
+                              <input
+                                type="number"
+                                disabled={!canEditOcc}
+                                value={role[g.field] ?? 0}
+                                onChange={(e) => patchPayrollField(role.id, g.field, e.target.value)}
+                                className="w-[4.5rem] bg-amber-50 border border-amber-200 rounded px-2 py-1 font-mono text-right"
+                              />
+                            </td>
+                            <td className="py-2 px-2 text-right font-mono text-slate-700">
+                              {encPerHc === null ? (
+                                <span className="text-slate-400">—</span>
+                              ) : (
+                                <>
+                                  {encTotal.toLocaleString('pt-BR')}
+                                  <span className="block text-[10px] text-slate-500">
+                                    {encPerHc.toLocaleString('pt-BR')}/HC
+                                  </span>
+                                </>
+                              )}
+                            </td>
+                            <td className="py-2 px-2 text-right font-mono font-semibold text-slate-900">
+                              {folha.toLocaleString('pt-BR')}
+                            </td>
+                          </React.Fragment>
+                        );
+                      })}
                       <td className="py-2 px-3">
                         <button
                           type="button"
@@ -939,17 +1021,19 @@ export const M11SimuladorMix: React.FC<{
                 <tfoot>
                   <tr className="bg-slate-900 text-white font-mono font-bold">
                     <td className="py-2 px-3 font-sans" colSpan={3}>
-                      Total folha (piso × HC + pack Simples)
+                      Totais mensais
                     </td>
-                    <td className="py-2 px-3 text-right">
-                      {payrollTotal(payrollRoles, 'cct').toLocaleString('pt-BR')}
-                    </td>
-                    <td className="py-2 px-3 text-right">
-                      {payrollTotal(payrollRoles, 'mediana').toLocaleString('pt-BR')}
-                    </td>
-                    <td className="py-2 px-3 text-right">
-                      {payrollTotal(payrollRoles, 'caged').toLocaleString('pt-BR')}
-                    </td>
+                    {PAYROLL_BENCHMARK_GROUPS.flatMap((g) => [
+                      <td key={`${g.mode}-piso-t`} className="py-2 px-2 text-right border-l border-slate-700">
+                        <span className="text-[10px] font-normal text-slate-400">—</span>
+                      </td>,
+                      <td key={`${g.mode}-enc-t`} className="py-2 px-2 text-right">
+                        {payrollEncargosGrandTotal(payrollRoles, g.mode).toLocaleString('pt-BR')}
+                      </td>,
+                      <td key={`${g.mode}-folha-t`} className="py-2 px-2 text-right">
+                        {payrollTotal(payrollRoles, g.mode).toLocaleString('pt-BR')}
+                      </td>,
+                    ])}
                     <td />
                   </tr>
                 </tfoot>

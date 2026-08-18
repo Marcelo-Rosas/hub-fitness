@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Users,
   Building2,
@@ -7,154 +7,57 @@ import {
   FileCheck,
   Briefcase,
   BookOpen,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import { usePlanner } from '../../context/PlannerContext';
 import { formatDasPct, formatFatorRBand, plPhaseBands } from '../../core/governanceMatrix';
 import { plAdditionalForMonth } from '../../core/engine';
-
-type ChargeCell = number | null | 'isento';
-
-interface RoleRow {
-  cargo: string;
-  detail: string;
-  cc: string;
-  ccTone: 'slate' | 'blue' | 'amber';
-  salarioBase: number | null;
-  periculosidade: ChargeCell;
-  fgts: ChargeCell;
-  decimo: ChargeCell;
-  ferias: ChargeCell;
-  totalEncargos: ChargeCell;
-  custoHc: number;
-  phases: { hc: string; cost: number }[];
-  highlight?: boolean;
-  perilNote?: string;
-}
+import { canEditFinance } from '../../core/rbac/moduleEdit';
+import {
+  availablePayrollCatalogEntries,
+  findPayrollCatalogEntry,
+  payrollCatalogLabel,
+  payrollRoleFromCatalogEntry,
+} from '../../core/payrollCargoCatalog';
+import {
+  MIX_COST_MODE_LABELS,
+  MIX_COST_MODES,
+  derivePayrollCharges,
+  payrollAmount,
+  payrollCcTone,
+  payrollHcLabel,
+  payrollHcTotal,
+  payrollTotal,
+  type PayrollChargeCell,
+} from '../../core/payrollRoles';
+import type { PayrollRole } from '../../types';
 
 const fmt = (n: number) =>
   n.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
-const fmtCell = (v: ChargeCell) => {
+const fmtCell = (v: PayrollChargeCell) => {
   if (v === null) return '—';
   if (v === 'isento') return 'Isento CLT';
   return `R$ ${fmt(v)}`;
 };
 
-const ROLES: RoleRow[] = [
-  {
-    cargo: 'Coordenador Logístico / Supervisor WMS',
-    detail: 'Gestão operacional, inventários e interface 4PL',
-    cc: 'CC 001',
-    ccTone: 'slate',
-    salarioBase: 5200,
-    periculosidade: null,
-    fgts: 416,
-    decimo: 433,
-    ferias: 578,
-    totalEncargos: 1427,
-    custoHc: 6627,
-    phases: [
-      { hc: '1 HC', cost: 6627 },
-      { hc: '1 HC', cost: 6627 },
-      { hc: '1 HC', cost: 6627 },
-      { hc: '1 HC', cost: 6627 },
-    ],
-  },
-  {
-    cargo: 'Assistente Admin / SAC / Faturamento NF-e',
-    detail: 'Emissão de conhecimentos, agendamento e atendimento B2B/B2C',
-    cc: 'CC 001',
-    ccTone: 'slate',
-    salarioBase: 2800,
-    periculosidade: null,
-    fgts: 224,
-    decimo: 233,
-    ferias: 311,
-    totalEncargos: 768,
-    custoHc: 3568,
-    phases: [
-      { hc: '0 HC', cost: 0 },
-      { hc: '1 HC', cost: 3568 },
-      { hc: '2 HC', cost: 7136 },
-      { hc: '2 HC', cost: 7136 },
-    ],
-  },
-  {
-    cargo: 'Operador de Empilhadeira Retrátil KONNEN (>500 kg)',
-    detail: 'Operação em altura (8,5 m) · NR-16 · Conta 5.2.01.09',
-    cc: 'CC 002',
-    ccTone: 'blue',
-    salarioBase: 3200,
-    periculosidade: 960,
-    fgts: 333,
-    decimo: 347,
-    ferias: 462,
-    totalEncargos: 1142,
-    custoHc: 5302,
-    perilNote: 'FGTS/13º/Férias sobre base + adicional (R$ 4.160)',
-    phases: [
-      { hc: '1 HC', cost: 5302 },
-      { hc: '1,4 HC', cost: 7423 },
-      { hc: '2 HC', cost: 10604 },
-      { hc: '2 HC', cost: 10604 },
-    ],
-  },
-  {
-    cargo: 'Conferente / Auxiliar de Armazém / Etiquetagem',
-    detail: 'Recebimento, picking fracionado e kitting e-commerce',
-    cc: 'CC 002',
-    ccTone: 'blue',
-    salarioBase: 2200,
-    periculosidade: null,
-    fgts: 176,
-    decimo: 183,
-    ferias: 244,
-    totalEncargos: 603,
-    custoHc: 2803,
-    phases: [
-      { hc: '1 HC', cost: 2803 },
-      { hc: '2 HC', cost: 5606 },
-      { hc: '3 HC', cost: 8409 },
-      { hc: '3 HC', cost: 8409 },
-    ],
-  },
-  {
-    cargo: 'Pró-Labore Sócios Executivos (Base Regular)',
-    detail: 'Diretoria de Operações e Direção Comercial / CFO',
-    cc: 'CC 005',
-    ccTone: 'amber',
-    salarioBase: 5500,
-    periculosidade: 'isento',
-    fgts: null,
-    decimo: null,
-    ferias: null,
-    totalEncargos: null,
-    custoHc: 5500,
-    highlight: true,
-    phases: [
-      { hc: '2 Sócios', cost: 11000 },
-      { hc: '2 Sócios', cost: 13500 },
-      { hc: '2 Sócios', cost: 18500 },
-      { hc: '2 Sócios', cost: 19000 },
-    ],
-  },
-];
-
-const PHASE_TOTALS = [
-  { hc: '5,0 HC', cost: 25732 },
-  { hc: '7,4 HC', cost: 36724 },
-  { hc: '10,0 HC', cost: 51276 },
-  { hc: '10,0 HC', cost: 51776 },
-];
-
-const ccBadge = (tone: RoleRow['ccTone']) => {
+const ccBadge = (tone: ReturnType<typeof payrollCcTone>) => {
   if (tone === 'blue') return 'bg-blue-100 text-blue-800';
   if (tone === 'amber') return 'bg-amber-100 text-amber-800';
   return 'bg-slate-100 text-slate-700';
 };
 
 export const M15RhBenchmark: React.FC = () => {
-  const { hubParams } = usePlanner();
+  const {
+    hubParams,
+    payrollRoles,
+    upsertPayrollRole,
+    deletePayrollRole,
+    activeRole,
+    pitchMode,
+  } = usePlanner();
+  const canEdit = canEditFinance(activeRole) && !pitchMode;
   const band = formatFatorRBand(hubParams);
   const dasLabel = formatDasPct(hubParams);
   const plBands = plPhaseBands(hubParams);
@@ -164,9 +67,50 @@ export const M15RhBenchmark: React.FC = () => {
   const plBase = hubParams.fiscal.plBaseMonthly;
   const capacity = hubParams.capacity.totalPositions;
 
+  const totals = {
+    cct: payrollTotal(payrollRoles, 'cct'),
+    mediana: payrollTotal(payrollRoles, 'mediana'),
+    caged: payrollTotal(payrollRoles, 'caged'),
+  };
+  const hcTotal = payrollHcTotal(payrollRoles);
+
+  const perilRole = payrollRoles.find((r) => r.perilPct > 0);
+  const perilWith = perilRole ? derivePayrollCharges(perilRole, 'mediana') : null;
+  const perilWithout = perilRole
+    ? derivePayrollCharges({ ...perilRole, perilPct: 0 }, 'mediana')
+    : null;
+  const perilAmt = typeof perilWith?.periculosidade === 'number' ? perilWith.periculosidade : 0;
+  const perilReflex =
+    (typeof perilWith?.totalEncargos === 'number' ? perilWith.totalEncargos : 0) -
+    (typeof perilWithout?.totalEncargos === 'number' ? perilWithout.totalEncargos : 0);
+  const perilImpactHc = perilAmt + perilReflex;
+  const perilHc = perilRole?.hc ?? 0;
+
+  const patchRole = (role: PayrollRole, patch: Partial<PayrollRole>) => {
+    upsertPayrollRole({ ...role, ...patch });
+  };
+
+  const [addCargoCatalogId, setAddCargoCatalogId] = useState('');
+  const addableCargos = useMemo(
+    () => availablePayrollCatalogEntries(payrollRoles),
+    [payrollRoles],
+  );
+
+  useEffect(() => {
+    if (addCargoCatalogId && !addableCargos.some((e) => e.catalogId === addCargoCatalogId)) {
+      setAddCargoCatalogId(addableCargos[0]?.catalogId ?? '');
+    }
+  }, [addableCargos, addCargoCatalogId]);
+
+  const handleAddPayrollRole = () => {
+    const entry = findPayrollCatalogEntry(addCargoCatalogId);
+    if (!entry) return;
+    upsertPayrollRole(payrollRoleFromCatalogEntry(entry, `pr-${Date.now()}`));
+    setAddCargoCatalogId('');
+  };
+
   return (
     <div className="space-[#1F3864] space-y-6">
-      {/* HEADER BANNER */}
       <div className="bg-[#1F3864] text-white p-6 rounded-xl shadow-lg border border-slate-700 relative overflow-hidden">
         <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-linear-to-l from-blue-500/10 to-transparent pointer-events-none" />
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
@@ -179,8 +123,8 @@ export const M15RhBenchmark: React.FC = () => {
               Estrutura Organizacional & Benchmark Salarial SC
             </h2>
             <p className="text-xs text-slate-300 mt-1 max-w-2xl">
-              Dimensionamento de headcount (CLT e Pró-labore), encargos granularizados por percentual e
-              evidência do adicional de Periculosidade NR-16 (CC 002).
+              Tabela de cargos do projeto (metadata). Encargos CLT derivados das alíquotas; Mix lê as
+              mesmas linhas Piso CCT / Mediana SC / Média CAGED.
             </p>
           </div>
           <div className="bg-slate-800/80 backdrop-blur-xs border border-emerald-500/30 px-4 py-2.5 rounded-lg text-right shrink-0">
@@ -195,98 +139,76 @@ export const M15RhBenchmark: React.FC = () => {
         </div>
       </div>
 
-      {/* PHASE SUMMARY KPI CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs relative overflow-hidden">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
           <div className="flex justify-between items-start">
             <div>
               <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">
-                Fase 1 · Startup / Âncora
+                {MIX_COST_MODE_LABELS.cct}
               </span>
-              <span className="text-xs text-blue-700 font-bold block mt-0.5">Mês 1 ao Mês 3</span>
+              <span className="text-xs text-blue-700 font-bold block mt-0.5">cct_sc_2024_26</span>
             </div>
             <span className="px-2 py-0.5 bg-blue-50 text-blue-800 text-[10px] font-mono font-bold rounded">
-              5 HC
+              {hcTotal.toLocaleString('pt-BR')} HC
             </span>
           </div>
           <div className="mt-3">
             <div className="text-xl font-black font-mono text-slate-900">
-              R$ 25.732 <span className="text-xs font-normal text-slate-500">/mês</span>
+              R$ {fmt(totals.cct)} <span className="text-xs font-normal text-slate-500">/mês</span>
             </div>
             <p className="text-[11px] text-slate-500 mt-1 leading-snug">
-              Equipe mínima essencial: 1 Supervisor, 2 Operadores/Conferentes e 2 Sócios.
+              Mesmo quadro (HC). Só o piso CCT muda o total.
             </p>
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs relative overflow-hidden">
+        <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-xs">
           <div className="flex justify-between items-start">
             <div>
               <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">
-                Fase 2 · Ramp-up
+                {MIX_COST_MODE_LABELS.mediana}
               </span>
-              <span className="text-xs text-amber-700 font-bold block mt-0.5">Mês 4 ao Mês 6</span>
-            </div>
-            <span className="px-2 py-0.5 bg-amber-50 text-amber-800 text-[10px] font-mono font-bold rounded">
-              7,4 HC
-            </span>
-          </div>
-          <div className="mt-3">
-            <div className="text-xl font-black font-mono text-slate-900">
-              R$ 36.724 <span className="text-xs font-normal text-slate-500">/mês</span>
-            </div>
-            <p className="text-[11px] text-slate-500 mt-1 leading-snug">
-              Início do SAC/Admin, 2º turno de empilhadeira e reforço de conferência.
-            </p>
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs relative overflow-hidden">
-          <div className="flex justify-between items-start">
-            <div>
-              <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">
-                Fase 3 · Operação Plena Y1
+              <span className="text-xs text-emerald-700 font-bold block mt-0.5">
+                Capacidade {capacity.toLocaleString('pt-BR')} posições
               </span>
-              <span className="text-xs text-emerald-700 font-bold block mt-0.5">Mês 7 ao Mês 12</span>
             </div>
             <span className="px-2 py-0.5 bg-emerald-50 text-emerald-800 text-[10px] font-mono font-bold rounded">
-              10 HC
+              {hcTotal.toLocaleString('pt-BR')} HC
             </span>
           </div>
           <div className="mt-3">
             <div className="text-xl font-black font-mono text-emerald-800">
-              R$ 51.276 <span className="text-xs font-normal text-slate-500">/mês</span>
+              R$ {fmt(totals.mediana)} <span className="text-xs font-normal text-slate-500">/mês</span>
             </div>
             <p className="text-[11px] text-slate-500 mt-1 leading-snug">
-              Capacidade máxima de {capacity.toLocaleString('pt-BR')} posições ativas. 8 operacionais + 2 Pró-labore.
+              Mediana SC — default do Mix BE.
             </p>
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs relative overflow-hidden">
+        <div className="bg-white p-4 rounded-xl border border-amber-200 shadow-xs">
           <div className="flex justify-between items-start">
             <div>
               <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">
-                Fase 4 · Estabilização Y2
+                {MIX_COST_MODE_LABELS.caged}
               </span>
-              <span className="text-xs text-indigo-700 font-bold block mt-0.5">Mês 13 ao Mês 24</span>
+              <span className="text-xs text-amber-700 font-bold block mt-0.5">media_caged_sc</span>
             </div>
-            <span className="px-2 py-0.5 bg-indigo-50 text-indigo-800 text-[10px] font-mono font-bold rounded">
-              10 HC
+            <span className="px-2 py-0.5 bg-amber-50 text-amber-800 text-[10px] font-mono font-bold rounded">
+              {hcTotal.toLocaleString('pt-BR')} HC
             </span>
           </div>
           <div className="mt-3">
-            <div className="text-xl font-black font-mono text-indigo-900">
-              R$ 51.776 <span className="text-xs font-normal text-slate-500">/mês</span>
+            <div className="text-xl font-black font-mono text-amber-900">
+              R$ {fmt(totals.caged)} <span className="text-xs font-normal text-slate-500">/mês</span>
             </div>
             <p className="text-[11px] text-slate-500 mt-1 leading-snug">
-              PL fase ajustado; reajustes CLT passam a linha própria na v3.6 (não embutidos).
+              Média CAGED — teto competitivo, mesmo HC.
             </p>
           </div>
         </div>
       </div>
 
-      {/* HIGHLIGHT CARD: GOVERNANÇA DO FATOR R */}
       <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-5 shadow-xs">
         <div className="flex items-start gap-3">
           <ShieldAlert className="w-6 h-6 text-amber-700 shrink-0 mt-0.5" />
@@ -354,7 +276,6 @@ export const M15RhBenchmark: React.FC = () => {
         </div>
       </div>
 
-      {/* GAP CONTÁBIL: PERICULOSIDADE */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 shadow-xs">
         <div className="flex items-start gap-3">
           <BookOpen className="w-5 h-5 text-blue-700 shrink-0 mt-0.5" />
@@ -384,31 +305,61 @@ export const M15RhBenchmark: React.FC = () => {
                 Periculosidade 30% · base = salário base
               </div>
             </div>
-            <p className="text-[11px] text-blue-800 leading-relaxed">
-              Impacto evidenciado ≈ R$ 1.223/HC/mês (R$ 960 + R$ 263 de reflexos). Com 2 HC a partir de M7
-              ≈ +R$ 2.446/mês. Em 24 meses o delta líquido fica &lt; R$ 15k (&lt;0,3% da receita) — imaterial
-              para a margem de 11,9%, e melhora o Fator R.
-            </p>
+            {perilRole && (
+              <p className="text-[11px] text-blue-800 leading-relaxed">
+                Impacto evidenciado ≈ R$ {fmt(perilImpactHc)}/HC/mês (R$ {fmt(perilAmt)} + R${' '}
+                {fmt(perilReflex)} de reflexos). Com {perilHc} HC ≈ +R${' '}
+                {fmt(perilImpactHc * perilHc)}/mês — só se <code>perilPct</code> &gt; 0 (área inflamável).
+              </p>
+            )}
           </div>
         </div>
       </div>
 
-      {/* DETAILED HEADCOUNT & SALARY TABLE */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="p-4 border-b border-slate-200 bg-slate-50/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-wide flex items-center gap-2">
               <Briefcase className="w-4 h-4 text-[#1F3864]" />
-              <span>Matriz Detalhada de Cargos, Salários e Headcount por Fase</span>
+              <span>Cargos e salários do projeto · metadata SC</span>
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Encargos separados por coluna (título + %). INSS patronal diluído no DAS 6% (não entra nesta
-              matriz). Total encargos CLT = 27,44% sobre a base de cálculo.
+              Encargos = FGTS 8% + 13º 8,33% + Férias+1/3 11,11% sobre (base + periculosidade). INSS
+              patronal diluído no DAS (não entra nesta matriz). Mesma tabela do Mix.
             </p>
           </div>
-          <span className="text-[11px] font-mono font-bold bg-slate-200 text-slate-700 px-2.5 py-1 rounded shrink-0">
-            Região: Itajaí & Navegantes / SC
-          </span>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <span className="text-[11px] font-mono font-bold bg-slate-200 text-slate-700 px-2.5 py-1 rounded">
+              Região: Itajaí & Navegantes / SC
+            </span>
+            <select
+              disabled={!canEdit || addableCargos.length === 0}
+              value={addCargoCatalogId}
+              onChange={(e) => setAddCargoCatalogId(e.target.value)}
+              className="max-w-[min(22rem,70vw)] h-8 px-2 text-[11px] border border-slate-300 bg-white text-slate-800 rounded-lg cursor-pointer disabled:opacity-40"
+              aria-label="Cargo do plano de contas"
+            >
+              <option value="">
+                {addableCargos.length === 0
+                  ? 'Todos os cargos do catálogo já incluídos'
+                  : 'Plano de contas de cargos…'}
+              </option>
+              {addableCargos.map((entry) => (
+                <option key={entry.catalogId} value={entry.catalogId}>
+                  {payrollCatalogLabel(entry)}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={!canEdit || !addCargoCatalogId}
+              onClick={handleAddPayrollRole}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Adicionar cargo
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -420,12 +371,12 @@ export const M15RhBenchmark: React.FC = () => {
                 </th>
                 <th className="py-2.5 px-2 text-center">CC</th>
                 <th className="py-2.5 px-2 text-right">
-                  Salário Base
-                  <span className="block text-[9px] font-normal text-white/70">R$ / HC</span>
+                  HC
+                  <span className="block text-[9px] font-normal text-white/70">quadro</span>
                 </th>
                 <th className="py-2.5 px-2 text-right bg-orange-900/50">
                   Periculosidade
-                  <span className="block text-[9px] font-normal text-orange-100">NR-16 · 30%</span>
+                  <span className="block text-[9px] font-normal text-orange-100">NR-16 · %</span>
                 </th>
                 <th className="py-2.5 px-2 text-right">
                   FGTS
@@ -447,110 +398,199 @@ export const M15RhBenchmark: React.FC = () => {
                   Custo / HC
                   <span className="block text-[9px] font-normal text-emerald-100">Base + Enc.</span>
                 </th>
-                <th className="py-2.5 px-2 text-center bg-blue-900/60">Fase 1<br /><span className="text-[9px] font-normal">M1–3</span></th>
-                <th className="py-2.5 px-2 text-center bg-amber-900/60">Fase 2<br /><span className="text-[9px] font-normal">M4–6</span></th>
-                <th className="py-2.5 px-2 text-center bg-emerald-900/60">Fase 3<br /><span className="text-[9px] font-normal">M7–12</span></th>
-                <th className="py-2.5 px-2 text-center bg-indigo-900/60">Fase 4<br /><span className="text-[9px] font-normal">M13–24</span></th>
+                <th className="py-2.5 px-2 text-center bg-blue-900/60">
+                  Piso CCT
+                  <span className="block text-[9px] font-normal">conservador</span>
+                </th>
+                <th className="py-2.5 px-2 text-center bg-emerald-900/60">
+                  Mediana SC
+                  <span className="block text-[9px] font-normal">equilibrado</span>
+                </th>
+                <th className="py-2.5 px-2 text-center bg-amber-900/60">
+                  Média CAGED
+                  <span className="block text-[9px] font-normal">competitivo</span>
+                </th>
+                <th className="py-2.5 px-2 w-8" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {ROLES.map((row) => (
-                <tr
-                  key={row.cargo}
-                  className={`hover:bg-slate-50 ${row.highlight ? 'bg-amber-50/30' : ''}`}
-                >
-                  <td className="py-2.5 px-3 font-bold text-slate-900 sticky left-0 bg-white z-1">
-                    {row.cargo}
-                    <span className="block text-[10px] font-normal text-slate-500">{row.detail}</span>
-                    {row.perilNote && (
-                      <span className="block text-[9px] font-medium text-orange-700 mt-0.5">
-                        {row.perilNote}
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-2.5 px-2 text-center">
-                    <span
-                      className={`px-1.5 py-0.5 font-mono text-[10px] rounded font-bold ${ccBadge(row.ccTone)}`}
-                    >
-                      {row.cc}
-                    </span>
-                  </td>
-                  <td className="py-2.5 px-2 text-right font-mono">
-                    {row.salarioBase != null ? `R$ ${fmt(row.salarioBase)}` : '—'}
-                  </td>
-                  <td className="py-2.5 px-2 text-right font-mono bg-orange-50/60">
-                    {row.periculosidade === 960 ? (
-                      <span className="font-bold text-orange-800">30% · R$ 960</span>
-                    ) : (
-                      <span className="text-slate-500">{fmtCell(row.periculosidade)}</span>
-                    )}
-                  </td>
-                  <td className="py-2.5 px-2 text-right font-mono text-slate-700">
-                    {fmtCell(row.fgts)}
-                  </td>
-                  <td className="py-2.5 px-2 text-right font-mono text-slate-700">
-                    {fmtCell(row.decimo)}
-                  </td>
-                  <td className="py-2.5 px-2 text-right font-mono text-slate-700">
-                    {fmtCell(row.ferias)}
-                  </td>
-                  <td className="py-2.5 px-2 text-right font-mono font-semibold text-slate-800 bg-slate-50">
-                    {fmtCell(row.totalEncargos)}
-                  </td>
-                  <td className="py-2.5 px-2 text-right font-mono font-extrabold text-emerald-800 bg-emerald-50/50">
-                    R$ {fmt(row.custoHc)}
-                  </td>
-                  {row.phases.map((p, i) => (
-                    <td
-                      key={i}
-                      className={`py-2.5 px-2 text-center font-mono ${
-                        i === 2 ? 'bg-emerald-50/40' : ''
-                      } ${p.cost === 0 ? 'text-slate-400' : ''}`}
-                    >
-                      <span className="font-bold text-slate-900">{p.hc}</span>
-                      <span className="block text-[10px]">R$ {fmt(p.cost)}</span>
+              {payrollRoles.map((role) => {
+                const charges = derivePayrollCharges(role, 'mediana');
+                const highlight = role.contractKind === 'prolabore';
+                return (
+                  <tr
+                    key={role.id}
+                    className={`hover:bg-slate-50 ${highlight ? 'bg-amber-50/30' : ''}`}
+                  >
+                    <td className="py-2.5 px-3 font-bold text-slate-900 sticky left-0 bg-white z-1">
+                      <input
+                        disabled={!canEdit}
+                        value={role.cargo}
+                        onChange={(e) => patchRole(role, { cargo: e.target.value })}
+                        className="w-full bg-transparent font-bold outline-none"
+                      />
+                      <input
+                        disabled={!canEdit}
+                        value={role.detail}
+                        onChange={(e) => patchRole(role, { detail: e.target.value })}
+                        className="w-full bg-transparent text-[10px] font-normal text-slate-500 outline-none"
+                      />
+                      <select
+                        disabled={!canEdit}
+                        value={role.contractKind}
+                        onChange={(e) =>
+                          patchRole(role, {
+                            contractKind: e.target.value as PayrollRole['contractKind'],
+                          })
+                        }
+                        className="mt-1 text-[10px] border border-slate-200 rounded px-1 py-0.5"
+                      >
+                        <option value="clt">CLT</option>
+                        <option value="prolabore">Pró-labore</option>
+                      </select>
                     </td>
-                  ))}
-                </tr>
-              ))}
+                    <td className="py-2.5 px-2 text-center">
+                      <input
+                        disabled={!canEdit}
+                        value={role.cc}
+                        onChange={(e) => patchRole(role, { cc: e.target.value })}
+                        className={`w-16 text-center font-mono text-[10px] rounded font-bold px-1 py-0.5 ${ccBadge(payrollCcTone(role.cc))}`}
+                      />
+                    </td>
+                    <td className="py-2.5 px-2 text-right font-mono">
+                      <input
+                        type="number"
+                        disabled={!canEdit}
+                        value={role.hc}
+                        onChange={(e) => patchRole(role, { hc: Number(e.target.value) || 0 })}
+                        className="w-16 bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-right"
+                      />
+                      <span className="block text-[9px] text-slate-500">{payrollHcLabel(role)}</span>
+                    </td>
+                    <td className="py-2.5 px-2 text-right font-mono bg-orange-50/60">
+                      {role.contractKind === 'prolabore' ? (
+                        <span className="text-slate-500">{fmtCell(charges.periculosidade)}</span>
+                      ) : (
+                        <div className="flex flex-col items-end gap-0.5">
+                          <input
+                            type="number"
+                            step="1"
+                            disabled={!canEdit}
+                            value={Math.round(role.perilPct * 100)}
+                            onChange={(e) =>
+                              patchRole(role, { perilPct: (Number(e.target.value) || 0) / 100 })
+                            }
+                            className="w-14 bg-orange-50 border border-orange-200 rounded px-1 py-0.5 text-right"
+                            title="Percentual NR-16"
+                          />
+                          {typeof charges.periculosidade === 'number' ? (
+                            <span className="font-bold text-orange-800">
+                              {Math.round(role.perilPct * 100)}% · R$ {fmt(charges.periculosidade)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-500">—</span>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-2 text-right font-mono text-slate-700">
+                      {fmtCell(charges.fgts)}
+                    </td>
+                    <td className="py-2.5 px-2 text-right font-mono text-slate-700">
+                      {fmtCell(charges.decimo)}
+                    </td>
+                    <td className="py-2.5 px-2 text-right font-mono text-slate-700">
+                      {fmtCell(charges.ferias)}
+                    </td>
+                    <td className="py-2.5 px-2 text-right font-mono font-semibold text-slate-800 bg-slate-50">
+                      {fmtCell(charges.totalEncargos)}
+                    </td>
+                    <td className="py-2.5 px-2 text-right font-mono font-extrabold text-emerald-800 bg-emerald-50/50">
+                      R$ {fmt(charges.custoHc)}
+                    </td>
+                    {MIX_COST_MODES.map((mode) => {
+                      const field =
+                        mode === 'cct'
+                          ? 'salarioCct'
+                          : mode === 'caged'
+                            ? 'salarioCaged'
+                            : 'salarioMediana';
+                      const raw = role[field];
+                      return (
+                        <td
+                          key={mode}
+                          className={`py-2.5 px-2 text-center font-mono ${
+                            mode === 'mediana' ? 'bg-emerald-50/40' : ''
+                          } ${payrollAmount(role, mode) === 0 ? 'text-slate-400' : ''}`}
+                        >
+                          <input
+                            type="number"
+                            disabled={!canEdit}
+                            value={raw ?? 0}
+                            onChange={(e) =>
+                              patchRole(role, {
+                                [field]: Number(e.target.value) || 0,
+                              })
+                            }
+                            className="w-20 mx-auto block bg-white border border-slate-200 rounded px-1 py-0.5 text-center font-bold text-slate-900"
+                          />
+                          <span className="block text-[10px] mt-0.5">
+                            folha R$ {fmt(payrollAmount(role, mode))}
+                          </span>
+                        </td>
+                      );
+                    })}
+                    <td className="py-2.5 px-2">
+                      <button
+                        type="button"
+                        disabled={!canEdit}
+                        onClick={() => deletePayrollRole(role.id)}
+                        className="text-rose-600 disabled:opacity-40 cursor-pointer"
+                        title="Excluir cargo"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
             <tfoot>
               <tr className="bg-slate-900 text-white font-bold">
                 <td colSpan={9} className="py-3 px-3 uppercase text-right tracking-wide text-[10px]">
-                  Total Folha Base + Pró-Labore Regular (encargos granularizados v3.6):
+                  Total folha (metadata do projeto):
                 </td>
-                {PHASE_TOTALS.map((t, i) => (
+                {MIX_COST_MODES.map((mode) => (
                   <td
-                    key={i}
+                    key={mode}
                     className={`py-3 px-2 text-center font-mono text-sm ${
-                      i === 2
+                      mode === 'mediana'
                         ? 'text-emerald-300 bg-emerald-950'
-                        : i === 3
-                          ? 'text-indigo-300'
-                          : 'text-amber-300'
+                        : mode === 'caged'
+                          ? 'text-amber-300'
+                          : 'text-sky-300'
                     }`}
                   >
-                    {t.hc}
-                    <span className="block text-[11px]">R$ {fmt(t.cost)}</span>
+                    {hcTotal.toLocaleString('pt-BR')} HC
+                    <span className="block text-[11px]">R$ {fmt(payrollTotal(payrollRoles, mode))}</span>
                   </td>
                 ))}
+                <td />
               </tr>
             </tfoot>
           </table>
         </div>
       </div>
 
-      {/* BENCHMARK REGIONAL & LEGISLAÇÃO SC CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
           <div className="flex items-center gap-2 font-bold text-slate-900 text-xs mb-2">
             <Building2 className="w-4 h-4 text-blue-700" />
-            <span>Convenção CCT Sintragon SC</span>
+            <span>CCT Itajaí · SITRAROIT × SEVEÍCULOS</span>
           </div>
           <p className="text-xs text-slate-600 leading-relaxed">
-            Pisos salariais alinhados com o sindicato dos trabalhadores em transportes e logística de
-            Itajaí/Navegantes. Inclui aditivo de periculosidade para operação em empilhadeiras elétricas
-            acima de 500 kg.
+            Pisos = proposta RH (F01–F07) até extrato Mediador. Empilhadeira: NR-11; periculosidade só
+            área classificada (NR-16). Pack Mix = 27,44% Simples — INSS patronal no DAS.
           </p>
         </div>
 

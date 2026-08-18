@@ -1,6 +1,7 @@
 import type { HubParams } from './params';
 import { defaultParams } from './params';
 import type { DreCompositionLine, DreGranularItem, DreMonth } from '../types';
+import { mixStructureCostMonthlyFromLedger } from './mixPreview';
 import {
   FORTE_ENTREPOSTO_30D,
   FORTE_DTC_20D,
@@ -372,7 +373,7 @@ export function plAdditionalForMonth(params: HubParams, monthNum: number): numbe
 
 /**
  * Folha mensal elegível ao numerador do Fator R a partir do ledger base.
- * Usa flags isFatorRNumerator / isFatorRExcluded; fallback: costBehavior=hc sem excluded.
+ * Só entra com isFatorRNumerator === true; isFatorRExcluded exclui.
  * PL adicional usa degrau hubParams (não Y1 flat do ledger).
  */
 export function fatorRFolhaMensalFromLedger(
@@ -386,25 +387,19 @@ export function fatorRFolhaMensalFromLedger(
         item.active &&
         item.id !== 'cst-pl-adicional' &&
         item.isFatorRExcluded !== true &&
-        (item.isFatorRNumerator === true ||
-          (item.isFatorRNumerator == null && item.costBehavior === 'hc')),
+        item.isFatorRNumerator === true,
     )
     .reduce((acc, item) => acc + item.monthlyAmountY1, 0);
   return baseHc + plAdditionalForMonth(params, monthNum);
 }
 
-/** Despesas + custos fixos ativos (break-even Mix). Exclui PL adicional gatilho. */
+/**
+ * OPEX fixo mensal para Break-Even (M11): custos + despesas fixas do ledger base.
+ * Inclui ex. OPEX máquinas (custo fixo) e aluguel/condomínio (despesa fixa).
+ * Exclui PL adicional gatilho (degrau separado no Fator R).
+ */
 export function fixedOpexMonthlyFromLedger(items: DreGranularItem[]): number {
-  return items
-    .filter(
-      (i) =>
-        i.active &&
-        i.id !== 'cst-pl-adicional' &&
-        (i.costBehavior === 'fixed' || i.costBehavior == null) &&
-        (i.section === 'despesa' || i.section === 'custo') &&
-        i.type === 'fixo',
-    )
-    .reduce((acc, i) => acc + i.monthlyAmountY1, 0);
+  return mixStructureCostMonthlyFromLedger(items);
 }
 
 export function projectDreFromLedger(

@@ -85,6 +85,52 @@ export function payrollAmount(role: PayrollRole, mode: MixCostMode): number {
   return Math.round(derivePayrollCharges(role, mode).custoHc * role.hc);
 }
 
+/** Pack Simples por HC (FGTS+13º+férias). null = pró-labore isento. */
+export function payrollEncargosPerHc(role: PayrollRole, mode: MixCostMode): number | null {
+  const enc = derivePayrollCharges(role, mode).totalEncargos;
+  if (enc === null) return null;
+  return enc;
+}
+
+/** Encargos da linha = pack × HC. */
+export function payrollEncargosTotal(role: PayrollRole, mode: MixCostMode): number {
+  const per = payrollEncargosPerHc(role, mode);
+  if (per === null) return 0;
+  return Math.round(per * role.hc);
+}
+
+export function payrollEncargosGrandTotal(roles: PayrollRole[], mode: MixCostMode): number {
+  return roles.reduce((acc, r) => acc + payrollEncargosTotal(r, mode), 0);
+}
+
+/** Parse HC / salário from table inputs (≥ 0). */
+export function parsePayrollNumeric(raw: string): number {
+  const n = Number(String(raw).replace(',', '.'));
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return n;
+}
+
+export function patchPayrollRoleField(
+  roles: PayrollRole[],
+  roleId: string,
+  field: keyof PayrollRole,
+  raw: string,
+): PayrollRole[] {
+  const role = roles.find((r) => r.id === roleId);
+  if (!role) return roles;
+  const numericFields = new Set<keyof PayrollRole>([
+    'salarioCct',
+    'salarioMediana',
+    'salarioCaged',
+    'perilPct',
+    'hc',
+  ]);
+  const next: PayrollRole = numericFields.has(field)
+    ? { ...role, [field]: parsePayrollNumeric(raw) }
+    : { ...role, [field]: raw };
+  return upsertPayrollRole(roles, next);
+}
+
 export function payrollTotal(roles: PayrollRole[], mode: MixCostMode): number {
   return roles.reduce((acc, r) => acc + payrollAmount(r, mode), 0);
 }

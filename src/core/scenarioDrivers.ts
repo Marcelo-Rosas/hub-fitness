@@ -1,4 +1,4 @@
-import type { DreGranularItem, DreMonth, ScenarioDrivers } from '../types';
+import type { DreGranularItem, DreMonth, Scenario, ScenarioDrivers } from '../types';
 import { OFFICIAL_TOTALS_24M } from './bpV35Reference';
 import type { HubParams } from './params';
 import {
@@ -11,7 +11,10 @@ import {
 } from './engine';
 
 export interface ScenarioKpis {
+  /** Média LL M7–M12 — KPI cruise / Board. */
   llM7Plus: number;
+  /** Soma LL M1–M24 — métrica do Tornado (granularidade mensal). */
+  llTotal24m: number;
   m24Cash: number;
   fatorRHint: number;
   capexTotal: number;
@@ -36,6 +39,16 @@ export const DEFAULT_SCENARIO_DRIVERS: ScenarioDrivers = {
   hcOpexFactor: 1,
   techOpexActive: false,
 };
+
+/** A/B: âncora baseline à esquerda, cenário clicado à direita. */
+export function pickComparatorScenarios(
+  scenarios: Scenario[],
+  activeId: string,
+): { left: Scenario; right: Scenario } {
+  const left = scenarios.find((s) => s.isBaseline) ?? scenarios[0];
+  const right = scenarios.find((s) => s.id === activeId) ?? left;
+  return { left, right };
+}
 
 
 function clamp(n: number, min: number, max: number) {
@@ -117,12 +130,14 @@ export function deriveScenarioKpis(dreMonths: DreMonth[], params: HubParams): Sc
       ? 0
       : Math.round(slice.reduce((a, m) => a + m.lucroLiquido, 0) / slice.length);
   const sumLl = dreMonths.reduce((a, m) => a + m.lucroLiquido, 0);
+  const llTotal24m = Math.round(sumLl);
   const m24Cash = Math.round(
     OFFICIAL_TOTALS_24M.saldoCaixaM24CarenciaAluguel +
       (sumLl - OFFICIAL_TOTALS_24M.lucroLiquidoTotal),
   );
   return {
     llM7Plus,
+    llTotal24m,
     m24Cash,
     fatorRHint: 0,
     capexTotal: params.capex.total,
@@ -147,14 +162,14 @@ export function projectScenario(
   return projectDreFromLedger(driven, d.occupancyRate, params);
 }
 
-function llM7From(items: DreGranularItem[], drivers: ScenarioDrivers, params: HubParams): number {
-  return deriveScenarioKpis(projectScenario(items, drivers, params), params).llM7Plus;
+function llTotal24From(items: DreGranularItem[], drivers: ScenarioDrivers, params: HubParams): number {
+  return deriveScenarioKpis(projectScenario(items, drivers, params), params).llTotal24m;
 }
 
 export function computeTornadoBars(args: ComputeTornadoArgs): TornadoBar[] {
   const { items, params } = args;
   const base = clampScenarioDrivers(args.baseDrivers);
-  const baseLl = llM7From(items, base, params);
+  const baseLl = llTotal24From(items, base, params);
 
   const axis = (
     factor: string,
@@ -162,8 +177,8 @@ export function computeTornadoBars(args: ComputeTornadoArgs): TornadoBar[] {
     up: ScenarioDrivers,
   ): TornadoBar => ({
     factor,
-    downside: llM7From(items, down, params) - baseLl,
-    upside: llM7From(items, up, params) - baseLl,
+    downside: llTotal24From(items, down, params) - baseLl,
+    upside: llTotal24From(items, up, params) - baseLl,
   });
 
   return [

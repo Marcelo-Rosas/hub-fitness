@@ -3,6 +3,7 @@ import { AlertTriangle, HelpCircle } from 'lucide-react';
 import { usePlanner } from '../../context/PlannerContext';
 import { kbHrefForModule } from '../../core/kb/visibility';
 import { resolvePlannerSearch } from '../../core/m6LegacyRoutes';
+import { M6ControlStrip } from './M6ControlStrip';
 import { M6Cenarios } from './M6Cenarios';
 import { M11SimuladorMix } from './M11SimuladorMix';
 
@@ -11,7 +12,7 @@ export const M6MixCenarios: React.FC = () => {
   const kbHref = kbHrefForModule(activeRole, 'M6');
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
@@ -40,6 +41,7 @@ export const M6MixCenarios: React.FC = () => {
           )}
         </div>
       </div>
+      <M6ControlStrip />
       <M11SimuladorMix embedPanel="simulator" />
       <M6Cenarios embed />
     </div>

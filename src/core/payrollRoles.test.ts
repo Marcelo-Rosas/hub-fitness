@@ -8,6 +8,10 @@ import {
   deletePayrollRole,
   derivePayrollCharges,
   emptyPayrollRole,
+  patchPayrollRoleField,
+  payrollAmount,
+  payrollEncargosPerHc,
+  payrollEncargosTotal,
   payrollHcTotal,
   payrollSalario,
   payrollTotal,
@@ -44,6 +48,28 @@ describe('payrollRoles SC — 3 pisos, 1 HC', () => {
     expect(payrollSalario(conf, 'mediana')).toBe(2268);
     expect(payrollSalario(emp, 'cct')).toBe(1801);
     expect(LOGISTICS_ANNEX_CARGOS.some((c) => c.cbo === '7823-10' && !c.mixGalpao)).toBe(true);
+  });
+
+  it('HC scales folha; admin pisos differ by mode (4141-40 annex)', () => {
+    const admin = INITIAL_PAYROLL_ROLES.find((r) => r.id === 'pr-admin')!;
+    expect(admin.salarioCct).toBe(1801);
+    expect(admin.salarioMediana).toBe(2025);
+    expect(admin.salarioCaged).toBe(2050);
+    expect(payrollEncargosPerHc(admin, 'cct')).toBe(494);
+    expect(payrollEncargosTotal(admin, 'cct')).toBe(988);
+    const hc2 = payrollAmount(admin, 'cct');
+    const hc3 = payrollAmount({ ...admin, hc: 3 }, 'cct');
+    expect(hc3).toBeGreaterThan(hc2);
+    expect(hc3).toBe(Math.round((hc2 / admin.hc) * 3));
+    expect(hc2).toBe(admin.salarioCct! * admin.hc + payrollEncargosTotal(admin, 'cct'));
+  });
+
+  it('patchPayrollRoleField updates HC on latest row state', () => {
+    const admin = INITIAL_PAYROLL_ROLES.find((r) => r.id === 'pr-admin')!;
+    const once = patchPayrollRoleField(INITIAL_PAYROLL_ROLES, admin.id, 'hc', '3');
+    const row = once.find((r) => r.id === admin.id)!;
+    expect(row.hc).toBe(3);
+    expect(payrollAmount(row, 'mediana')).not.toBe(payrollAmount(admin, 'mediana'));
   });
 
   it('upsert/delete changes CCT total', () => {
