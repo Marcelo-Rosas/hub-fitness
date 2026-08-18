@@ -133,6 +133,16 @@ Spec: `2026-08-15-email-rfq-approve-design.md` (tokens, NOTIFY, HTML `/approve/:
 
 ## Execution order
 
-**Now:** M6 Mix & Cenários unificado shipped (spec/plan 2026-08-16).  
-**Next:** Ad Valorem CPQ / v1.1 custos bottom-up / Ponte B — se pedido.  
+**Now:** M6 unificado (spec 2026-08-16) — **pendente**.  
+**Done:** Contratos declarados A–E shipped (spec 2026-08-18, commit `545235f`).
+- M2 cards/sintética = A live · granular = B · barra = D
+- M5 Fator R single-source + tabela trailing-12 rolante
+- M11 BE = contrato E (143k / 65%)
+- Task 6: chips M6 KPI/Tornado (`A_PROJETADO`) + gov-5/gov-6 (`D_TRAILING12`)
+
+**Next:**
+- M6 Mix & Cenários unificado (preview→Commit, shell tabs, redirect M11)
+- Ad Valorem CPQ (investigar divergência NF × CPQ separado)
+- v1.1 aba Custos bottom-up (M6 unificado)
+
 **Phases 2–5:** already done.

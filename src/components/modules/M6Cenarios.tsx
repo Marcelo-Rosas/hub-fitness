@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import { GitCompare, Copy, Sparkles } from 'lucide-react';
 import { ModuleHeader } from '../ModuleHeader';
+import { ContractChip } from '../ContractChip';
 import { HubChartCard } from '../charts/HubChartCard';
 import { HUB_CHART, HubChartLegendPill, hubTick, hubTooltipStyle, hubYAxisK } from '../charts/hubChartTheme';
 import { computeWmsProprioImpact } from '../../core/engine';
@@ -106,6 +107,7 @@ export const M6Cenarios: React.FC<{ embed?: boolean }> = ({ embed = false }) => 
             subtext: 'Δ soma M1–M24 · engine live',
             badge: 'DELTA LL',
             highlightColor: 'amber',
+            suffix: <ContractChip id="A_PROJETADO" />,
           },
           {
             label: 'Delta Caixa M24',
@@ -113,6 +115,7 @@ export const M6Cenarios: React.FC<{ embed?: boolean }> = ({ embed = false }) => 
             subtext: 'Âncora oficial + Δ LL',
             badge: 'DELTA CAIXA',
             highlightColor: 'slate',
+            suffix: <ContractChip id="A_PROJETADO" />,
           },
         ]}
         actions={
@@ -351,7 +354,12 @@ export const M6Cenarios: React.FC<{ embed?: boolean }> = ({ embed = false }) => 
       </div>
 
       <HubChartCard
-        title="Tornado live — Δ LL 24m"
+        title={
+          <span className="flex items-center gap-2 flex-wrap">
+            Tornado live — Δ LL 24m
+            <ContractChip id="A_PROJETADO" />
+          </span>
+        }
         subtitle="Sensibilidade M1–M24 (soma mensal) vs Mix + drivers do cenário ativo — engine, zero literais."
         badge="Δ LL 24m"
         plotClassName="h-72 w-full pt-2"

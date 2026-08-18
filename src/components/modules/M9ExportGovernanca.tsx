@@ -20,6 +20,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { ModuleHeader } from '../ModuleHeader';
+import { ContractChip } from '../ContractChip';
 import { StructuredPdfReportModal } from '../StructuredPdfReportModal';
 import {
   buildConsistencyMatrix,
@@ -526,6 +527,9 @@ ${auditLogs.slice(0, 5).map((l) => `- ${l.timestamp} | ${l.user} | ${l.driver}: 
               <div>
                 <div className="text-xs font-bold text-slate-900 flex items-center gap-2">
                   <span>{check.label}</span>
+                  {(check.id === 'gov-5' || check.id === 'gov-6') && (
+                    <ContractChip id="D_TRAILING12" />
+                  )}
                   {check.isLockedRule && (
                     <span className="px-1.5 py-0.2 bg-rose-100 text-rose-800 text-[9px] font-bold rounded">
                       Regra Bloqueada
