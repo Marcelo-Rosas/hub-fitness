@@ -2,7 +2,6 @@ import React, { useState, useMemo } from 'react';
 import {
   computeTechOpexMonthly,
   plAdditionalForMonth,
-  summarizeLiveDre,
   occupancyAmountForMonth,
   isRentAnalyticLine,
   OCCUPANCY_SYNTHETIC_CODE,
@@ -13,6 +12,8 @@ import {
 } from '../../core/engine';
 import { M2DreVarianceChart } from '../M2DreVarianceChart';
 import { usePlanner } from '../../context/PlannerContext';
+import { composeContract, defaultContractCtx } from '../../core/contracts';
+import { ContractChip } from '../ContractChip';
 import { DreSection } from '../../types';
 import {
   FileSpreadsheet,
@@ -75,8 +76,40 @@ const AccountHint: React.FC<{ text?: string }> = ({ text }) => {
 };
 
 export const M2Dre: React.FC = () => {
-  const { granularDreItems, hubParams, dreMonths, activeScenario, chartOfAccounts } = usePlanner();
-  const live24 = useMemo(() => summarizeLiveDre(dreMonths), [dreMonths]);
+  const {
+    granularDreItems,
+    ledgerBaseItems,
+    hubParams,
+    dreMonths,
+    fatorR,
+    activeScenario,
+    chartOfAccounts,
+  } = usePlanner();
+
+  const activeDrivers = activeScenario.drivers;
+
+  const contractCtx = useMemo(
+    () => defaultContractCtx(ledgerBaseItems, hubParams, activeDrivers, 1),
+    [ledgerBaseItems, hubParams, activeDrivers],
+  );
+  const aContract = useMemo(() => composeContract('A_PROJETADO', contractCtx), [contractCtx]);
+  const bContract = useMemo(() => composeContract('B_CHEIO', contractCtx), [contractCtx]);
+  const dContract = useMemo(() => composeContract('D_TRAILING12', contractCtx), [contractCtx]);
+
+  const sum24 = aContract.sum24 ?? {
+    receita: 0,
+    custos: 0,
+    despesas: 0,
+    das: 0,
+    lucro: 0,
+  };
+  const margemA =
+    sum24.receita === 0 ? 0 : Number(((sum24.lucro / sum24.receita) * 100).toFixed(1));
+  const { fatorRMin, fatorRMax } = hubParams.fiscal;
+  const rbt12 = dContract.rbt12 ?? 0;
+  const dentroDaBanda = fatorR >= fatorRMin && fatorR <= fatorRMax;
+  const flat24 = bContract.flat24;
+
   const y1Of = (id: string) =>
     granularDreItems.find((i) => i.id === id && i.active)?.monthlyAmountY1 ?? 0;
   const techOpexY1 = computeTechOpexMonthly(hubParams);
@@ -159,34 +192,58 @@ export const M2Dre: React.FC = () => {
         kpis={[
           {
             label: 'Receita Bruta 24m',
-            value: `R$ ${live24.receitaTotal.toLocaleString('pt-BR')}`,
-            subtext: 'Soma das linhas DRE (mesmo contrato da tabela)',
+            value: `R$ ${sum24.receita.toLocaleString('pt-BR')}`,
+            subtext: 'Contrato A — pipeline Σ24 (projetado c/ ramp + carência)',
             badge: 'RECEITA TOTAL',
+            suffix: <ContractChip id="A_PROJETADO" />,
             highlightColor: 'slate',
           },
           {
             label: 'Custos & OpEx 24m',
-            value: `R$ ${(live24.custosOperacionaisTotal + live24.despesasOperacionaisTotal + live24.dasTotal).toLocaleString('pt-BR')}`,
-            subtext: 'Custos variáveis + despesas + DAS',
+            value: `R$ ${(sum24.custos + sum24.despesas + sum24.das).toLocaleString('pt-BR')}`,
+            subtext: 'Custos + despesas + DAS (contrato A)',
             badge: 'CUSTOS TOTAL',
+            suffix: <ContractChip id="A_PROJETADO" />,
             highlightColor: 'amber',
           },
           {
             label: 'Lucro Líquido 24m',
-            value: `R$ ${live24.lucroLiquidoTotal.toLocaleString('pt-BR')}`,
-            subtext: `Margem líquida ${live24.margemLiquidaPercent.toFixed(1).replace('.', ',')}%`,
+            value: `R$ ${sum24.lucro.toLocaleString('pt-BR')}`,
+            subtext: `Margem líquida ${margemA.toFixed(1).replace('.', ',')}%`,
             badge: 'LUCRO LÍQUIDO ★',
+            suffix: <ContractChip id="A_PROJETADO" />,
             highlightColor: 'emerald',
           },
           {
             label: 'Fator R Simples',
-            value: '28,4%',
-            subtext: 'Alíquota favorecida Anexo III (6%)',
+            value: `${fatorR.toFixed(2).replace('.', ',')}%`,
+            subtext: `Banda alvo ${fatorRMin.toFixed(2).replace('.', ',')}–${fatorRMax.toFixed(2).replace('.', ',')}%`,
             badge: 'FISCAL',
+            suffix: <ContractChip id="D_TRAILING12" />,
             highlightColor: 'indigo',
           },
         ]}
       />
+
+      <div className="flex flex-wrap items-center gap-3 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
+        <span className="text-xs font-bold text-indigo-950">Fator R fiscal</span>
+        <ContractChip id="D_TRAILING12" />
+        <span className="font-mono font-bold text-indigo-900">{fatorR.toFixed(2).replace('.', ',')}%</span>
+        <span className="text-xs text-slate-600">
+          RBT12: R$ {rbt12.toLocaleString('pt-BR')}
+        </span>
+        <span
+          className={`px-2 py-0.5 rounded text-xs font-bold ${
+            dentroDaBanda
+              ? 'bg-emerald-100 text-emerald-800'
+              : 'bg-amber-100 text-amber-800'
+          }`}
+        >
+          {dentroDaBanda
+            ? `✓ Banda ${fatorRMin.toFixed(1).replace('.', ',')}–${fatorRMax.toFixed(1).replace('.', ',')}%`
+            : `⚠ Fora da banda (${fatorR < fatorRMin ? `<${fatorRMin.toFixed(1).replace('.', ',')}%` : `>${fatorRMax.toFixed(1).replace('.', ',')}%`})`}
+        </span>
+      </div>
 
       {/* NAVIGATION TABS (SINTÉTICO | GRANULAR | VARIANCIA) */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900 p-2 rounded-xl border border-slate-800">
@@ -278,6 +335,10 @@ export const M2Dre: React.FC = () => {
       {/* TAB 1: VISÃO SINTÉTICA DRE 24 MESES */}
       {activeTab === 'sintetico' && (
         <div className="space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-bold text-slate-800">Visão Sintética M1–M24</h3>
+            <ContractChip id="A_PROJETADO" />
+          </div>
           <div className="bg-slate-900 rounded-xl border border-slate-800 shadow-xl overflow-hidden">
             <div className="overflow-x-auto max-h-150">
               <table className="w-full text-xs text-left border-collapse">
@@ -354,26 +415,26 @@ export const M2Dre: React.FC = () => {
                       TOTAL 24M (M1–M24)
                     </td>
                     <td className="py-4 px-4 text-right text-white font-black text-sm">
-                      R$ {live24.receitaTotal.toLocaleString('pt-BR')}
+                      R$ {sum24.receita.toLocaleString('pt-BR')}
                     </td>
                     <td className="py-4 px-4 text-right text-slate-200 font-black text-sm">
-                      R$ {live24.custosOperacionaisTotal.toLocaleString('pt-BR')}
+                      R$ {sum24.custos.toLocaleString('pt-BR')}
                     </td>
                     <td className="py-4 px-4 text-right text-slate-200 font-black text-sm">
-                      R$ {live24.lucroBrutoTotal.toLocaleString('pt-BR')}
+                      R$ {(sum24.receita - sum24.custos - sum24.das).toLocaleString('pt-BR')}
                     </td>
                     <td className="py-4 px-4 text-right text-slate-200 font-black text-sm">
-                      R$ {live24.despesasOperacionaisTotal.toLocaleString('pt-BR')}
+                      R$ {sum24.despesas.toLocaleString('pt-BR')}
                     </td>
                     <td className="py-4 px-4 text-right text-slate-400">—</td>
                     <td className="py-4 px-4 text-right text-slate-200 font-black text-sm">
-                      R$ {live24.dasTotal.toLocaleString('pt-BR')}
+                      R$ {sum24.das.toLocaleString('pt-BR')}
                     </td>
                     <td className="py-4 px-4 text-right text-emerald-400 font-black text-base">
-                      R$ {live24.lucroLiquidoTotal.toLocaleString('pt-BR')}
+                      R$ {sum24.lucro.toLocaleString('pt-BR')}
                     </td>
                     <td className="py-4 px-4 text-right text-emerald-300 font-black text-sm">
-                      {live24.margemLiquidaPercent.toFixed(1)}%
+                      {margemA.toFixed(1)}%
                     </td>
                   </tr>
                 </tfoot>
@@ -386,6 +447,17 @@ export const M2Dre: React.FC = () => {
       {/* TAB 2: PLANO DE CONTAS GRANULAR */}
       {activeTab === 'granular' && (
         <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-bold text-slate-800">Plano de Contas Granular</h3>
+              {flat24 && (
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Receita plena 24m (B): R$ {flat24.receita.toLocaleString('pt-BR')}
+                </p>
+              )}
+            </div>
+            <ContractChip id="B_CHEIO" />
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
             <div className="flex items-center gap-2 flex-1 min-w-60">
               <Search className="w-4 h-4 text-slate-400 shrink-0" />

@@ -431,6 +431,7 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [derivedGranularDreItems, activeDrivers.occupancyRate, hubParams]);
 
   // Fator R = contrato D_TRAILING12 (single-source via contracts.ts).
+  // Não reage ao Mix preview (mixScale=1); após commitMixPreview ledgerBaseItems muda.
   const fatorR = useMemo(
     () =>
       fatorRComposed(

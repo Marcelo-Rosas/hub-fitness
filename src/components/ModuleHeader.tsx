@@ -13,6 +13,7 @@ export interface KpiCardItem {
   value: string | number;
   subtext?: string;
   badge?: string;
+  suffix?: React.ReactNode;
   highlightColor?: 'emerald' | 'amber' | 'blue' | 'indigo' | 'slate' | 'rose';
 }
 
@@ -145,6 +146,7 @@ export const ModuleHeader: React.FC<ModuleHeaderProps> = ({
                 <div className="flex items-center justify-between gap-2 mb-1">
                   <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block truncate">
                     {kpi.label}
+                    {kpi.suffix}
                   </span>
                   {kpi.badge && (
                     <span className="px-1.5 py-0.5 bg-slate-200/80 text-slate-700 text-[9.5px] font-mono font-bold rounded shrink-0">
