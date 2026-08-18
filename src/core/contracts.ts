@@ -1,4 +1,5 @@
-import type { DreGranularItem, DreMonth, DreSection, HubParams, ScenarioDrivers } from '../types';
+import type { DreGranularItem, DreMonth, DreSection, ScenarioDrivers } from '../types';
+import type { HubParams } from './params';
 import { OFFICIAL_TOTALS_24M } from './bpV35Reference';
 import {
   fatorRFolhaMensalFromLedger,
@@ -122,7 +123,11 @@ export function composeContract(id: ContractId, ctx: ContractCtx): ContractResul
   return { months, sum24: sum24FromMonths(months) };
 }
 
-/** Fator R = numerador base (flags) ÷ D_TRAILING12.rbt12. Single-source. */
+/**
+ * Fator R = numerador base (flags) ÷ D_TRAILING12.rbt12. Single-source.
+ * Aproximação: folha do mês especificado × 12 (assume folha constante no trailing-12).
+ * Para cálculo exato em janelas que cruzam Y1/Y2, iterar mês a mês (refino futuro).
+ */
 export function fatorRComposed(ctx: ContractCtx, monthNum = 24): number {
   const folha12m = fatorRFolhaMensalFromLedger(ctx.base, ctx.params, monthNum) * 12;
   const rbt12 = composeContract('D_TRAILING12', ctx).rbt12 ?? 0;

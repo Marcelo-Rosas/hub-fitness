@@ -12,8 +12,8 @@ import {
   isAccountInUse,
   computeCliaSpineMonthly,
   plAdditionalForMonth,
-  fatorRFolhaMensalFromLedger,
 } from '../core/engine';
+import { fatorRComposed, defaultContractCtx } from '../core/contracts';
 import { applyScenarioDrivers, deriveScenarioKpis } from '../core/scenarioDrivers';
 import { OFFICIAL_TOTALS_24M } from '../core/bpV35Reference';
 import { PLANO_DE_CONTAS_ITEMS, COST_CENTERS, AccountItem, CostCenter } from '../data/planoDeContasData';
@@ -430,27 +430,15 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return projectDreFromLedger(derivedGranularDreItems, activeDrivers.occupancyRate, hubParams);
   }, [derivedGranularDreItems, activeDrivers.occupancyRate, hubParams]);
 
-  // Fator R: RBT12 + folha elegível do ledger base (hc + isFatorRNumerator; exclui MO terceirizada)
-  const fatorR = useMemo(() => {
-    if (!dreMonths || dreMonths.length === 0) return hubParams.fiscal.fatorRMin;
-
-    const currentMonthIndex = dreMonths.findIndex((m, i) => i > 0 && m.receitaServicos === 0);
-    const activeMonths = currentMonthIndex === -1 ? dreMonths : dreMonths.slice(0, currentMonthIndex);
-
-    if (activeMonths.length === 0) return hubParams.fiscal.fatorRMin;
-
-    const lastMonth = activeMonths[activeMonths.length - 1];
-    const monthNum = lastMonth.month;
-    const rbt12Start = Math.max(0, activeMonths.length - 12);
-    const rbt12 = activeMonths.slice(rbt12Start).reduce((acc, m) => acc + m.receitaServicos, 0);
-    const avgFolhaMensal = fatorRFolhaMensalFromLedger(ledgerBaseItems, hubParams, monthNum);
-    const folhaAcumulada12m = avgFolhaMensal * Math.min(activeMonths.length, 12);
-
-    if (rbt12 === 0) return hubParams.fiscal.fatorRFloor;
-
-    const ratio = (folhaAcumulada12m / rbt12) * 100;
-    return Number(ratio.toFixed(2));
-  }, [dreMonths, ledgerBaseItems, hubParams]);
+  // Fator R = contrato D_TRAILING12 (single-source via contracts.ts).
+  const fatorR = useMemo(
+    () =>
+      fatorRComposed(
+        defaultContractCtx(ledgerBaseItems, hubParams, activeDrivers, 1),
+        24,
+      ),
+    [ledgerBaseItems, hubParams, activeDrivers],
+  );
 
   const activeScenario = useMemo(() => {
     const kpis = deriveScenarioKpis(dreMonths, hubParams);
