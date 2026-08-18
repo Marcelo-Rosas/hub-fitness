@@ -396,6 +396,57 @@ export function fatorRFolhaMensalFromLedger(
   return baseHc + plAdditionalForMonth(params, monthNum);
 }
 
+export interface FatorRSeriesRow {
+  month: number;
+  label: string;
+  receitaServicos: number;
+  folhaMes: number;
+  folhaJanela: number;
+  plAdicionalJanela: number;
+  rbtJanela: number;
+  /** Fator R acumulado na janela (≤12m) COM PL discricionário. */
+  fatorRJanela: number;
+  /** Mesma janela SEM PL discricionário (comparativo). */
+  fatorRJanelaSemAjuste: number;
+}
+
+/**
+ * Série de Fator R com janela rolante (trailing-12; cumulativo enquanto m < 12).
+ * Status Simples: banda 28,0–28,7% aplica-se ao Fator R acumulado (RBT12), não ratio instantâneo.
+ */
+export function computeFatorRSeries(
+  items: DreGranularItem[],
+  months: DreMonth[],
+  params: HubParams,
+): FatorRSeriesRow[] {
+  return months.map((m, idx) => {
+    const janela = months.slice(Math.max(0, idx - 11), idx + 1);
+    const folhaMes = fatorRFolhaMensalFromLedger(items, params, m.month);
+    const folhaJanela = janela.reduce(
+      (acc, w) => acc + fatorRFolhaMensalFromLedger(items, params, w.month),
+      0,
+    );
+    const plAdicionalJanela = janela.reduce(
+      (acc, w) => acc + plAdditionalForMonth(params, w.month),
+      0,
+    );
+    const rbtJanela = janela.reduce((acc, w) => acc + w.receitaServicos, 0);
+    return {
+      month: m.month,
+      label: m.label,
+      receitaServicos: m.receitaServicos,
+      folhaMes,
+      folhaJanela,
+      plAdicionalJanela,
+      rbtJanela,
+      fatorRJanela: rbtJanela ? Number(((folhaJanela / rbtJanela) * 100).toFixed(2)) : 0,
+      fatorRJanelaSemAjuste: rbtJanela
+        ? Number((((folhaJanela - plAdicionalJanela) / rbtJanela) * 100).toFixed(2))
+        : 0,
+    };
+  });
+}
+
 /** Contrato E — BE do Mix: fixos + hc + MO terceirizada (custo/despesa).
  *  Exclui CV/posição e insumos. Âncora seed = R$ 143.104 (BE ≈ 65,0%). */
 export function semiFixedOpexMonthlyFromLedger(items: DreGranularItem[]): number {

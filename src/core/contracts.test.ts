@@ -7,7 +7,7 @@ import {
   defaultContractCtx,
   fatorRComposed,
 } from './contracts';
-import { fatorRFolhaMensalFromLedger } from './engine';
+import { fatorRFolhaMensalFromLedger, computeFatorRSeries, projectDreFromLedger } from './engine';
 import { projectScenario } from './scenarioDrivers';
 import { OFFICIAL_TOTALS_24M } from './bpV35Reference';
 
@@ -61,5 +61,11 @@ describe('fatorRComposed', () => {
     const r = fatorRComposed(ctx, 24);
     expect(r).toBeGreaterThanOrEqual(27.8);
     expect(r).toBeLessThanOrEqual(29.5);
+  });
+
+  it('M24 da série === fatorRComposed (single-source)', () => {
+    const months = projectScenario(INITIAL_GRANULAR_DRE_ITEMS, ctx.drivers, defaultParams);
+    const s = computeFatorRSeries(INITIAL_GRANULAR_DRE_ITEMS, months, defaultParams);
+    expect(s[23].fatorRJanela).toBe(fatorRComposed(ctx, 24));
   });
 });

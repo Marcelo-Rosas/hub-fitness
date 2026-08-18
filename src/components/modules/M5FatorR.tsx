@@ -2,8 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { usePlanner } from '../../context/PlannerContext';
 import { CheckCircle2, Zap } from 'lucide-react';
 import { ModuleHeader } from '../ModuleHeader';
+import { ContractChip } from '../ContractChip';
 import { formatDasPct, formatFatorRBand } from '../../core/governanceMatrix';
-import { fatorRFolhaMensalFromLedger, plAdditionalForMonth } from '../../core/engine';
+import { computeFatorRSeries, fatorRFolhaMensalFromLedger } from '../../core/engine';
 import { INITIAL_GRANULAR_DRE_ITEMS } from '../../data/initialData';
 
 export const M5FatorR: React.FC = () => {
@@ -23,16 +24,31 @@ export const M5FatorR: React.FC = () => {
   const dasLabel = formatDasPct(hubParams);
   const anexoVPct = 15.5;
 
-  const simulatedFatorR = simulateRevenueIncrease ? Number((fatorR * 0.947).toFixed(1)) : fatorR;
-  const isOptimalBand = simulatedFatorR >= bandMin && simulatedFatorR <= bandMax;
+  const ledger = ledgerBaseItems.length ? ledgerBaseItems : INITIAL_GRANULAR_DRE_ITEMS;
 
   const rbt12 = useMemo(
-    () => dreMonths.slice(0, 12).reduce((a, m) => a + m.receitaServicos, 0),
+    () => dreMonths.slice(-12).reduce((a, m) => a + m.receitaServicos, 0),
     [dreMonths],
   );
+
+  const folha12m = useMemo(
+    () => fatorRFolhaMensalFromLedger(ledger, hubParams, 24) * 12,
+    [ledger, hubParams],
+  );
+
+  const simulatedFatorR = simulateRevenueIncrease
+    ? Number(((folha12m / (rbt12 * 1.15)) * 100).toFixed(1))
+    : fatorR;
+  const isOptimalBand = simulatedFatorR >= bandMin && simulatedFatorR <= bandMax;
+
   const economiaAnual = isOptimalBand
     ? Math.round(rbt12 * (anexoVPct / 100 - hubParams.pricing.dasPct))
     : 0;
+
+  const series = useMemo(
+    () => computeFatorRSeries(ledger, dreMonths, hubParams),
+    [ledger, dreMonths, hubParams],
+  );
 
   return (
     <div className="space-y-6">
@@ -160,7 +176,12 @@ export const M5FatorR: React.FC = () => {
       {/* Monthly Fator R Table M1-M24 */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between">
-          <h3 className="text-xs font-bold uppercase tracking-wider">Tabela M1–M24: Comparativo Sem Ajuste vs Com Ajuste</h3>
+          <div className="flex items-center gap-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider">
+              Tabela M1–M24: Fator R acumulado (janela rolante ≤ 12m)
+            </h3>
+            <ContractChip id="D_TRAILING12" />
+          </div>
           <span className="text-xs text-slate-400 font-mono">Banda Segura: {bandLabel}</span>
         </div>
 
@@ -169,33 +190,24 @@ export const M5FatorR: React.FC = () => {
             <thead>
               <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
                 <th className="py-2.5 px-4">Mês</th>
-                <th className="py-2.5 px-4 text-right">Receita Mensal</th>
-                <th className="py-2.5 px-4 text-right">Folha + Prolabore</th>
-                <th className="py-2.5 px-4 text-right">Fator R (Sem Ajuste)</th>
-                <th className="py-2.5 px-4 text-right bg-emerald-50 text-emerald-900">Fator R (Ajustado v3.5)</th>
+                <th className="py-2.5 px-4 text-right">Receita</th>
+                <th className="py-2.5 px-4 text-right">Folha elegível (acum. janela)</th>
+                <th className="py-2.5 px-4 text-right">Fator R acum. sem PL disc.</th>
+                <th className="py-2.5 px-4 text-right bg-emerald-50 text-emerald-900">Fator R acum. v3.5</th>
                 <th className="py-2.5 px-4 text-center">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {dreMonths.slice(0, 12).map((m) => {
-                const ledger = ledgerBaseItems.length ? ledgerBaseItems : INITIAL_GRANULAR_DRE_ITEMS;
-                const folha = fatorRFolhaMensalFromLedger(ledger, hubParams, m.month);
-                const plExtra = plAdditionalForMonth(hubParams, m.month);
-                const ratioOriginal = m.receitaServicos
-                  ? ((folha - plExtra) / m.receitaServicos) * 100
-                  : 0;
-                const ratioAjustado = m.receitaServicos ? (folha / m.receitaServicos) * 100 : 0;
-                const ok =
-                  ratioAjustado >= bandMin && ratioAjustado <= bandMax;
-
+              {series.map((r) => {
+                const ok = r.fatorRJanela >= bandMin && r.fatorRJanela <= bandMax;
                 return (
-                  <tr key={m.month} className="hover:bg-slate-50 transition-colors">
-                    <td className="py-2.5 px-4 font-bold">{m.label}</td>
-                    <td className="py-2.5 px-4 text-right">R$ {m.receitaServicos.toLocaleString('pt-BR')}</td>
-                    <td className="py-2.5 px-4 text-right">R$ {folha.toLocaleString('pt-BR')}</td>
-                    <td className="py-2.5 px-4 text-right text-slate-500">{ratioOriginal.toFixed(1)}%</td>
+                  <tr key={r.month} className="hover:bg-slate-50 transition-colors">
+                    <td className="py-2.5 px-4 font-bold">{r.label}</td>
+                    <td className="py-2.5 px-4 text-right">R$ {r.receitaServicos.toLocaleString('pt-BR')}</td>
+                    <td className="py-2.5 px-4 text-right">R$ {r.folhaJanela.toLocaleString('pt-BR')}</td>
+                    <td className="py-2.5 px-4 text-right text-slate-500">{r.fatorRJanelaSemAjuste.toFixed(1)}%</td>
                     <td className="py-2.5 px-4 text-right font-bold text-emerald-800 bg-emerald-50/60">
-                      {ratioAjustado.toFixed(1)}%
+                      {r.fatorRJanela.toFixed(1)}%
                     </td>
                     <td className="py-2.5 px-4 text-center">
                       <span
@@ -211,6 +223,12 @@ export const M5FatorR: React.FC = () => {
               })}
             </tbody>
           </table>
+        </div>
+
+        <div className="px-5 py-2 bg-slate-50 border-t border-slate-200 text-[10px] text-slate-600">
+          ℹ️ Status compara o Fator R <b>acumulado</b> (janela rolante de até 12m) à banda {bandLabel} —
+          regra do Simples Nacional. M1–M6 refletem a rampa de receita; o gauge do topo usa trailing-12
+          (contrato D), mesma fonte de gov-5.
         </div>
       </div>
     </div>

@@ -18,6 +18,7 @@ import {
   projectDreFromLedger,
   fatorRFolhaMensalFromLedger,
   fixedOpexMonthlyFromLedger,
+  computeFatorRSeries,
   isLedgerItemLocked,
   canPostToAccount,
   isAccountInUse,
@@ -371,6 +372,23 @@ describe('fatorRFolhaMensalFromLedger', () => {
     const pipelineFolha = fatorRFolhaMensalFromLedger(driven, defaultParams, 7);
     expect(pipelineFolha).toBeGreaterThan(baseFolha);
     expect(fatorRFolhaMensalFromLedger(INITIAL_GRANULAR_DRE_ITEMS, defaultParams, 7)).toBe(baseFolha);
+  });
+});
+
+describe('computeFatorRSeries', () => {
+  it('M1: janela = 1 mês (instantâneo só no primeiro mês)', () => {
+    const months = projectDreFromLedger(INITIAL_GRANULAR_DRE_ITEMS, 0.75);
+    const [r1] = computeFatorRSeries(INITIAL_GRANULAR_DRE_ITEMS, months, defaultParams);
+    expect(r1.folhaJanela).toBe(r1.folhaMes);
+    expect(r1.rbtJanela).toBe(months[0].receitaServicos);
+  });
+
+  it('M12 cumulativo; M13+ vira trailing-12 rolante', () => {
+    const months = projectDreFromLedger(INITIAL_GRANULAR_DRE_ITEMS, 0.75);
+    const s = computeFatorRSeries(INITIAL_GRANULAR_DRE_ITEMS, months, defaultParams);
+    expect(s[11].folhaJanela).toBe(s.slice(0, 12).reduce((a, r) => a + r.folhaMes, 0));
+    expect(s[12].folhaJanela).toBe(s.slice(1, 13).reduce((a, r) => a + r.folhaMes, 0));
+    expect(s[23].folhaJanela).toBe(804_000);
   });
 });
 
