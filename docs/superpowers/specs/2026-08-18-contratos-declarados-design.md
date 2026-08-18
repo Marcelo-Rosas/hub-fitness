@@ -31,11 +31,21 @@ Contrato = `{ stages, agg }`. `composeContract(id, ctx)` reusa pipeline existent
 
 | ID | Label | Stages | Agg | Consumidores |
 |---|---|---|---|---|
-| **A_PROJETADO** | PROJETADO c/ ramp + carência | mix→occupancy→tech→clia→drivers→project | sum24 | M2 cards, M6 KPI/Tornado, gov lucro |
-| **B_CHEIO** | PLENO Y1×12 + Y2×12 | — | flat24 | M2 tabela granular |
+| **A_PROJETADO** | PROJETADO c/ ramp + carência | mix→occupancy→tech→clia→drivers→project | sum24 | M2 cards + sintética **live** (`dreMonths`); M6 KPI/Tornado |
+| **B_CHEIO** | PLENO c/ carência contratual | — | flat24 via `ledgerAmount24m` | M2 tabela granular (`ledgerBaseItems`) |
 | **C_CANONICO** | CANÔNICO BP v3.5 | — | short-circuit | Variância vs CSV; `OFFICIAL_TOTALS_24M` |
 | **D_TRAILING12** | TRAILING-12 live | mix→…→project | trailing12 | Fator R denominador; M2 barra; gov-5 |
 | **E_SEMIFIXO_BE** | SEMIFIXO (BE) | — | monthlySemifixo | M11 BE; memo board |
+
+## Decisão M2 — 1 fonte por bloco (hotfix Task 3.5)
+
+| Bloco | Fonte | Chip |
+|---|---|---|
+| Cards + rodapé + linhas sintéticas | `summarizeLiveDre(dreMonths)` = **A live** (cenário + mix preview) | `A_PROJETADO` + badge "⚠ Mix pendente" se `isMixDirty` |
+| Plano de contas granular | `ledgerBaseItems` + `ledgerAmount24m` = **B** | `B_CHEIO` |
+| Fator R (card/barra) | `fatorRComposed` = **D**, mixScale=1 | `D_TRAILING12` |
+
+**B redefinido:** pleno com **carência contratual** (5.2.02.01 M1–M6 = 0). Sem ramp, ocupação ou drivers. Receita B inalterada; despesas seed = 3.206.796 − 360.000 = **2.846.796**.
 
 ### Estágio 0 (mix)
 
@@ -56,12 +66,15 @@ fatorRComposed(ctx, monthNum) =
 - **Numerador:** `ledgerBaseItems` (pré-pipeline, pré-drivers). Só `isFatorRNumerator === true` (P1 lock).
 - **Numerador Y1/Y2:** mês ≤12 → Y1; mês ≥13 → Y2 (alinhamento BP M24 folha).
 - **Denominador:** últimos 12 meses de receita do contrato D (pipeline completo).
+- **Exceção fiscal (não-bug):** `mixScale=1` no Context. Fator R **não** reage a Mix preview — só à base commitada. Cards M2 (A live) reagem ao preview; Fator R permanece D commitado até `commitMixPreview`.
 
 ## Âncoras (seed `INITIAL_GRANULAR_DRE_ITEMS`)
 
 | Contrato | Métrica | Valor |
 |---|---|---|
-| B_CHEIO | receita flat24 | **5.211.204** |
+| B_CHEIO | receita (carência-aware; receita sem efeito) | **5.211.204** |
+| B_CHEIO | custos | **1.712.460** |
+| B_CHEIO | despesas (carência 6m × R$ 60.000) | **2.846.796** |
 | E_SEMIFIXO_BE | monthly | **143.104** |
 | E_SEMIFIXO_BE | BE % (MC 74,15 / 2968 pos) | **≈ 65,0%** |
 | D + numerador | Fator R composed M24 | **27,8–29,5%** (banda BP 28,01–28,70) |

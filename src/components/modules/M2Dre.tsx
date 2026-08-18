@@ -9,6 +9,7 @@ import {
   groupLedgerBySyntheticParent,
   expandCompositionFilhas,
   ledgerAmount24m,
+  summarizeLiveDre,
 } from '../../core/engine';
 import { M2DreVarianceChart } from '../M2DreVarianceChart';
 import { usePlanner } from '../../context/PlannerContext';
@@ -84,27 +85,23 @@ export const M2Dre: React.FC = () => {
     fatorR,
     activeScenario,
     chartOfAccounts,
+    isMixDirty,
   } = usePlanner();
 
   const activeDrivers = activeScenario.drivers;
 
+  const live = useMemo(() => summarizeLiveDre(dreMonths), [dreMonths]);
   const contractCtx = useMemo(
     () => defaultContractCtx(ledgerBaseItems, hubParams, activeDrivers, 1),
     [ledgerBaseItems, hubParams, activeDrivers],
   );
-  const aContract = useMemo(() => composeContract('A_PROJETADO', contractCtx), [contractCtx]);
   const bContract = useMemo(() => composeContract('B_CHEIO', contractCtx), [contractCtx]);
   const dContract = useMemo(() => composeContract('D_TRAILING12', contractCtx), [contractCtx]);
 
-  const sum24 = aContract.sum24 ?? {
-    receita: 0,
-    custos: 0,
-    despesas: 0,
-    das: 0,
-    lucro: 0,
-  };
-  const margemA =
-    sum24.receita === 0 ? 0 : Number(((sum24.lucro / sum24.receita) * 100).toFixed(1));
+  const margemLive =
+    live.receitaTotal === 0
+      ? 0
+      : Number(((live.lucroLiquidoTotal / live.receitaTotal) * 100).toFixed(1));
   const { fatorRMin, fatorRMax } = hubParams.fiscal;
   const rbt12 = dContract.rbt12 ?? 0;
   const dentroDaBanda = fatorR >= fatorRMin && fatorR <= fatorRMax;
@@ -151,7 +148,7 @@ export const M2Dre: React.FC = () => {
   const m7TotalCostSum = m7CustoTotal + m7DespesaTotal; // R$ 178.609
 
   const filteredGranularItems = useMemo(() => {
-    return expandCompositionFilhas(granularDreItems).filter((item) => {
+    return expandCompositionFilhas(ledgerBaseItems).filter((item) => {
       if (sectionFilter !== 'all' && item.section !== sectionFilter) return false;
       if (searchTerm) {
         const q = searchTerm.toLowerCase();
@@ -160,7 +157,7 @@ export const M2Dre: React.FC = () => {
       }
       return true;
     });
-  }, [granularDreItems, sectionFilter, searchTerm]);
+  }, [ledgerBaseItems, sectionFilter, searchTerm]);
 
   const groupedGranular = useMemo(() => {
     return SECTION_ORDER.map((section) => {
@@ -192,24 +189,24 @@ export const M2Dre: React.FC = () => {
         kpis={[
           {
             label: 'Receita Bruta 24m',
-            value: `R$ ${sum24.receita.toLocaleString('pt-BR')}`,
-            subtext: 'Contrato A — pipeline Σ24 (projetado c/ ramp + carência)',
+            value: `R$ ${live.receitaTotal.toLocaleString('pt-BR')}`,
+            subtext: 'Contrato A live — Σ dreMonths (ramp + carência + mix/cenário)',
             badge: 'RECEITA TOTAL',
             suffix: <ContractChip id="A_PROJETADO" />,
             highlightColor: 'slate',
           },
           {
             label: 'Custos & OpEx 24m',
-            value: `R$ ${(sum24.custos + sum24.despesas + sum24.das).toLocaleString('pt-BR')}`,
-            subtext: 'Custos + despesas + DAS (contrato A)',
+            value: `R$ ${(live.custosOperacionaisTotal + live.despesasOperacionaisTotal + live.dasTotal).toLocaleString('pt-BR')}`,
+            subtext: 'Custos + despesas + DAS (contrato A live)',
             badge: 'CUSTOS TOTAL',
             suffix: <ContractChip id="A_PROJETADO" />,
             highlightColor: 'amber',
           },
           {
             label: 'Lucro Líquido 24m',
-            value: `R$ ${sum24.lucro.toLocaleString('pt-BR')}`,
-            subtext: `Margem líquida ${margemA.toFixed(1).replace('.', ',')}%`,
+            value: `R$ ${live.lucroLiquidoTotal.toLocaleString('pt-BR')}`,
+            subtext: `Margem líquida ${margemLive.toFixed(1).replace('.', ',')}%`,
             badge: 'LUCRO LÍQUIDO ★',
             suffix: <ContractChip id="A_PROJETADO" />,
             highlightColor: 'emerald',
@@ -224,6 +221,12 @@ export const M2Dre: React.FC = () => {
           },
         ]}
       />
+
+      {isMixDirty && (
+        <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase bg-amber-100 text-amber-900 px-2.5 py-1 rounded-full border border-amber-300">
+          ⚠ Mix pendente
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
         <span className="text-xs font-bold text-indigo-950">Fator R fiscal</span>
@@ -415,26 +418,26 @@ export const M2Dre: React.FC = () => {
                       TOTAL 24M (M1–M24)
                     </td>
                     <td className="py-4 px-4 text-right text-white font-black text-sm">
-                      R$ {sum24.receita.toLocaleString('pt-BR')}
+                      R$ {live.receitaTotal.toLocaleString('pt-BR')}
                     </td>
                     <td className="py-4 px-4 text-right text-slate-200 font-black text-sm">
-                      R$ {sum24.custos.toLocaleString('pt-BR')}
+                      R$ {live.custosOperacionaisTotal.toLocaleString('pt-BR')}
                     </td>
                     <td className="py-4 px-4 text-right text-slate-200 font-black text-sm">
-                      R$ {(sum24.receita - sum24.custos - sum24.das).toLocaleString('pt-BR')}
+                      R$ {live.lucroBrutoTotal.toLocaleString('pt-BR')}
                     </td>
                     <td className="py-4 px-4 text-right text-slate-200 font-black text-sm">
-                      R$ {sum24.despesas.toLocaleString('pt-BR')}
+                      R$ {live.despesasOperacionaisTotal.toLocaleString('pt-BR')}
                     </td>
                     <td className="py-4 px-4 text-right text-slate-400">—</td>
                     <td className="py-4 px-4 text-right text-slate-200 font-black text-sm">
-                      R$ {sum24.das.toLocaleString('pt-BR')}
+                      R$ {live.dasTotal.toLocaleString('pt-BR')}
                     </td>
                     <td className="py-4 px-4 text-right text-emerald-400 font-black text-base">
-                      R$ {sum24.lucro.toLocaleString('pt-BR')}
+                      R$ {live.lucroLiquidoTotal.toLocaleString('pt-BR')}
                     </td>
                     <td className="py-4 px-4 text-right text-emerald-300 font-black text-sm">
-                      {margemA.toFixed(1)}%
+                      {margemLive.toFixed(1)}%
                     </td>
                   </tr>
                 </tfoot>
@@ -453,6 +456,9 @@ export const M2Dre: React.FC = () => {
               {flat24 && (
                 <p className="text-[11px] text-slate-500 mt-0.5">
                   Receita plena 24m (B): R$ {flat24.receita.toLocaleString('pt-BR')}
+                  {flat24.despesas != null && (
+                    <> · Despesas c/ carência: R$ {flat24.despesas.toLocaleString('pt-BR')}</>
+                  )}
                 </p>
               )}
             </div>

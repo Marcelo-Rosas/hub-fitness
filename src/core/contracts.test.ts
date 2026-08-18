@@ -1,21 +1,63 @@
 import { describe, it, expect } from 'vitest';
 import { INITIAL_GRANULAR_DRE_ITEMS } from '../data/initialData';
 import { defaultParams } from './params';
-import { BLEND_ALVO_MC_POS } from './mixPreview';
+import { applyMixPreview, BLEND_ALVO_MC_POS } from './mixPreview';
 import {
   composeContract,
   defaultContractCtx,
   fatorRComposed,
 } from './contracts';
-import { fatorRFolhaMensalFromLedger, computeFatorRSeries, projectDreFromLedger } from './engine';
+import {
+  fatorRFolhaMensalFromLedger,
+  computeFatorRSeries,
+  ledgerAmount24m,
+  summarizeLiveDre,
+} from './engine';
 import { projectScenario } from './scenarioDrivers';
 import { OFFICIAL_TOTALS_24M } from './bpV35Reference';
+import type { DreSection } from '../types';
 
 describe('composeContract', () => {
   const ctx = defaultContractCtx(INITIAL_GRANULAR_DRE_ITEMS, defaultParams);
 
   it('B_CHEIO flat24 receita anchor', () => {
     expect(composeContract('B_CHEIO', ctx).flat24!.receita).toBe(5_211_204);
+  });
+
+  it('B carência-aware: âncoras seed', () => {
+    const b = composeContract('B_CHEIO', ctx);
+    expect(b.flat24!.receita).toBe(5_211_204);
+    expect(b.flat24!.custos).toBe(1_712_460);
+    expect(b.flat24!.despesas).toBe(2_846_796);
+  });
+
+  it('granular Σ ledgerAmount24m === flat24 (mesma fonte)', () => {
+    const g = (sec: DreSection) =>
+      INITIAL_GRANULAR_DRE_ITEMS.filter((i) => i.active && i.section === sec).reduce(
+        (a, i) => a + ledgerAmount24m(i, defaultParams),
+        0,
+      );
+    const b = composeContract('B_CHEIO', ctx).flat24!;
+    expect(g('receita')).toBe(b.receita);
+    expect(g('despesa')).toBe(b.despesas);
+  });
+
+  it('A live === pipeline do context (incl. mix dirty)', () => {
+    const scale = 1.2;
+    const months = projectScenario(
+      applyMixPreview(INITIAL_GRANULAR_DRE_ITEMS, scale),
+      ctx.drivers,
+      defaultParams,
+    );
+    const live = summarizeLiveDre(months);
+    const a = composeContract('A_PROJETADO', {
+      base: INITIAL_GRANULAR_DRE_ITEMS,
+      mixScale: scale,
+      drivers: ctx.drivers,
+      params: defaultParams,
+    });
+    expect(a.sum24!.receita).toBe(live.receitaTotal);
+    expect(a.sum24!.lucro).toBe(live.lucroLiquidoTotal);
   });
 
   it('E_SEMIFIXO_BE monthly anchor + BE ~65%', () => {

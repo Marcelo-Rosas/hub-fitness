@@ -3,6 +3,7 @@ import type { HubParams } from './params';
 import { OFFICIAL_TOTALS_24M } from './bpV35Reference';
 import {
   fatorRFolhaMensalFromLedger,
+  ledgerAmount24m,
   semiFixedOpexMonthlyFromLedger,
 } from './engine';
 import { applyMixPreview } from './mixPreview';
@@ -33,9 +34,12 @@ export const CONTRACT_PRESET: Record<ContractId, CompositionPreset> = {
 };
 
 export const CONTRACT_META: Record<ContractId, { label: string; formula: string }> = {
-  A_PROJETADO: { label: 'PROJETADO c/ ramp + carência', formula: 'pipeline 0–5 → Σ24' },
+  A_PROJETADO: { label: 'PROJETADO c/ ramp + carência', formula: 'Σ dreMonths live (mix preview + cenário)' },
   D_TRAILING12: { label: 'TRAILING-12 live', formula: 'pipeline 0–5 → Σ receita últimos 12m' },
-  B_CHEIO: { label: 'PLENO Y1×12 + Y2×12', formula: 'Σ linhas ativas, sem pipeline' },
+  B_CHEIO: {
+    label: 'PLENO c/ carência contratual',
+    formula: 'Σ linhas ativas c/ carência contratual (5.2.02.01); sem ramp/ocupação/drivers',
+  },
   E_SEMIFIXO_BE: { label: 'SEMIFIXO (BE)', formula: 'fixos + hc + MO terc.; exclui CV/insumos' },
   C_CANONICO: { label: 'CANÔNICO BP v3.5', formula: 'âncoras congeladas (não compõe)' },
 };
@@ -80,11 +84,11 @@ function sum24FromMonths(months: DreMonth[]): ContractSum24 {
   };
 }
 
-function flat24FromLedger(base: DreGranularItem[]): ContractFlat24 {
+function flat24FromLedger(base: DreGranularItem[], params: HubParams): ContractFlat24 {
   const sumSection = (section: DreSection) =>
     base
       .filter((i) => i.active && i.section === section)
-      .reduce((acc, i) => acc + i.monthlyAmountY1 * 12 + i.monthlyAmountY2 * 12, 0);
+      .reduce((acc, i) => acc + ledgerAmount24m(i, params), 0);
   return {
     receita: sumSection('receita'),
     custos: sumSection('custo'),
@@ -105,7 +109,7 @@ export function composeContract(id: ContractId, ctx: ContractCtx): ContractResul
   const preset = CONTRACT_PRESET[id];
 
   if (preset.agg === 'flat24') {
-    return { flat24: flat24FromLedger(ctx.base) };
+    return { flat24: flat24FromLedger(ctx.base, ctx.params) };
   }
 
   if (preset.agg === 'monthlySemifixo') {
@@ -125,6 +129,7 @@ export function composeContract(id: ContractId, ctx: ContractCtx): ContractResul
 
 /**
  * Fator R = numerador base (flags) ÷ D_TRAILING12.rbt12. Single-source.
+ * Exceção fiscal: mixScale=1 — numerador/denominador usam ledger commitado, não Mix preview.
  * Aproximação: folha do mês especificado × 12 (assume folha constante no trailing-12).
  * Para cálculo exato em janelas que cruzam Y1/Y2, iterar mês a mês (refino futuro).
  */
