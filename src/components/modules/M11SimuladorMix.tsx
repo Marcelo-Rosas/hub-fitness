@@ -15,9 +15,15 @@ import {
   occupiedPositionsFromRate,
   occupancyRateFromOccupied,
   mixBeSlackPp,
+  mixBePct,
+  mixBePositions,
   computeMinViableBe,
   MIX_OCCUPANCY_MIN,
+  MIX_CCT_FACTOR,
+  MIX_CAGED_FACTOR,
 } from '../../core/mixPreview';
+import { semiFixedOpexMonthlyFromLedger } from '../../core/engine';
+import { ContractChip } from '../ContractChip';
 import {
   Sliders,
   CheckCircle2,
@@ -169,6 +175,17 @@ export const M11SimuladorMix: React.FC<{
     const occPct = Math.round(occupancyRate * 100);
 
     const ledger = mestraLedger;
+    const custosRealistas = semiFixedOpexMonthlyFromLedger(ledger);
+    const custosOriginais = Math.round(custosRealistas * MIX_CAGED_FACTOR);
+    const custosEnxutos = Math.round(custosRealistas * MIX_CCT_FACTOR);
+    const bePctRealista = mixBePct(custosRealistas, weightedMcPos, totalCapacity);
+    const bePctOriginal = mixBePct(custosOriginais, weightedMcPos, totalCapacity);
+    const bePctEnxuto = mixBePct(custosEnxutos, weightedMcPos, totalCapacity);
+    const bePositionsRealista = mixBePositions(custosRealistas, weightedMcPos);
+    const ll100Realista = Math.round(totalCapacity * weightedMcPos - custosRealistas);
+    const llOccRealista = Math.round(occupiedPositions * weightedMcPos - custosRealistas);
+    const beSlackRealista = mixBeSlackPp(occPct, bePctRealista);
+
     const mixForBe = { p1: mixWeights.p1, p2: mixWeights.p2, p4: mixWeights.p4, p5: mixWeights.p5 };
     const beCaged = computeMinViableBe({
       items: ledger,
@@ -238,10 +255,10 @@ export const M11SimuladorMix: React.FC<{
         text: '🚨 P5 Premium < 20%: Perda de margem estrutural do armazém.',
       });
     }
-    if (bePctMediana > targetOccPct) {
+    if (bePctRealista > targetOccPct) {
       triggers.push({
         type: 'danger',
-        text: `🚨 BE Mediana SC (${bePctMediana}%) acima da meta limite de ${targetOccPct}% de ocupação!`,
+        text: `🚨 BE Realista (${bePctRealista}%) acima da meta limite de ${targetOccPct}% de ocupação!`,
       });
     }
 
@@ -275,6 +292,16 @@ export const M11SimuladorMix: React.FC<{
       bePctSelected: minViable.bePct,
       custosSelected: minViable.costMonthly,
       beSlackPp,
+      beSlackRealista,
+      custosOriginais,
+      custosEnxutos,
+      custosRealistas,
+      bePctOriginal,
+      bePctEnxuto,
+      bePctRealista,
+      bePositionsRealista,
+      ll100Realista,
+      llOccRealista,
       costMode: mixCostMode,
       payrollMonthly: payrollTotal(payrollRoles, mixCostMode),
       ll100Caged,
@@ -351,25 +378,29 @@ export const M11SimuladorMix: React.FC<{
   // Chart Data for Recharts
   const chartBreakEvenData = useMemo(() => {
     const cap = hubParams.capacity.totalPositions;
-    const beOf = (mcPos: number) =>
-      mixRowBePcts({ mcPos, items: mestraLedger, payrollRoles, capacity: cap });
+    const { custosOriginais, custosEnxutos, custosRealistas } = calculations;
+    const beOf = (mcPos: number) => ({
+      Original: mixBePct(custosOriginais, mcPos, cap),
+      Enxuto: mixBePct(custosEnxutos, mcPos, cap),
+      Realista: mixBePct(custosRealistas, mcPos, cap),
+    });
     const p1 = beOf(52.5);
     const p2 = beOf(78);
     const p4 = beOf(67);
     const p5 = beOf(94);
     return [
-      { name: 'P1 Estocador', CAGED: p1.caged, CCT: p1.cct, Mediana: p1.mediana },
-      { name: 'P2 Franquias', CAGED: p2.caged, CCT: p2.cct, Mediana: p2.mediana },
-      { name: 'P4 Academias', CAGED: p4.caged, CCT: p4.cct, Mediana: p4.mediana },
-      { name: 'P5 Premium', CAGED: p5.caged, CCT: p5.cct, Mediana: p5.mediana },
+      { name: 'P1 Estocador', ...p1 },
+      { name: 'P2 Franquias', ...p2 },
+      { name: 'P4 Academias', ...p4 },
+      { name: 'P5 Premium', ...p5 },
       {
         name: 'Simulação Atual',
-        CAGED: calculations.bePctCaged,
-        CCT: calculations.bePctCct,
-        Mediana: calculations.bePctMediana,
+        Original: calculations.bePctOriginal,
+        Enxuto: calculations.bePctEnxuto,
+        Realista: calculations.bePctRealista,
       },
     ];
-  }, [calculations, hubParams.capacity.totalPositions, mestraLedger, payrollRoles]);
+  }, [calculations, hubParams.capacity.totalPositions]);
 
   const chartMarginData = useMemo(() => {
     return [
@@ -742,27 +773,30 @@ export const M11SimuladorMix: React.FC<{
                   <span className="text-[10px] text-slate-500 mt-0.5 block">faturamento por posição</span>
                 </div>
 
-                {/* BE Realista */}
+                {/* BE Realista (contrato E) */}
                 <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
-                    Break-even (mínimo viável · {MIX_COST_MODE_LABELS[calculations.costMode]})
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                      Break-Even Realista
+                    </span>
+                    <ContractChip id="E_SEMIFIXO_BE" />
+                  </div>
                   <div
                     className={`text-2xl font-black font-mono mt-1 ${
-                      calculations.beSlackPp >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                      calculations.bePctRealista <= 75 ? 'text-emerald-700' : 'text-rose-700'
                     }`}
                   >
-                    {calculations.bePctSelected.toLocaleString('pt-BR')}%
+                    {calculations.bePctRealista.toLocaleString('pt-BR')}%
                   </div>
                   <span className="text-[10px] text-slate-500 mt-0.5 block">
-                    precisa {calculations.bePositionsSelected.toLocaleString('pt-BR')} pos · Mix ocupa{' '}
-                    {calculations.occPct}% ({calculations.occupiedPositions.toLocaleString('pt-BR')}) · folga{' '}
-                    {calculations.beSlackPp >= 0 ? '+' : ''}
-                    {calculations.beSlackPp.toLocaleString('pt-BR')} pp
+                    meta safe ≤ {calculations.targetOccPct}% ({calculations.bePositionsRealista.toLocaleString('pt-BR')}{' '}
+                    pos) · Mix ocupa {calculations.occPct}% · folga{' '}
+                    {calculations.beSlackRealista >= 0 ? '+' : ''}
+                    {calculations.beSlackRealista.toLocaleString('pt-BR')} pp
                     <span className="block text-slate-400">
-                      CCT {calculations.bePctCct.toLocaleString('pt-BR')}% · Med.{' '}
-                      {calculations.bePctMediana.toLocaleString('pt-BR')}% · CAGED{' '}
-                      {calculations.bePctCaged.toLocaleString('pt-BR')}%
+                      Custo R${Math.round(calculations.custosRealistas / 1000)}k · RH ref.{' '}
+                      {MIX_COST_MODE_LABELS[calculations.costMode]}{' '}
+                      {calculations.bePctSelected.toLocaleString('pt-BR')}%
                     </span>
                   </span>
                 </div>
@@ -773,22 +807,20 @@ export const M11SimuladorMix: React.FC<{
                     Lucro Líq. (100% Ocup.)
                   </span>
                   <div className="text-xl font-black text-emerald-800 font-mono mt-1">
-                    R$ {calculations.ll100Selected.toLocaleString('pt-BR')}
+                    R$ {calculations.ll100Realista.toLocaleString('pt-BR')}
                   </div>
                   <span className="text-[10px] text-slate-500 mt-0.5 block">
-                    Custo {MIX_COST_MODE_LABELS[calculations.costMode]} R$
-                    {Math.round(calculations.custosSelected / 1000)}
-                    k · folha R${Math.round(calculations.payrollMonthly / 1000)}k
+                    Custo Realista R${Math.round(calculations.custosRealistas / 1000)}k
                   </span>
                 </div>
 
-                {/* Lucro Líquido 88% Realista */}
+                {/* Lucro Líquido ocupação atual */}
                 <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
                     Lucro Líq. ({calculations.occPct}% · {calculations.occupiedPositions.toLocaleString('pt-BR')} pos)
                   </span>
                   <div className="text-xl font-black text-emerald-900 font-mono mt-1">
-                    R$ {calculations.llOccSelected.toLocaleString('pt-BR')}
+                    R$ {calculations.llOccRealista.toLocaleString('pt-BR')}
                   </div>
                   <span className="text-[10px] text-slate-500 mt-0.5 block">
                     Mesma ocupação do Tornado / A/B
@@ -894,7 +926,7 @@ export const M11SimuladorMix: React.FC<{
               <strong className="text-slate-800">Folha</strong> = (piso + encargos/HC) × HC. INSS/RAT no DAS.
             </p>
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left border-collapse min-w-[960px]">
+              <table className="w-full text-xs text-left border-collapse min-w-240">
                 <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
                   <tr>
                     <th className="py-2 px-3 align-bottom" rowSpan={2}>
@@ -983,7 +1015,7 @@ export const M11SimuladorMix: React.FC<{
                                 disabled={!canEditOcc}
                                 value={role[g.field] ?? 0}
                                 onChange={(e) => patchPayrollField(role.id, g.field, e.target.value)}
-                                className="w-[4.5rem] bg-amber-50 border border-amber-200 rounded px-2 py-1 font-mono text-right"
+                                className="w-18 bg-amber-50 border border-amber-200 rounded px-2 py-1 font-mono text-right"
                               />
                             </td>
                             <td className="py-2 px-2 text-right font-mono text-slate-700">
@@ -1045,24 +1077,25 @@ export const M11SimuladorMix: React.FC<{
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <HubChartCard
               title={
-                <span className="flex items-center gap-2">
+                <span className="flex items-center gap-2 flex-wrap">
                   <BarChart3 className="w-4 h-4 text-sky-700" />
                   Ponto de Equilíbrio (Break-Even %) por Perfil & Mix
+                  <ContractChip id="E_SEMIFIXO_BE" />
                 </span>
               }
-              subtitle="Barras por perfil — mesmo chrome da curva de caixa M4."
+              subtitle="Contrato E — Original (+15%) · Enxuto (−15%) · Realista (semifixo ledger)."
               badge={`${calculations.totalCapacity.toLocaleString('pt-BR')} pos.`}
               plotClassName="h-64 w-full pt-2"
               legend={
                 <>
                   <HubChartLegendPill tone="slate">
-                    {MIX_COST_MODE_LABELS.caged} (R${Math.round(calculations.custosCaged / 1000)}k)
+                    Original (R${Math.round(calculations.custosOriginais / 1000)}k)
                   </HubChartLegendPill>
                   <HubChartLegendPill tone="sky">
-                    {MIX_COST_MODE_LABELS.cct} (R${Math.round(calculations.custosCct / 1000)}k)
+                    Enxuto (R${Math.round(calculations.custosEnxutos / 1000)}k)
                   </HubChartLegendPill>
                   <HubChartLegendPill tone="indigo">
-                    {MIX_COST_MODE_LABELS.mediana} (R${Math.round(calculations.custosMediana / 1000)}k)
+                    Realista (R${Math.round(calculations.custosRealistas / 1000)}k)
                   </HubChartLegendPill>
                 </>
               }
@@ -1073,9 +1106,9 @@ export const M11SimuladorMix: React.FC<{
                   <XAxis dataKey="name" tick={hubTick} />
                   <YAxis unit="%" domain={[0, 120]} tick={hubTick} />
                   <Tooltip formatter={(val) => [`${Number(val ?? 0)}%`, 'Break-Even']} contentStyle={hubTooltipStyle} />
-                  <Bar dataKey="CAGED" fill={HUB_CHART.strokeMuted} radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="CCT" fill={HUB_CHART.strokeAlt} radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="Mediana" fill={HUB_CHART.stroke} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Original" fill={HUB_CHART.strokeMuted} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Enxuto" fill={HUB_CHART.strokeAlt} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Realista" fill={HUB_CHART.stroke} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </HubChartCard>
@@ -1108,6 +1141,57 @@ export const M11SimuladorMix: React.FC<{
                 </BarChart>
               </ResponsiveContainer>
             </HubChartCard>
+          </div>
+
+          {/* Board Memo — Blend Alvo (F2: valores live do simulador) */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+            <div className="border-b border-slate-200 pb-3">
+              <h3 className="text-sm font-black text-slate-900">Board Memo — Viabilidade do Blend</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                §2 Blend Alvo dinâmico · Conservador/Agressivo = referência estática BP v3.5
+              </p>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700 leading-relaxed">
+              <div className="font-extrabold text-slate-900 text-sm">
+                Blend Alvo (20/30/25/25) — Cenário Canônico de Equilíbrio
+              </div>
+              <p className="mt-1">
+                • <span className="font-bold">MC Médio Ponderado:</span> R${' '}
+                {calculations.weightedMcPos.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/pos |{' '}
+                <span className="font-bold">Segurança:</span> Break-Even Realista de{' '}
+                {calculations.bePctRealista.toLocaleString('pt-BR')}% oferece{' '}
+                <span className="font-bold text-emerald-700">
+                  {Math.max(0, calculations.targetOccPct - calculations.bePctRealista).toLocaleString('pt-BR')} p.p. de
+                  folga
+                </span>{' '}
+                vs limite {calculations.targetOccPct}% (M7+).
+                <br />• <span className="font-bold">Lucratividade:</span> Lucro Líquido Realista de R${' '}
+                {calculations.ll100Realista.toLocaleString('pt-BR')}/mês (a 100% ocupação) sustenta payback e Fator R.
+                <br />• <span className="font-bold">Upside 4PL:</span> Control Tower R${' '}
+                {calculations.ct4plM12.toLocaleString('pt-BR')}/m (M12) → R${' '}
+                {calculations.ct4plM24.toLocaleString('pt-BR')}/m (M24).
+              </p>
+            </div>
+
+            <div className="p-3.5 bg-amber-50/80 rounded-xl border border-amber-300 text-xs text-slate-700 leading-relaxed">
+              <div className="font-extrabold text-amber-950 text-sm">
+                Blend Conservador (25/30/30/15) <span className="font-normal text-amber-800">(referência estática v3.5)</span>
+              </div>
+              <p className="mt-1">
+                BE Realista 73,0% · LL 100% R$ 53.539/mês · exige VAS robusto para compensar queda de Premium.
+              </p>
+            </div>
+
+            <div className="p-3.5 bg-emerald-50/80 rounded-xl border border-emerald-300 text-xs text-slate-700 leading-relaxed">
+              <div className="font-extrabold text-emerald-950 text-sm">
+                Blend Agressivo (10/30/20/40){' '}
+                <span className="font-normal text-emerald-800">(referência estática v3.5)</span>
+              </div>
+              <p className="mt-1">
+                BE Realista 57,3% · LL 100% R$ 92.504/mês · alta alavancagem P5; monitorar concentração Premium.
+              </p>
+            </div>
           </div>
 
           {/* MASTER DATA TABLE - RAW JSON DATASET */}

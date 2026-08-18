@@ -375,6 +375,9 @@ export function plAdditionalForMonth(params: HubParams, monthNum: number): numbe
  * Folha mensal elegível ao numerador do Fator R a partir do ledger base.
  * Só entra com isFatorRNumerator === true; isFatorRExcluded exclui.
  * PL adicional usa degrau hubParams (não Y1 flat do ledger).
+ *
+ * Encargos patronais (FGTS/INSS) e provisões PERMANECEM no numerador:
+ * BP v3.5 M24 = 804.000 = (52.000 + 15.000) × 12 inclui encargos. Não "corrigir".
  */
 export function fatorRFolhaMensalFromLedger(
   items: DreGranularItem[],
