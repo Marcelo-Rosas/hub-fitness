@@ -150,7 +150,7 @@ export const StructuredPdfReportModal: React.FC<StructuredPdfReportModalProps> =
               <div className="text-lg font-extrabold text-[#7F6000] font-mono mt-0.5">
                 {fatorR}%
               </div>
-              <div className="text-[10px] text-green-700 font-bold mt-0.5">● Anexo III (6,0%) OK</div>
+              <div className="text-[10px] text-green-700 font-bold mt-0.5">● Anexo III OK</div>
             </div>
 
             <div>
@@ -260,7 +260,7 @@ export const StructuredPdfReportModal: React.FC<StructuredPdfReportModalProps> =
                 <span>Enquadramento do Fator R em 28,4% (Garantia do Anexo III)</span>
               </div>
               <p className="leading-relaxed">
-                O modelo de governança financeira ajusta dinamicamente a folha de pagamento e prolabore para manter a relação Folha/Receita estritamente na banda de segurança (28,0% – 28,7%). Isso garante a tributação reduzida em <strong>6,0% no Anexo III</strong>, evitando a alíquota de 15.5% do Anexo V.
+                O modelo de governança financeira ajusta dinamicamente a folha de pagamento e prolabore para manter a relação Folha/Receita estritamente na banda de segurança (28,0% – 28,7%). Isso garante o enquadramento no <strong>Anexo III</strong> (alíquota efetiva progressiva por faixa de RBT12), evitando o Anexo V.
               </p>
             </div>
           </div>

@@ -105,13 +105,13 @@ export const ACCOUNTING_RULES: AccountingRule[] = [
     summary: 'Folha de Pagamento nos últimos 12 meses / Receita Bruta acumulada RBT12 ≥ 28,0%',
     accountsInvolved: ['5.2.01.01', '5.2.01.02', '5.2.01.03', '2.1.01.06', '2.1.01.07', '5.1.02.01'],
     ruleDetail:
-      'Para enquadramento no Anexo III (alíquota unificada de 6%), a soma da folha CLT + pró-labore regular + pró-labore adicional Fator R + encargos FGTS/INSS deve atingir no mínimo 28% da receita bruta acumulada dos últimos 12 meses. Mão de Obra Terceirizada (5.1.02.01) É EXCLUÍDA do numerador conforme norma da Receita Federal.',
+      'Para enquadramento no Anexo III (alíquota efetiva progressiva por faixa de RBT12), a soma da folha CLT + pró-labore regular + pró-labore adicional Fator R + encargos FGTS/INSS deve atingir no mínimo 28% da receita bruta acumulada dos últimos 12 meses. Mão de Obra Terceirizada (5.1.02.01) É EXCLUÍDA do numerador conforme norma da Receita Federal.',
   },
   {
     id: 'rule-das',
     title: 'Lançamento do DAS no Simples Nacional',
     category: 'DAS Simples',
-    summary: 'DAS unificado de 6% é dedução direta da Receita Bruta (não é despesa operacional no final da DRE)',
+    summary: 'DAS (alíquota efetiva LC 123) é dedução direta da Receita Bruta (não é despesa operacional no final da DRE)',
     accountsInvolved: ['2.1.02.01', '4.2.01.01'],
     ruleDetail:
       'O valor do imposto unificado DAS (6%) deve ser debitado na conta 4.2.01.01 (Dedução da Receita Bruta) e creditado no Passivo Circulante na conta 2.1.02.01 (DAS a Recolher). Lançar como despesa abaixo do lucro operacional distorce a DRE gerencial.',
@@ -720,7 +720,7 @@ export const PLANO_DE_CONTAS_ITEMS: AccountItem[] = [
   },
   {
     code: '2.1.02.01',
-    name: 'DAS a Recolher (Unificado 6%) [Crítico p/ Fluxo de Caixa]',
+    name: 'DAS a Recolher (Simples Nacional) [Crítico p/ Fluxo de Caixa]',
     level: 4,
     group: 'PASSIVO',
     nature: 'Credora',
@@ -1210,14 +1210,14 @@ export const PLANO_DE_CONTAS_ITEMS: AccountItem[] = [
   },
   {
     code: '4.2.01.01',
-    name: '(-) DAS - Simples Nacional (Alíquota Unificada 6%)',
+    name: '(-) DAS - Simples Nacional (Alíquota Efetiva)',
     level: 4,
     group: 'RECEITAS',
     nature: 'Devedora',
     type: 'Analítica',
     isDasTax: true,
     costCenterId: 'CC 005',
-    notes: '⚡ DEDUÇÃO CRÍTICA: Lançamento do tributo unificado de 6% sobre o faturamento (Anexo III).',
+    notes: '⚡ DEDUÇÃO CRÍTICA: Lançamento do tributo unificado sobre o faturamento (Anexo III, alíquota efetiva por faixa de RBT12).',
   },
   {
     code: '4.2.01.02',

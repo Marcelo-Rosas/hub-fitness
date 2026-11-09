@@ -82,13 +82,24 @@ export interface DreMonth {
   month: number; // 1 to 24
   label: string; // "M1", "M2", etc.
   receitaServicos: number;
-  das6Percent: number; // Dedução DAS
+  /** DAS do mês (nome legado: não é mais 6% fixo — ver core/simplesNacional). */
+  das6Percent: number;
   irpj: number;
   csll: number;
   pisCofinsCppIss: number;
   custosOperacionais: number; // Custos
   despesasOperacionais: number; // Despesas
   lucroLiquido: number;
+  /** Memória de cálculo do Simples (presente quando fiscal.dasMode = 'progressivo'). */
+  simples?: {
+    rbt12: number;
+    anexo: 'III' | 'V';
+    faixa: number;
+    aliquotaEfetiva: number;
+    fatorR: number;
+    acimaSublimite: boolean;
+    acimaDoTeto: boolean;
+  };
 }
 
 export interface VasDriver {

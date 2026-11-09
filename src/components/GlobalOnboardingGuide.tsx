@@ -43,7 +43,7 @@ export const ROUTE_GUIDES = [
       'Esta plataforma foi desenvolvida para simulação executiva de viabilidade econômica (24 a 60 meses), governança tributária (Simples Nacional Anexo III) e planejamento de capacidade operacional.',
     keyFeatures: [
       'Simulação de DRE 100% Reativa com CRUD Granular por Plano de Contas e Centro de Custo.',
-      'Acompanhamento do Fator R em tempo real para manter alíquota efetiva reduzida de ~6% no Anexo III.',
+      'Acompanhamento do Fator R em tempo real para manter o enquadramento no Anexo III (alíquota menor que o Anexo V).',
       'Análise de Sensibilidade e Comparador de Cenários (Baseline x Pessimista x Expansão).',
       'Assistente IA CFO Integrado (powered by Gemini) e Gerador de Relatório PDF Auditável.',
       'Assistente de Compras com cotações em SP, PR e SC (Stretch, Paletes PBR e Empilhadeiras).',
@@ -126,7 +126,7 @@ export const ROUTE_GUIDES = [
     icon: Percent,
     badgeColor: 'bg-[#C6EFCE] text-[#006100] border-[#006100]/30',
     summary:
-      'Monitoramento dinâmico da relação Folha / Receita para enquadramento no Anexo III do Simples Nacional (~6%).',
+      'Monitoramento dinâmico da relação Folha / Receita para enquadramento no Anexo III do Simples Nacional.',
     description:
       'Evite o reenquadramento no Anexo V (alíquota inicial de 15,5%) mantendo a razão de folha de pagamento sobre receita bruta acumulada dentro da banda ideal de 28,0% a 28,7%.',
     keyFeatures: [

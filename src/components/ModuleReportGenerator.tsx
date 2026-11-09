@@ -205,7 +205,7 @@ export const ModuleReportGenerator: React.FC<ModuleReportGeneratorProps> = ({
               <div className="text-base font-extrabold text-amber-800 font-mono mt-0.5">
                 {fatorR >= 28.01 && fatorR <= 28.70 ? `${fatorR}%` : '28,40%'}
               </div>
-              <div className="text-[10px] text-emerald-700 font-bold mt-0.5">● Anexo III (6,0% DAS)</div>
+              <div className="text-[10px] text-emerald-700 font-bold mt-0.5">● Anexo III (DAS progressivo)</div>
             </div>
 
             <div>
@@ -397,7 +397,7 @@ export const ModuleReportGenerator: React.FC<ModuleReportGeneratorProps> = ({
                   <tr className="bg-[#1F3864] text-white font-bold">
                     <th className="py-2 px-3 text-left">Mês</th>
                     <th className="py-2 px-3 text-right">Receita de Serviços (R$)</th>
-                    <th className="py-2 px-3 text-right">Impostos DAS 6% (R$)</th>
+                    <th className="py-2 px-3 text-right">Impostos DAS (R$)</th>
                     <th className="py-2 px-3 text-right">Custos Diretos COGS (R$)</th>
                     <th className="py-2 px-3 text-right">Despesas Oper. OPEX (R$)</th>
                     <th className="py-2 px-3 text-right">Lucro Líquido (R$)</th>

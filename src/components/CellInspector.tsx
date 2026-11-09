@@ -81,7 +81,7 @@ export const CellInspector: React.FC = () => {
           <div className="space-y-2">
             {(inspectorCell.formulaTree || [
               'Receita VAS (Qtd x Preço)',
-              'Dedução DAS 6% Simples',
+              'Dedução DAS Simples (alíquota efetiva LC 123)',
               'Custos Operacionais',
               'Pessoal & Prolabore',
               'Aluguel & Condomínio',

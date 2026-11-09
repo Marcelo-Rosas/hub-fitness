@@ -4,6 +4,7 @@ import { CheckCircle2, Zap } from 'lucide-react';
 import { ModuleHeader } from '../ModuleHeader';
 import { ContractChip } from '../ContractChip';
 import { formatDasPct, formatFatorRBand } from '../../core/governanceMatrix';
+import { aliquotaEfetiva } from '../../core/simplesNacional';
 import { computeFatorRSeries, fatorRFolhaMensalFromLedger } from '../../core/engine';
 import { INITIAL_GRANULAR_DRE_ITEMS } from '../../data/initialData';
 
@@ -21,8 +22,7 @@ export const M5FatorR: React.FC = () => {
   const bandMin = hubParams.fiscal.fatorRMin;
   const bandMax = hubParams.fiscal.fatorRMax;
   const bandLabel = formatFatorRBand(hubParams);
-  const dasLabel = formatDasPct(hubParams);
-  const anexoVPct = 15.5;
+  const dasLabel = formatDasPct(hubParams, dreMonths);
 
   const ledger = ledgerBaseItems.length ? ledgerBaseItems : INITIAL_GRANULAR_DRE_ITEMS;
 
@@ -41,8 +41,10 @@ export const M5FatorR: React.FC = () => {
     : fatorR;
   const isOptimalBand = simulatedFatorR >= bandMin && simulatedFatorR <= bandMax;
 
+  // Anexo V vs III na mesma RBT12 (tabelas LC 123, alíquota efetiva).
+  const anexoVPct = aliquotaEfetiva(rbt12, 'V') * 100;
   const economiaAnual = isOptimalBand
-    ? Math.round(rbt12 * (anexoVPct / 100 - hubParams.pricing.dasPct))
+    ? Math.round(rbt12 * (aliquotaEfetiva(rbt12, 'V') - aliquotaEfetiva(rbt12, 'III')))
     : 0;
 
   const series = useMemo(
@@ -68,7 +70,7 @@ export const M5FatorR: React.FC = () => {
           {
             label: 'Alíquota DAS Efetiva',
             value: isOptimalBand ? dasLabel : `${anexoVPct.toFixed(1).replace('.', ',')}%`,
-            subtext: isOptimalBand ? 'Anexo III (Alíquota Mínima)' : 'Anexo V (Sem Fator R)',
+            subtext: isOptimalBand ? 'Anexo III · efetiva M1–M24' : 'Anexo V (Sem Fator R)',
             badge: 'TRIBUTO',
             highlightColor: isOptimalBand ? 'emerald' : 'rose',
           },

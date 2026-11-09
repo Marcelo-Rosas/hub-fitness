@@ -9,6 +9,7 @@ import {
   FORTE_BENCHMARK_META,
 } from '../data/benchmarkData';
 import { OFFICIAL_DRE_MONTHS, OFFICIAL_TOTALS_24M } from './bpV35Reference';
+import { computeDasSeries } from './simplesNacional';
 
 export interface CliaTakeRateResult {
   feuPerMonth: number;
@@ -490,7 +491,7 @@ export function projectDreFromLedger(
   const activeCustosY1 = sum('custo', 1);
   const activeCustosY2 = sum('custo', 2);
 
-  const months: DreMonth[] = [];
+  const raw: { m: number; baseRev: number; baseCusto: number; baseDespesa: number }[] = [];
   for (let m = 1; m <= 24; m++) {
     const isY1 = m <= 12;
     let baseRev = isY1 ? activeReceitasY1 : activeReceitasY2;
@@ -526,21 +527,48 @@ export function projectDreFromLedger(
     }
     const baseDespesa = occupancyDesp + otherDesp;
 
-    const das = baseRev * params.pricing.dasPct;
-    months.push({
+    raw.push({ m, baseRev, baseCusto, baseDespesa });
+  }
+
+  // 2º passe: DAS depende do RBT12 (meses anteriores) e do Fator R → anexo.
+  const dasSeries =
+    params.fiscal.dasMode === 'progressivo'
+      ? computeDasSeries(
+          raw.map((r) => r.baseRev),
+          raw.map((r) => fatorRFolhaMensalFromLedger(items, params, r.m)),
+        )
+      : null;
+
+  return raw.map(({ m, baseRev, baseCusto, baseDespesa }, i): DreMonth => {
+    const sn = dasSeries?.[i];
+    const das = sn ? sn.das : baseRev * params.pricing.dasPct;
+    const dasR = Math.round(das);
+    const irpj = Math.round(sn ? sn.irpj : das * params.fiscal.dasIrpjShare);
+    const csll = Math.round(sn ? sn.csll : das * params.fiscal.dasCsllShare);
+    return {
       month: m,
       label: `M${m}`,
       receitaServicos: Math.round(baseRev),
-      das6Percent: Math.round(das),
-      irpj: Math.round(das * params.fiscal.dasIrpjShare),
-      csll: Math.round(das * params.fiscal.dasCsllShare),
-      pisCofinsCppIss: Math.round(das * params.fiscal.dasPisCofinsCppIssShare),
+      das6Percent: dasR,
+      irpj,
+      csll,
+      pisCofinsCppIss: sn ? dasR - irpj - csll : Math.round(das * params.fiscal.dasPisCofinsCppIssShare),
       custosOperacionais: Math.round(baseCusto),
       despesasOperacionais: Math.round(baseDespesa),
       lucroLiquido: Math.round(baseRev - das - baseCusto - baseDespesa),
-    });
-  }
-  return months;
+      ...(sn && {
+        simples: {
+          rbt12: Math.round(sn.rbt12),
+          anexo: sn.anexo,
+          faixa: sn.faixa,
+          aliquotaEfetiva: sn.aliquotaEfetiva,
+          fatorR: sn.fatorR,
+          acimaSublimite: sn.acimaSublimite,
+          acimaDoTeto: sn.acimaDoTeto,
+        },
+      }),
+    };
+  });
 }
 
 export function computeTechOpexMonthly(params: HubParams = defaultParams): number {

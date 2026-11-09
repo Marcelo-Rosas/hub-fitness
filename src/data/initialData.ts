@@ -251,7 +251,7 @@ export const INITIAL_SWOT: SwotItem[] = [
   {
     type: 'strength',
     title: 'Estrutura Tributária Optimizada (Simples Anexo III)',
-    description: 'Aproveitamento do Fator R mantido em 28,4% para alíquota efetiva de DAS em apenas 6,0%.',
+    description: 'Aproveitamento do Fator R mantido em 28,4% para manter o Anexo III (DAS efetivo ~13,7%–16,5% na faixa de RBT12 do plano).',
     impact: 'Economia fiscal direta superior a R$ 340.000 nos 24 primeiros meses.',
   },
   {
@@ -462,7 +462,7 @@ export const INITIAL_GRANULAR_DRE_ITEMS: DreGranularItem[] = [
     active: true, accountCode: '5.2.01.03', costCenterId: 'CC 005',
     costBehavior: 'hc',
     isFatorRNumerator: true,
-    notes: '🔒 CRÍTICO: M4-11=R$7k | M12=R$11k | M13+=R$15k. Mantém Anexo III 6%.',
+    notes: '🔒 CRÍTICO: M4-11=R$7k | M12=R$11k | M13+=R$15k. Mantém Anexo III.',
     composition: [
       { id: 'desp-pl-m4', name: 'Faixa M4–M11', formula: 'params.fiscal.plAdditional', monthlyAmountY1: 7000, monthlyAmountY2: 0 },
       { id: 'desp-pl-m13', name: 'Faixa M13–M24', formula: 'params.fiscal.plAdditional', monthlyAmountY1: 0, monthlyAmountY2: 15000 },

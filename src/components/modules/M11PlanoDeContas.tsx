@@ -27,6 +27,7 @@ import {
   DollarSign,
 } from 'lucide-react';
 import { SearchableSelect } from '../ui/SearchableSelect';
+import { formatDasPct } from '../../core/governanceMatrix';
 import { CoaMaeFilha } from '../CoaMaeFilha';
 
 export const M11PlanoDeContas: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }) => {
@@ -259,7 +260,7 @@ export const M11PlanoDeContas: React.FC<{ readOnly?: boolean }> = ({ readOnly = 
 
           <div className="bg-white/10 backdrop-blur-xs p-2.5 rounded-lg border border-white/10">
             <div className="text-white/60 text-[10px] uppercase font-semibold">Alíquota Unificada</div>
-            <div className="text-lg font-black text-purple-300">6.0% DAS</div>
+            <div className="text-lg font-black text-purple-300">{formatDasPct(hubParams, dreMonths)} DAS</div>
             <div className="text-[10px] text-purple-200">Conta Dedução 4.2.01.01</div>
           </div>
         </div>
@@ -504,7 +505,7 @@ export const M11PlanoDeContas: React.FC<{ readOnly?: boolean }> = ({ readOnly = 
 
                               {account.isDasTax && (
                                 <span className="bg-purple-100 text-purple-900 border border-purple-300 text-[9.5px] font-bold px-1.5 py-0.5 rounded">
-                                  ⚡ DAS 6%
+                                  ⚡ DAS
                                 </span>
                               )}
 
@@ -796,7 +797,7 @@ export const M11PlanoDeContas: React.FC<{ readOnly?: boolean }> = ({ readOnly = 
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
                     isAnexo3Ok ? 'bg-emerald-200 text-emerald-900' : 'bg-rose-200 text-rose-900'
                   }`}>
-                    {isAnexo3Ok ? 'Anexo III (6.0%)' : 'Atenção: Anexo V (15.5%)'}
+                    {isAnexo3Ok ? 'Anexo III' : 'Atenção: Anexo V'}
                   </span>
                 </div>
 

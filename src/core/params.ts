@@ -21,6 +21,7 @@ export interface HubParams {
     deunitization: number;
     labeling: number;
     adValoremPct: number;
+    /** Só usado com fiscal.dasMode = 'fixo' (premissa legada BP v3.5 = 6%). */
     dasPct: number;
     floors: {
       storage: number;
@@ -55,7 +56,12 @@ export interface HubParams {
     fatorRMax: number;
     plBaseMonthly: number;
     plAdditionalByPhase: { fromMonth: number; amount: number }[];
-    /** Frações do DAS (Somam 1). */
+    /**
+     * 'progressivo' = tabela LC 123 (Anexo III/V por Fator R, RBT12 com proporcionalização).
+     * 'fixo' = dasPct sobre receita (premissa BP v3.5 — subestima o DAS acima de R$ 180 mil/ano).
+     */
+    dasMode: 'progressivo' | 'fixo';
+    /** Frações do DAS no modo 'fixo' (somam 1). */
     dasIrpjShare: number;
     dasCsllShare: number;
     dasPisCofinsCppIssShare: number;
@@ -176,6 +182,7 @@ export const defaultParams: HubParams = {
       { fromMonth: 12, amount: 11_000 },
       { fromMonth: 13, amount: 15_000 },
     ],
+    dasMode: 'progressivo',
     dasIrpjShare: 0.04,
     dasCsllShare: 0.035,
     dasPisCofinsCppIssShare: 0.925,

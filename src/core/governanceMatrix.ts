@@ -47,8 +47,19 @@ export function formatFatorRBand(params: HubParams): string {
   return `${min}%–${max}%`;
 }
 
-export function formatDasPct(params: HubParams): string {
-  return `${(params.pricing.dasPct * 100).toFixed(1).replace('.', ',')}%`;
+const pctBr = (f: number) => `${(f * 100).toFixed(1).replace('.', ',')}%`;
+
+/**
+ * Rótulo da alíquota efetiva do DAS. Modo progressivo: faixa min–máx da série ao vivo
+ * (ex.: "13,7%–16,5%"); sem série, "progressiva". Modo fixo: dasPct legado.
+ */
+export function formatDasPct(params: HubParams, months?: DreMonth[]): string {
+  if (params.fiscal.dasMode === 'fixo') return pctBr(params.pricing.dasPct);
+  const rates = (months ?? []).map((m) => m.simples?.aliquotaEfetiva).filter((x): x is number => x != null);
+  if (!rates.length) return 'progressiva (LC 123)';
+  const lo = Math.min(...rates);
+  const hi = Math.max(...rates);
+  return pctBr(lo) === pctBr(hi) ? pctBr(hi) : `${pctBr(lo)}–${pctBr(hi)}`;
 }
 
 export function plPhaseBands(params: HubParams): { fromMonth: number; amount: number; totalPl: number }[] {

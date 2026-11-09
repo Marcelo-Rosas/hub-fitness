@@ -482,7 +482,14 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const governanceChecks = useMemo((): GovernanceCheck[] => {
     const fatorOk = fatorR >= hubParams.fiscal.fatorRMin && fatorR <= hubParams.fiscal.fatorRMax;
     const capexOk = hubParams.capex.total === defaultParams.capex.total;
-    const dasOk = Math.abs(hubParams.pricing.dasPct - defaultParams.pricing.dasPct) < 1e-9;
+    // DAS: progressivo (LC 123) é o único modo aceito para pitch; 'fixo' = premissa legada.
+    const lastSn = dreMonths[dreMonths.length - 1]?.simples;
+    const dasOk =
+      hubParams.fiscal.dasMode === 'progressivo' &&
+      !!lastSn &&
+      lastSn.anexo === 'III' &&
+      !lastSn.acimaSublimite &&
+      !lastSn.acimaDoTeto;
     const rbt12 = dreMonths.slice(-12).reduce((a, m) => a + m.receitaServicos, 0);
     const tetoOk = rbt12 <= 4_800_000;
 
@@ -500,9 +507,12 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return {
           ...c,
           status: dasOk ? 'passed' : 'warning',
-          detail: dasOk
-            ? `DAS ${(hubParams.pricing.dasPct * 100).toFixed(2)}% Anexo III com Fator R na banda params.`
-            : `DAS divergente: ${(hubParams.pricing.dasPct * 100).toFixed(2)}%.`,
+          detail:
+            hubParams.fiscal.dasMode === 'fixo'
+              ? `DAS fixo ${(hubParams.pricing.dasPct * 100).toFixed(2)}% (premissa legada) — subestima imposto acima de R$ 180 mil/ano.`
+              : lastSn
+                ? `DAS efetivo M${dreMonths.length} ${(lastSn.aliquotaEfetiva * 100).toFixed(2)}% · Anexo ${lastSn.anexo} faixa ${lastSn.faixa} · RBT12 R$ ${lastSn.rbt12.toLocaleString('pt-BR')}${lastSn.acimaSublimite ? ' · ACIMA do sublimite R$ 3,6 mi (ISS fora do DAS)' : ''}${lastSn.acimaDoTeto ? ' · ACIMA do teto R$ 4,8 mi (exclusão do Simples)' : ''}.`
+                : 'DAS sem memória de cálculo.',
         };
       }
       if (c.id === 'gov-5') {

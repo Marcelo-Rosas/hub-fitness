@@ -61,7 +61,7 @@ export const M9ExportGovernanca: React.FC = () => {
   const plM7 = plAdditionalForMonth(hubParams, 7);
   const plM12 = plAdditionalForMonth(hubParams, 12);
   const band = formatFatorRBand(hubParams);
-  const dasLabel = formatDasPct(hubParams);
+  const dasLabel = formatDasPct(hubParams, dreMonths);
   const cap = hubParams.capacity.totalPositions;
   const m7Ceiling = m7RevenueCeiling(hubParams);
 
@@ -234,7 +234,7 @@ ${auditLogs.slice(0, 5).map((l) => `- ${l.timestamp} | ${l.user} | ${l.driver}: 
           {
             label: 'Conformidade Fator R',
             value: `${fatorR}%`,
-            subtext: 'Anexo III Simples Nacional (6,0%)',
+            subtext: `Anexo III Simples Nacional (${dasLabel})`,
             badge: 'FISCAL',
             highlightColor: 'emerald',
           },

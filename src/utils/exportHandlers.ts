@@ -395,7 +395,7 @@ export function exportModuleCSV(
     case 'M5':
       headers = ['Linha Folha / Fator R', 'Mês 1 (M1)', 'Mês 12 (M12)', 'Mês 24 (M24)', 'Status Fiscal'];
       rows = [
-        ['Receita Bruta Mensal', 90600, 205200, 238000, 'Alíquota DAS 6,0%'],
+        ['Receita Bruta Mensal', 90600, 205200, 238000, 'DAS progressivo (LC 123)'],
         ['Pró-labore Mínimo CLT', 25368, 57456, 66640, 'Controle Fator R'],
         ['Encargos & CPP (9,25%)', 2346, 5314, 6164, 'Anexo III Garantido'],
         ['Fator R % Calculado', `${fatorR}%`, `${fatorR}%`, `${fatorR}%`, (fatorR >= 28.01 && fatorR <= 28.70) ? 'CONFORME / ANEXO III' : 'CRÍTICO / ANEXO V'],
@@ -604,7 +604,7 @@ export function exportModulePDF(
         ['Fase 3 (M7 a M12) · Plena Y1', '10,0 HC', 'R$ 49.500 /mês', 'Conforme 01_DRE_24_meses.csv'],
         ['Fase 4 (M13 a M24) · Estabilização Y2', '10,0 HC', 'R$ 52.000 /mês', 'Conforme 01_DRE_24_meses.csv'],
       ];
-      notes.push('Além do custo de pessoal base, o modelo inclui o Pró-Labore Adicional Discricionário para manutenção do Fator R no Anexo III (6,0%).');
+      notes.push('Além do custo de pessoal base, o modelo inclui o Pró-Labore Adicional Discricionário para manutenção do Fator R no Anexo III.');
       break;
 
     default:

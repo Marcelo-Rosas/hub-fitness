@@ -185,7 +185,7 @@ describe('cenário v3.6-wms-proprio', () => {
 });
 
 describe('ledger DRE ao vivo', () => {
-  it('DAS é 6% da receita projetada', () => {
+  it('DAS progressivo: R$ 100k/mês → RBT12 1,2 mi, Anexo V sem folha (Fator R 0)', () => {
     const months = projectDreFromLedger(
       [
         {
@@ -202,10 +202,15 @@ describe('ledger DRE ao vivo', () => {
       0.75,
     );
     expect(months[11].receitaServicos).toBe(100_000);
-    expect(months[11].das6Percent).toBe(6_000);
+    // M24: janela M12–M23 sem rampa → RBT12 = 1,2 mi.
+    // Anexo V 4ª faixa: (1.200.000 × 20,5% − 17.100) / 1.200.000 = 19,075%
+    expect(months[23].simples?.rbt12).toBe(1_200_000);
+    expect(months[23].simples?.anexo).toBe('V');
+    expect(months[23].simples?.faixa).toBe(4);
+    expect(months[23].das6Percent).toBe(19_075);
   });
 
-  it('DAS lê params.pricing.dasPct (não literal 0.06)', () => {
+  it("modo 'fixo' (legado BP v3.5) lê params.pricing.dasPct", () => {
     const months = projectDreFromLedger(
       [
         {
@@ -220,7 +225,11 @@ describe('ledger DRE ao vivo', () => {
         },
       ],
       0.75,
-      { ...defaultParams, pricing: { ...defaultParams.pricing, dasPct: 0.05 } },
+      {
+        ...defaultParams,
+        pricing: { ...defaultParams.pricing, dasPct: 0.05 },
+        fiscal: { ...defaultParams.fiscal, dasMode: 'fixo' },
+      },
     );
     expect(months[11].das6Percent).toBe(5_000);
   });

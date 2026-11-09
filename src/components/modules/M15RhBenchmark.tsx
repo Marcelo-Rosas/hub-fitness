@@ -51,6 +51,7 @@ const ccBadge = (tone: ReturnType<typeof payrollCcTone>) => {
 export const M15RhBenchmark: React.FC = () => {
   const {
     hubParams,
+    dreMonths,
     payrollRoles,
     upsertPayrollRole,
     deletePayrollRole,
@@ -59,7 +60,7 @@ export const M15RhBenchmark: React.FC = () => {
   } = usePlanner();
   const canEdit = canEditFinance(activeRole) && !pitchMode;
   const band = formatFatorRBand(hubParams);
-  const dasLabel = formatDasPct(hubParams);
+  const dasLabel = formatDasPct(hubParams, dreMonths);
   const plBands = plPhaseBands(hubParams);
   const plM4 = plAdditionalForMonth(hubParams, 4);
   const plM12 = plAdditionalForMonth(hubParams, 12);
@@ -601,7 +602,7 @@ export const M15RhBenchmark: React.FC = () => {
           </div>
           <p className="text-xs text-slate-600 leading-relaxed">
             Encargos diretos evidenciados: FGTS 8% + 13º 8,33% + Férias+1/3 11,11% ={' '}
-            <strong>27,44%</strong>. INSS patronal diluído no DAS 6% (Anexo III) — fora desta matriz.
+            <strong>27,44%</strong>. INSS patronal (CPP) diluído no DAS (Anexo III) — fora desta matriz.
           </p>
         </div>
 
