@@ -1,19 +1,43 @@
 {
-  // hub-fitness-proxy → Railway. Deploy: npx wrangler deploy
+  // hub-fitness-proxy → HUB-FITNESS em Cloudflare Containers. Deploy: npx wrangler deploy
+  // (requer Docker rodando e `wrangler login` com o e-mail da Vectra).
   "name": "hub-fitness-proxy",
-  // Conta Vectra (dona da zona vectracargo.com.br). Requer `wrangler login` com o e-mail da Vectra.
+  // Conta Vectra (dona da zona vectracargo.com.br).
   "account_id": "361e9e1383bfa8e95e1db54e6c2a3bba",
   "main": "src/index.ts",
   "compatibility_date": "2025-03-07",
   "compatibility_flags": ["nodejs_compat"],
-  "workers_dev": true,
+  "workers_dev": false,
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1
   },
+  "containers": [
+    {
+      "class_name": "HubApp",
+      // Dockerfile na raiz do repo; contexto de build = raiz.
+      "image": "../../Dockerfile",
+      "image_build_context": "../..",
+      "instance_type": "basic",
+      // Instância única: SQLite local não é compartilhado entre instâncias.
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "HUB_APP", "class_name": "HubApp" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["HubApp"] }],
   "vars": {
-    // Railway production origin (no trailing slash)
-    "ORIGIN_URL": "https://hub-fitness-production.up.railway.app"
+    "APP_URL": "https://hub.vectracargo.com.br",
+    "GEMINI_MODEL": "gemini-3.6-flash",
+    // false até validar o Resend em produção (e-mail fica simulado).
+    "INTRANET_EMAIL_LIVE": "false",
+    "RESEND_FROM": "HUB-FITNESS Compras <compras@hubfitness3pl.com.br>",
+    "PUCOMEX_ENV": "validacao",
+    "PUCOMEX_ROLE_TYPE": "DEPOSIT",
+    "PUCOMEX_LIVE": "true",
+    "PUCOMEX_CNPJ_LABEL": "VECTRA HUB LTDA:62.188.748/0001-17",
+    "PUCOMEX_USE_VECTRA_HUB_CERT": "false"
   },
   "routes": [
     {
