@@ -31,7 +31,10 @@ export interface ReformaParams {
   cbsRef: number;
   /** HIPÓTESE — alíquota de referência IBS (estadual + municipal). */
   ibsRef: number;
-  /** HIPÓTESE — fração da receita vinda de clientes que aproveitam crédito (Lucro Real/Presumido). */
+  /**
+   * HIPÓTESE — fração da receita vinda de clientes que aproveitam crédito (Lucro Real/Presumido
+   * ou Simples híbrido). ICP = academias no Simples por dentro (vendem a PF) → não creditam.
+   */
   clientesCreditoPct: number;
   /** HIPÓTESE — fração de (custos + despesas − folha) adquirida com IBS/CBS creditável. */
   insumosCreditaveisPct: number;
@@ -40,7 +43,8 @@ export interface ReformaParams {
 export const DEFAULT_REFORMA: ReformaParams = {
   cbsRef: 0.088,
   ibsRef: 0.177,
-  clientesCreditoPct: 0.8,
+  // ICP academias Simples Nacional: maioria não credita. 10% = distribuidores/redes grandes.
+  clientesCreditoPct: 0.1,
   insumosCreditaveisPct: 0.6,
 };
 

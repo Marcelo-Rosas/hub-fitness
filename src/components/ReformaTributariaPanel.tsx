@@ -87,7 +87,7 @@ export const ReformaTributariaPanel: React.FC = () => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <Slider label="Clientes que creditam IBS/CBS" value={p.clientesCreditoPct} min={0} max={1} step={0.05}
-          onChange={set('clientesCreditoPct')} hint="HIPÓTESE · % receita de Lucro Real/Presumido" />
+          onChange={set('clientesCreditoPct')} hint="HIPÓTESE · ICP academias Simples não credita; só Real/Presumido/híbrido" />
         <Slider label="Insumos com crédito" value={p.insumosCreditaveisPct} min={0} max={1} step={0.05}
           onChange={set('insumosCreditaveisPct')} hint="HIPÓTESE · % de custos+despesas fora folha" />
         <Slider label="CBS referência" value={p.cbsRef} min={0.07} max={0.1} step={0.001}
@@ -113,12 +113,16 @@ export const ReformaTributariaPanel: React.FC = () => {
           <div className="text-[11px] text-slate-600">Acima disso o híbrido rende mais que o Simples puro</div>
         </div>
         <div className="p-3 rounded-lg border bg-slate-50 border-slate-200">
-          <div className="text-[10px] uppercase font-bold text-slate-600">Crédito ao cliente por R$ 100 (2033)</div>
+          <div className="text-[10px] uppercase font-bold text-slate-600">Academia no Simples: custo por R$ 100 de serviço</div>
           <div className="text-lg font-black font-mono">
-            R$ {series[6].simples.creditoClientePor100.toFixed(2).replace('.', ',')} vs R${' '}
-            {series[6].hibrido.creditoClientePor100.toFixed(2).replace('.', ',')}
+            R$ 100 vs R${' '}
+            {(100 + series[0].hibrido.creditoClientePor100).toFixed(2).replace('.', ',')} (2027) · R${' '}
+            {(100 + series[6].hibrido.creditoClientePor100).toFixed(2).replace('.', ',')} (2033)
           </div>
-          <div className="text-[11px] text-slate-600">Simples por dentro vs híbrido — argumento comercial B2B</div>
+          <div className="text-[11px] text-slate-600">
+            Hub no Simples (tributo embutido) vs 3PL no regime regular (IBS/CBS por fora, sem crédito para quem é
+            Simples). Aproximação: assume mesmo preço-base.
+          </div>
         </div>
       </div>
 
