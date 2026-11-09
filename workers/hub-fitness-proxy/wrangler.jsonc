@@ -1,6 +1,8 @@
 {
   // hub-fitness-proxy → Railway. Deploy: npx wrangler deploy
   "name": "hub-fitness-proxy",
+  // Conta Vectra (dona da zona vectracargo.com.br). Requer `wrangler login` com o e-mail da Vectra.
+  "account_id": "361e9e1383bfa8e95e1db54e6c2a3bba",
   "main": "src/index.ts",
   "compatibility_date": "2025-03-07",
   "compatibility_flags": ["nodejs_compat"],
