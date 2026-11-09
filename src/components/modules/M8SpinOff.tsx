@@ -14,20 +14,18 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { ModuleHeader } from '../ModuleHeader';
+import { ReformaTributariaPanel, useReformaSeries } from '../ReformaTributariaPanel';
 
 export const M8SpinOff: React.FC = () => {
   const { spinOffActive, setSpinOffActive } = usePlanner();
-  const [loadCurve, setLoadCurve] = useState<number[]>([6.0, 6.1, 7.1, 7.4, 7.8]);
   const [selectedSwotItem, setSelectedSwotItem] = useState<SwotItem | null>(null);
 
   const rbt12Year5 = 4810000; // R$ 4,81M > TETO 4.8M
   const isAboveTeto = rbt12Year5 > 4800000;
 
-  const handleCurveChange = (index: number, val: number) => {
-    const updated = [...loadCurve];
-    updated[index] = val;
-    setLoadCurve(updated);
-  };
+  const { series: reforma } = useReformaSeries();
+  const r2027 = reforma[0];
+  const hibridoGanha = r2027.hibrido.lucroLiquido >= r2027.simples.lucroLiquido;
 
   return (
     <div className="space-y-6">
@@ -45,11 +43,11 @@ export const M8SpinOff: React.FC = () => {
             highlightColor: 'rose',
           },
           {
-            label: 'Carga Efetiva Transição',
-            value: `${loadCurve[4]}%`,
-            subtext: 'Alíquota projetada no Ano 5',
+            label: 'Reforma 2027: regime',
+            value: hibridoGanha ? 'HÍBRIDO' : 'SIMPLES',
+            subtext: `Carga ${(r2027.hibrido.cargaPctReceita * 100).toFixed(1)}% vs ${(r2027.simples.cargaPctReceita * 100).toFixed(1)}% (Simples)`,
             badge: 'REFORMA',
-            highlightColor: 'amber',
+            highlightColor: hibridoGanha ? 'emerald' : 'amber',
           },
           {
             label: 'Estratégia de Spin-off',
@@ -110,6 +108,13 @@ export const M8SpinOff: React.FC = () => {
             </span>
           </div>
 
+          <div className="p-3 bg-amber-900/40 border border-amber-600/50 rounded text-[11px] text-amber-100 leading-relaxed">
+            ⚖️ <strong>Risco legal (validar com contador/advogado):</strong> LC 123 art. 3º §4º soma a receita das
+            PJs quando o mesmo sócio detém &gt;10% de outra empresa ou é administrador dela — SPE com os mesmos sócios
+            não preserva o Simples se a receita global passar de R$ 4,8 mi. Valores desta simulação são premissas
+            fixas, não calculadas pelo motor.
+          </div>
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2 text-xs font-mono">
             <div className="p-3 bg-emerald-900/60 rounded border border-emerald-800">
               <div className="text-[10px] text-emerald-300">Impacto Δ Ano 3</div>
@@ -131,31 +136,7 @@ export const M8SpinOff: React.FC = () => {
         </div>
       )}
 
-      {/* Editable Load Curve Section */}
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
-        <div>
-          <h3 className="text-sm font-bold text-slate-900">📈 Curva de Carga Tributária Editável (Ano 1 a Ano 5)</h3>
-          <p className="text-xs text-slate-500">Ajuste as alíquotas efetivas de impostos conforme decretos da Reforma Tributária</p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
-          {loadCurve.map((rate, idx) => (
-            <div key={idx} className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1 text-center">
-              <div className="text-[11px] font-bold text-slate-600">Ano {idx + 1}</div>
-              <div className="text-lg font-black text-blue-900 font-mono">{rate.toFixed(1)}%</div>
-              <input
-                type="range"
-                min="5.0"
-                max="12.0"
-                step="0.1"
-                value={rate}
-                onChange={(e) => handleCurveChange(idx, Number(e.target.value))}
-                className="w-full mt-1"
-              />
-            </div>
-          ))}
-        </div>
-      </div>
+      <ReformaTributariaPanel />
 
       {/* INTERACTIVE 2x2 SWOT MATRIX */}
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
