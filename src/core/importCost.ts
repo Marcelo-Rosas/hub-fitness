@@ -64,6 +64,17 @@ export interface ImportacaoInput {
     freteRodoviario: number;
     outras: number;
   };
+  /**
+   * Cobranças locais do agente de carga cotadas em USD (desconsolidação, handling, BL fee…),
+   * pagas no destino após a chegada: não entram no valor aduaneiro, CIF/Radar nem AFRMM.
+   * Planilha: "Custos Logísticos" US$ 1.700 (CONVENCIONAL!B316, cotação digitada; VALORES!F7 diz 1.900).
+   */
+  despesasAgenteUsd?: number;
+  /**
+   * Spread do câmbio do agente sobre a PTAX (agentes faturam em R$ com taxa própria).
+   * Planilha usa 14% ("Taxa Armador" = PTAX × 1,14). VALIDAR com a cotação do agente.
+   */
+  cambioAgenteSpread?: number;
   /** Receita do Hub: gestão do processo. */
   honorarioHub: { tipo: 'fixo'; valor: number } | { tipo: 'pctFob'; pct: number };
   radar: RadarModalidade;
@@ -96,6 +107,8 @@ export interface ImportacaoResultado {
   icms: number;
   tributos: number;
   despesasLocais: number;
+  /** Parte de `despesasLocais` vinda das cobranças do agente em USD. */
+  despesasAgenteBrl: number;
   honorarioHub: number;
   /** Custo total para a academia (mercadoria + frete + seguro + tributos + despesas + Hub). */
   custoTotal: number;
@@ -147,7 +160,9 @@ export function computeImportacao(input: ImportacaoInput): ImportacaoResultado {
   const afrmm = input.freteMaritimoUsd * ptax * AFRMM_LONGO_CURSO;
   const adicoes = new Set(itens.map((i) => i.ncm)).size;
   const siscomex = taxaSiscomex(adicoes);
-  const despesasLocais = Object.values(input.despesas).reduce((a, b) => a + b, 0);
+  const despesasAgenteBrl = (input.despesasAgenteUsd ?? 0) * ptax * (1 + (input.cambioAgenteSpread ?? 0));
+  const despesasLocais =
+    Object.values(input.despesas).reduce((a, b) => a + b, 0) + despesasAgenteBrl;
   const despesasAduaneirasIcms = input.icmsIncluiDespesasAduaneiras
     ? input.despesas.capataziaThc + input.despesas.armazenagemTerminal
     : 0;
@@ -211,6 +226,7 @@ export function computeImportacao(input: ImportacaoInput): ImportacaoResultado {
     icms: r2(icms),
     tributos: r2(tributos),
     despesasLocais: r2(despesasLocais),
+    despesasAgenteBrl: r2(despesasAgenteBrl),
     honorarioHub: r2(honorarioHub),
     custoTotal: r2(custoTotal),
     custoPorFob: custoTotal / fobBrl,
@@ -273,6 +289,8 @@ export const SIMULACAO_REFERENCIA: ImportacaoInput = {
     freteRodoviario: 3_000,
     outras: 800,
   },
+  despesasAgenteUsd: 1_700,
+  cambioAgenteSpread: 0.14,
   honorarioHub: { tipo: 'fixo', valor: 25_000 },
   radar: 'expressa',
   cifSemestreAnteriorUsd: 0,

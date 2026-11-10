@@ -86,3 +86,19 @@ describe('Reforma na importação', () => {
     expect(com.custoTotal).toBeGreaterThan(ano(2027).custoTotal);
   });
 });
+
+describe('cobranças do agente em USD (planilha B316)', () => {
+  it('US$ 1.700 × PTAX × 1,14 = R$ 10.038,84, fora do VA e do CIF', () => {
+    const com = computeImportacao(REF);
+    const sem = computeImportacao({ ...REF, despesasAgenteUsd: 0 });
+    expect(com.despesasAgenteBrl).toBeCloseTo(10_038.84, 2);
+    expect(com.valorAduaneiro).toBe(sem.valorAduaneiro);
+    expect(com.cifUsd).toBe(sem.cifUsd);
+    expect(com.icms).toBe(sem.icms);
+    expect(com.custoTotal - sem.custoTotal).toBeCloseTo(10_038.84, 1);
+  });
+  it('sem spread usa PTAX pura', () => {
+    const r = computeImportacao({ ...REF, cambioAgenteSpread: 0 });
+    expect(r.despesasAgenteBrl).toBeCloseTo(1_700 * 5.18, 2);
+  });
+});
