@@ -9,10 +9,11 @@ import {
   CartesianGrid,
   ReferenceLine,
 } from 'recharts';
-import { TrendingUp, ArrowUpRight, DollarSign, Percent, Clock, Wallet, Zap, CheckCircle2, Box, Award, AlertTriangle } from 'lucide-react';
+import { TrendingUp, DollarSign, Percent, Box, Award, AlertTriangle } from 'lucide-react';
 import { ModuleHeader } from '../ModuleHeader';
 import { OFFICIAL_TOTALS_24M } from '../../data/officialData';
 import { saldoCaixaAoVivo } from '../../core/scenarioDrivers';
+import { SUBLIMITE_ICMS_ISS } from '../../core/simplesNacional';
 import { SANCO_TCO_BREAKDOWN } from '../../data/benchmarkData';
 import { deriveCashMilestones, formatBrlSigned } from '../../core/cashMilestones';
 import { usePlanner } from '../../context/PlannerContext';
@@ -34,6 +35,20 @@ export const M1Dashboard: React.FC = () => {
   const pctTxt = (v: number) => `${v.toFixed(1).replace(".", ",")}%`;
   const kTxt = (v: number) => `R$ ${(v / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}k`;
   const capacidadePaletes = hubParams.capacity.totalPositions;
+
+  // Indicadores fiscais do DRE ao vivo (Simples Nacional).
+  const comSimples = dreMonths.filter((m) => m.simples);
+  const fatorRs = comSimples.map((m) => m.simples!.fatorR);
+  const fatorRMin = fatorRs.length ? Math.min(...fatorRs) : 0;
+  const fatorRM24 = fatorRs.at(-1) ?? 0;
+  const mesesAnexoV = comSimples.filter((m) => m.simples!.anexo === 'V').length;
+  const fatorROk = mesesAnexoV === 0;
+  const rbt12Pico = Math.max(0, ...comSimples.map((m) => m.simples!.rbt12));
+  const folgaSublimite = SUBLIMITE_ICMS_ISS - rbt12Pico;
+  const folgaPct = folgaSublimite / SUBLIMITE_ICMS_ISS;
+  const totalDas = dreMonths.reduce((a, m) => a + m.das6Percent, 0);
+  const dasEfetivoPct = totalReceita ? (totalDas / totalReceita) * 100 : 0;
+  const aliqM24 = comSimples.at(-1)?.simples!.aliquotaEfetiva ?? 0;
 
   const milestones = deriveCashMilestones(
     cashflowSeries.map((item) => ({
@@ -101,76 +116,54 @@ export const M1Dashboard: React.FC = () => {
         ]}
       />
 
-      {/* EXECUTIVE CARDS GRID WITH EXPLICIT GREEN BORDERS */}
+      {/* INDICADORES FISCAIS (Simples Nacional) — não repetem os KPIs do cabeçalho */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card Receita */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
+        <div className={`bg-white p-5 rounded-xl border-2 ${fatorROk ? 'border-emerald-500' : 'border-rose-500'} shadow-xs flex flex-col justify-between`}>
           <div>
-            <div className="flex items-center justify-between text-slate-500 mb-1">
-              <span className="text-xs font-semibold uppercase tracking-wider">Receita Bruta 24M</span>
+            <div className={`flex items-center justify-between mb-1 ${fatorROk ? 'text-emerald-700' : 'text-rose-700'}`}>
+              <span className="text-xs font-bold uppercase tracking-wider">Fator R (mín. 24m)</span>
+              <Percent className="w-4 h-4" />
+            </div>
+            <div className={`text-2xl font-black font-mono ${fatorROk ? 'text-emerald-900' : 'text-rose-900'}`}>{pctTxt(fatorRMin * 100)}</div>
+          </div>
+          <div className="mt-3 text-[11px] text-slate-600 font-medium border-t border-slate-100 pt-2">
+            {fatorROk ? 'Anexo III em todos os meses' : `Anexo V em ${mesesAnexoV} mês(es)`} · piso 28% · M24 {pctTxt(fatorRM24 * 100)}
+          </div>
+        </div>
+        <div className={`bg-white p-5 rounded-xl border-2 ${folgaSublimite <= 0 ? 'border-rose-500' : folgaPct < 0.1 ? 'border-amber-500' : 'border-emerald-500'} shadow-xs flex flex-col justify-between`}>
+          <div>
+            <div className="flex items-center justify-between text-slate-600 mb-1">
+              <span className="text-xs font-bold uppercase tracking-wider">RBT12 pico</span>
               <DollarSign className="w-4 h-4 text-slate-400" />
             </div>
-            <div className="text-2xl font-black text-slate-900 font-mono">
-              R$ {totalReceita.toLocaleString('pt-BR')}
-            </div>
+            <div className="text-2xl font-black text-slate-900 font-mono">{kTxt(rbt12Pico)}</div>
           </div>
-          <div className="mt-3 text-[11px] text-slate-500 font-medium border-t border-slate-100 pt-2">
-            Consolidado 24 meses M1–M24
+          <div className="mt-3 text-[11px] text-slate-600 font-medium border-t border-slate-100 pt-2">
+            {folgaSublimite > 0 ? `Folga até sublimite R$ 3,6 mi: ${kTxt(folgaSublimite)} (${pctTxt(folgaPct * 100)})` : `Acima do sublimite R$ 3,6 mi em ${kTxt(-folgaSublimite)}: ICMS/ISS fora do DAS`}
           </div>
         </div>
-
-        {/* Card Lucro - HIGHLIGHTED WITH GREEN BORDER */}
-        <div className="bg-white p-5 rounded-xl border-2 border-emerald-500 shadow-xs flex flex-col justify-between relative overflow-hidden">
-          <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-bl">
-            AO VIVO
-          </div>
+        <div className={'bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between'}>
           <div>
-            <div className="flex items-center justify-between text-emerald-700 mb-1">
-              <span className="text-xs font-bold uppercase tracking-wider">Lucro Líquido 24M</span>
-              <TrendingUp className="w-4 h-4 text-emerald-600" />
+            <div className="flex items-center justify-between text-slate-500 mb-1">
+              <span className="text-xs font-semibold uppercase tracking-wider">DAS efetivo 24m</span>
+              <Percent className="w-4 h-4 text-slate-400" />
             </div>
-            <div className="text-2xl font-black text-emerald-900 font-mono">
-              R$ {totalLucroLiquido.toLocaleString('pt-BR')}
-            </div>
+            <div className="text-2xl font-black text-slate-900 font-mono">{pctTxt(dasEfetivoPct)}</div>
           </div>
-          <div className="mt-3 text-[11px] text-emerald-700 font-bold border-t border-emerald-100 pt-2 flex items-center justify-between">
-            <span>Margem Efetiva: {pctTxt(margemLiquidaPercent)}</span>
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+          <div className="mt-3 text-[11px] text-slate-600 font-medium border-t border-slate-100 pt-2">
+            {kTxt(totalDas)} de DAS · progressivo LC 123 · M24 {pctTxt(aliqM24 * 100)}
           </div>
         </div>
-
-        {/* Card Margem - STRICTLY 11.9% */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
+        <div className={'bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between'}>
           <div>
             <div className="flex items-center justify-between text-slate-500 mb-1">
               <span className="text-xs font-semibold uppercase tracking-wider">Margem Líquida</span>
-              <Percent className="w-4 h-4 text-slate-400" />
+              <TrendingUp className="w-4 h-4 text-slate-400" />
             </div>
-            <div className="text-2xl font-black text-slate-900 font-mono">
-              {margemLiquidaPercent.toFixed(1)}%
-            </div>
+            <div className="text-2xl font-black text-slate-900 font-mono">{pctTxt(margemLiquidaPercent)}</div>
           </div>
-          <div className="mt-3 text-[11px] text-slate-500 font-medium border-t border-slate-100 pt-2">
+          <div className="mt-3 text-[11px] text-slate-600 font-medium border-t border-slate-100 pt-2">
             ({kTxt(totalLucroLiquido)} / {kTxt(totalReceita)}) × 100
-          </div>
-        </div>
-
-        {/* Card Caixa M24 - HIGHLIGHTED WITH GREEN BORDER */}
-        <div className="bg-white p-5 rounded-xl border-2 border-emerald-500 shadow-xs flex flex-col justify-between relative overflow-hidden">
-          <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-bl">
-            LIQUIDEZ M24
-          </div>
-          <div>
-            <div className="flex items-center justify-between text-emerald-700 mb-1">
-              <span className="text-xs font-bold uppercase tracking-wider">Saldo Caixa M24</span>
-              <Wallet className="w-4 h-4 text-emerald-600" />
-            </div>
-            <div className="text-2xl font-black text-emerald-900 font-mono">
-              R$ {saldoCaixaM24CarenciaAluguel.toLocaleString('pt-BR')}
-            </div>
-          </div>
-          <div className="mt-3 text-[11px] text-slate-600 font-medium border-t border-emerald-100 pt-2">
-            Puro: <span className="font-mono font-bold text-slate-800">R$ {saldoCaixaM24Puro.toLocaleString('pt-BR')}</span>
           </div>
         </div>
       </div>
