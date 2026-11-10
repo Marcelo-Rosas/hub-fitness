@@ -9,9 +9,10 @@ import {
   CartesianGrid,
   ReferenceLine,
 } from 'recharts';
-import { TrendingUp, ArrowUpRight, DollarSign, Percent, Clock, Wallet, Zap, ShieldCheck, CheckCircle2, Box, Award, AlertTriangle } from 'lucide-react';
+import { TrendingUp, ArrowUpRight, DollarSign, Percent, Clock, Wallet, Zap, CheckCircle2, Box, Award, AlertTriangle } from 'lucide-react';
 import { ModuleHeader } from '../ModuleHeader';
-import { parseOfficialCSVs } from '../../data/officialData';
+import { OFFICIAL_TOTALS_24M } from '../../data/officialData';
+import { saldoCaixaAoVivo } from '../../core/scenarioDrivers';
 import { SANCO_TCO_BREAKDOWN } from '../../data/benchmarkData';
 import { deriveCashMilestones, formatBrlSigned } from '../../core/cashMilestones';
 import { usePlanner } from '../../context/PlannerContext';
@@ -19,23 +20,27 @@ import { HubAreaGradient, HubChartCard } from '../charts/HubChartCard';
 import { HUB_CHART, HubChartLegendPill, hubTick, hubTooltipStyle, hubYAxisK, markerLabel } from '../charts/hubChartTheme';
 
 export const M1Dashboard: React.FC = () => {
-  const { hubParams } = usePlanner();
-  const { cashflowSeries, totals24M } = parseOfficialCSVs();
+  const { hubParams, dreMonths } = usePlanner();
 
-  // Exact metrics from official 01_DRE_24_meses.csv and 02_Fluxo_Caixa.csv
-  const totalReceita = totals24M.receitaTotal; // R$ 4.805.700
-  const totalLucroLiquido = totals24M.lucroLiquidoTotal; // R$ 570.842
-  const margemLiquidaPercent = totals24M.margemLiquidaPercent; // 11.878% ~ 11.9%
-  const saldoCaixaM24CarenciaAluguel = totals24M.saldoCaixaM24CarenciaAluguel;
-  const saldoCaixaM24Puro = totals24M.saldoCaixaM24Puro; // R$ 663.342
+  // DRE ao vivo (DAS progressivo LC 123 + 4PL). BP v3.5 fica só como referência histórica:
+  // usava DAS 6% fixo e o total declarado (R$ 570.842) não fecha com a soma mensal (R$ 408.060).
+  const cashflowSeries = saldoCaixaAoVivo(dreMonths);
+  const totalReceita = dreMonths.reduce((a, m) => a + m.receitaServicos, 0);
+  const totalLucroLiquido = dreMonths.reduce((a, m) => a + m.lucroLiquido, 0);
+  const margemLiquidaPercent = totalReceita ? (totalLucroLiquido / totalReceita) * 100 : 0;
+  const saldoCaixaM24CarenciaAluguel = cashflowSeries.at(-1)?.saldoCarenciaAluguel ?? 0;
+  const saldoCaixaM24Puro = cashflowSeries.at(-1)?.saldoPuro ?? 0;
+  const bpLL = OFFICIAL_TOTALS_24M.lucroLiquidoTotal;
+  const pctTxt = (v: number) => `${v.toFixed(1).replace(".", ",")}%`;
+  const kTxt = (v: number) => `R$ ${(v / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}k`;
   const capacidadePaletes = hubParams.capacity.totalPositions;
 
   const milestones = deriveCashMilestones(
     cashflowSeries.map((item) => ({
       month: item.month,
       monthNum: item.monthNum,
-      saldo: item.saldoAcumuladoPuro,
-      fluxo: item.fluxoLiquidoPuro,
+      saldo: item.saldoPuro,
+      fluxo: item.fluxoPuro,
     })),
     { rentOnMonthNum: hubParams.rent.carenciaAluguelMeses + 1 },
   );
@@ -49,9 +54,9 @@ export const M1Dashboard: React.FC = () => {
   // Map cashflow series for AreaChart (M0 to M24)
   const chartData = cashflowSeries.map((item) => ({
     month: item.month,
-    saldoPuro: item.saldoAcumuladoPuro,
-    saldoCarenciaAluguel: item.saldoAcumuladoCarenciaAluguel,
-    labelValue: item.saldoAcumuladoCarenciaAluguel,
+    saldoPuro: item.saldoPuro,
+    saldoCarenciaAluguel: item.saldoCarenciaAluguel,
+    labelValue: item.saldoCarenciaAluguel,
   }));
 
   const rentOn = `M${hubParams.rent.carenciaAluguelMeses + 1}`;
@@ -63,14 +68,14 @@ export const M1Dashboard: React.FC = () => {
       <ModuleHeader
         moduleId="M1"
         title="Dashboard Executivo · Visão Geral 3PL"
-        subtitle="Indicadores consolidados do Plano de Negócios (01_DRE_24_meses.csv, 02_Fluxo_Caixa.csv e BP v3.5)."
+        subtitle="DRE ao vivo do cenário ativo — DAS progressivo (LC 123), Fator R e receita 4PL. Caixa = fluxo do BP v3.5 ajustado pela diferença de lucro mês a mês."
         kpis={[
           {
             label: 'Lucro Líquido 24m',
             value: `R$ ${totalLucroLiquido.toLocaleString('pt-BR')}`,
-            subtext: 'Margem Efetiva 11,9% (Auditado BP v3.5)',
-            badge: 'MÉTRICA CHAVE ★',
-            highlightColor: 'emerald',
+            subtext: `Margem ${pctTxt(margemLiquidaPercent)} · BP v3.5 declarava R$ ${bpLL.toLocaleString("pt-BR")}`,
+            badge: 'AO VIVO',
+            highlightColor: totalLucroLiquido >= 0 ? 'emerald' : 'rose',
           },
           {
             label: 'Saldo Caixa M24',
@@ -82,7 +87,7 @@ export const M1Dashboard: React.FC = () => {
           {
             label: 'Receita Bruta 24m',
             value: `R$ ${totalReceita.toLocaleString('pt-BR')}`,
-            subtext: 'Somatório M1 ao M24 (01_DRE.csv)',
+            subtext: 'Somatório M1–M24 do DRE ao vivo',
             badge: '24 MESES',
             highlightColor: 'slate',
           },
@@ -117,7 +122,7 @@ export const M1Dashboard: React.FC = () => {
         {/* Card Lucro - HIGHLIGHTED WITH GREEN BORDER */}
         <div className="bg-white p-5 rounded-xl border-2 border-emerald-500 shadow-xs flex flex-col justify-between relative overflow-hidden">
           <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-bl">
-            DESTAQUE AUDITORIA
+            AO VIVO
           </div>
           <div>
             <div className="flex items-center justify-between text-emerald-700 mb-1">
@@ -129,7 +134,7 @@ export const M1Dashboard: React.FC = () => {
             </div>
           </div>
           <div className="mt-3 text-[11px] text-emerald-700 font-bold border-t border-emerald-100 pt-2 flex items-center justify-between">
-            <span>Margem Efetiva: 11,9%</span>
+            <span>Margem Efetiva: {pctTxt(margemLiquidaPercent)}</span>
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
           </div>
         </div>
@@ -146,7 +151,7 @@ export const M1Dashboard: React.FC = () => {
             </div>
           </div>
           <div className="mt-3 text-[11px] text-slate-500 font-medium border-t border-slate-100 pt-2">
-            (R$ 570,8k / R$ 4,80M) × 100
+            ({kTxt(totalLucroLiquido)} / {kTxt(totalReceita)}) × 100
           </div>
         </div>
 
@@ -165,7 +170,7 @@ export const M1Dashboard: React.FC = () => {
             </div>
           </div>
           <div className="mt-3 text-[11px] text-slate-600 font-medium border-t border-emerald-100 pt-2">
-            Puro CSV: <span className="font-mono font-bold text-slate-800">R$ {saldoCaixaM24Puro.toLocaleString('pt-BR')}</span>
+            Puro: <span className="font-mono font-bold text-slate-800">R$ {saldoCaixaM24Puro.toLocaleString('pt-BR')}</span>
           </div>
         </div>
       </div>
@@ -257,10 +262,10 @@ export const M1Dashboard: React.FC = () => {
           <div>
             <div className="flex items-center gap-2 text-emerald-400 mb-1">
               <Box className="w-4 h-4" />
-              <h3 className="text-xs font-bold uppercase tracking-wider">Capacidade & Payback (BP v3.5)</h3>
+              <h3 className="text-xs font-bold uppercase tracking-wider">Capacidade & Payback (ao vivo)</h3>
             </div>
             <p className="text-xs text-slate-400">
-              Premissas de infraestrutura e viabilidade auditada conforme Diretriz g5.
+              Infraestrutura (Diretriz g5) e marcos de caixa do cenário ativo.
             </p>
           </div>
 
@@ -277,20 +282,23 @@ export const M1Dashboard: React.FC = () => {
               <div className="text-[10px] text-slate-400 font-sans uppercase font-bold">Horizonte de Retorno (Payback)</div>
               
               <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-300 font-sans">Com Carência Aluguel:</span>
-                <span className="font-bold text-emerald-400">Mês M5 (-5,8k → retorno)</span>
+                <span className="text-slate-300 font-sans">Vale da Morte:</span>
+                <span className="font-bold text-amber-400">{milestones.valley.month} ({formatBrlSigned(milestones.valley.saldo)})</span>
               </div>
               <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-300 font-sans">Fluxo Puro:</span>
-                <span className="font-bold text-emerald-400">Mês M6 (+R$ 52.116)</span>
+                <span className="text-slate-300 font-sans">Payback (fluxo puro):</span>
+                <span className={`font-bold ${milestones.payback ? "text-emerald-400" : "text-rose-400"}`}>
+                  {milestones.payback ? `${milestones.payback.month} (${formatBrlSigned(milestones.payback.saldo)})` : "Não ocorre em 24m"}
+                </span>
               </div>
             </div>
           </div>
 
-          <div className="bg-emerald-950/60 border border-emerald-800/80 p-3 rounded-lg flex items-start gap-2 text-[11px] text-emerald-300 font-sans">
-            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+          <div className="bg-amber-950/60 border border-amber-800/80 p-3 rounded-lg flex items-start gap-2 text-[11px] text-amber-200 font-sans">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
             <div>
-              <strong>Auditoria Aprovada:</strong> 100% dos custos e receitas alinhados com `01_DRE_24_meses.csv` e `02_Fluxo_Caixa.csv`.
+              <strong>Auditoria fiscal 11/2026:</strong> BP v3.5 (LL R$ {bpLL.toLocaleString("pt-BR")}) usava DAS 6% fixo e
+              o total não fecha com a soma mensal (R$ 408.060). Números acima recalculados com DAS progressivo + 4PL.
             </div>
           </div>
         </div>

@@ -108,7 +108,7 @@ export interface HubParams {
   /**
    * 4PL comex — receita de serviço (gestão porta a porta + operação logística de importação).
    * Hub NÃO importa nem revende: receita = honorário por processo (NFS-e). Entra no RBT12/DAS
-   * e no Fator R. Modalidade por ano em core/comex4pl.ts. Desligado por padrão (HIPÓTESE).
+   * e no Fator R. Modalidade por ano em core/comex4pl.ts. LIGADO no cenário oficial (2026-11-10).
    */
   comex4pl: {
     ativo: boolean;
@@ -234,12 +234,16 @@ export const defaultParams: HubParams = {
     condominiumPerM2: 2.6,
   },
   comex4pl: {
-    ativo: false,
+    ativo: true,
     inicioMes: 7,
     processosMesY1: 1,
     processosMesY2: 3,
-    // Referência: consultoria cobra R$ 25,5 mil líquidos/processo; trading ~2% VA (~R$ 4,7 mil).
-    honorarioPorProcesso: 15_000,
+    // Validado 2026-11-10 (exclui despachante, pago pela academia ~R$ 2,5–4,5 mil/DI):
+    // piso custo-para-servir 35%; teto = consultoria de mercado R$ 25,5 mil + ~R$ 7,6 mil
+    // embutidos (planilha auditada). Teto fiscal: sublimite R$ 3,6 mi (LC 123 art. 13-A) — a
+    // R$ 20 mil o cenário Realista v3.5 chega a RBT12 R$ 3,57 mi (folga 0,8%); R$ 18 mil dá
+    // ~4% de folga. Acima do sublimite ICMS/ISS saem do DAS.
+    honorarioPorProcesso: 18_000,
     custoPctReceita: 0.35,
     // 35% × 80% = 28% da receita em folha: mantém o Fator R ≥ 28% (Anexo III) ao ligar o 4PL.
     folhaPctCusto: 0.8,

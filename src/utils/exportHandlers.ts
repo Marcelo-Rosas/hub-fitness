@@ -15,6 +15,11 @@ import {
  * Delimiter: ';'
  * Encoding: UTF-8 with BOM (\uFEFF)
  */
+/** Status vs BP v3.5. BP usava DAS 6% fixo e LL declarado não fecha com a soma mensal (auditoria 11/2026). */
+function statusVsBp(vivo: number, bp: number): string {
+  return Math.abs(vivo - bp) / Math.abs(bp) <= 0.01 ? 'CONFORME' : 'RECALCULADO (DAS progressivo + 4PL)';
+}
+
 export function exportToCSV(
   dataRows: (string | number)[][],
   headers: string[],
@@ -405,8 +410,8 @@ export function exportModuleCSV(
     case 'M9':
       headers = ['Dimensão de Governança', 'Referência BP v3.5', 'Valor no Sistema', 'Status Auditoria'];
       rows = [
-        ['Receita Bruta 24m', 'R$ 4.805.700', `R$ ${totalRev.toLocaleString('pt-BR')}`, 'CONFORME'],
-        ['Lucro Líquido 24m', 'R$ 570.842', `R$ ${totalLL.toLocaleString('pt-BR')}`, 'CONFORME'],
+        ['Receita Bruta 24m', 'R$ 4.805.700', `R$ ${totalRev.toLocaleString('pt-BR')}`, statusVsBp(totalRev, 4_805_700)],
+        ['Lucro Líquido 24m', 'R$ 570.842 (DAS 6% fixo)', `R$ ${totalLL.toLocaleString('pt-BR')}`, statusVsBp(totalLL, 570_842)],
         ['Receita Base M7', 'R$ 205.200 (2.968 pos)', `R$ ${months24[6]?.receitaServicos || 205200}`, 'CONFORME'],
         ['Fator R Numerador', '28,01% a 28,70%', `${fatorR}%`, (fatorR >= 28.01 && fatorR <= 28.70) ? 'CONFORME / ANEXO III' : 'CRÍTICO / ANEXO V'],
         ['Payback CAPEX', 'M5 c/ Carência Aluguel / M6 puro', 'M5/M6', 'CONFORME'],
@@ -458,8 +463,8 @@ export function exportModuleCSV(
     case 'M14':
       headers = ['Item de Cotação CPQ', 'Piso Mínimo SANCO', 'Preço Cotado', 'Conformidade Margem'];
       rows = [
-        ['Receita Bruta 24m', 'R$ 4.805.700', `R$ ${totalRev.toLocaleString('pt-BR')}`, 'CONFORME'],
-        ['Lucro Líquido 24m', 'R$ 570.842', `R$ ${totalLL.toLocaleString('pt-BR')}`, 'CONFORME'],
+        ['Receita Bruta 24m', 'R$ 4.805.700', `R$ ${totalRev.toLocaleString('pt-BR')}`, statusVsBp(totalRev, 4_805_700)],
+        ['Lucro Líquido 24m', 'R$ 570.842 (DAS 6% fixo)', `R$ ${totalLL.toLocaleString('pt-BR')}`, statusVsBp(totalLL, 570_842)],
         ['Fator R Numerador', '28,01% a 28,70%', `${fatorR}%`, (fatorR >= 28.01 && fatorR <= 28.70) ? 'CONFORME / ANEXO III' : 'CRÍTICO / ANEXO V'],
         ['Armazenagem Quinzenal', 'R$ 22,50 / palete', 'R$ 22,50', 'CONFORME'],
         ['Movimentação Handling', 'R$ 25,00 / palete', 'R$ 25,00', 'CONFORME'],
@@ -548,8 +553,8 @@ export function exportModulePDF(
       title = 'M9 Exportação, Governança Corporativa & DRE';
       tableHeaders = ['Item de Matriz de Consistência', 'Parâmetro Alvo BP v3.5', 'Valor em Sistema', 'Status Auditoria'];
       tableData = [
-        ['Receita Bruta Acumulada 24m', 'R$ 4.805.700', `R$ ${totalRev.toLocaleString('pt-BR')}`, 'CONFORME'],
-        ['Lucro Líquido Acumulado 24m', 'R$ 570.842', `R$ ${totalLL.toLocaleString('pt-BR')}`, 'CONFORME'],
+        ['Receita Bruta Acumulada 24m', 'R$ 4.805.700', `R$ ${totalRev.toLocaleString('pt-BR')}`, statusVsBp(totalRev, 4_805_700)],
+        ['Lucro Líquido Acumulado 24m', 'R$ 570.842 (DAS 6% fixo)', `R$ ${totalLL.toLocaleString('pt-BR')}`, statusVsBp(totalLL, 570_842)],
         ['Receita Base M7', 'R$ 205.200 (2.968 pos)', `R$ ${months24[6]?.receitaServicos || 205200}`, 'CONFORME'],
         ['Fator R Numerador', '28,01% a 28,70%', `${fatorR}%`, fatorRStatus],
         ['Payback CAPEX', 'M5 c/ Carência Aluguel / M6 puro', 'M5/M6', 'CONFORME'],
@@ -584,8 +589,8 @@ export function exportModulePDF(
       title = 'M14 Gerador CPQ de Propostas Comercial & Trava SANCO';
       tableHeaders = ['Item CPQ', 'Piso Mínimo SANCO', 'Preço Cotado', 'Conformidade Margem'];
       tableData = [
-        ['Receita Bruta Acumulada 24m', 'R$ 4.805.700', `R$ ${totalRev.toLocaleString('pt-BR')}`, 'CONFORME'],
-        ['Lucro Líquido Acumulado 24m', 'R$ 570.842', `R$ ${totalLL.toLocaleString('pt-BR')}`, 'CONFORME'],
+        ['Receita Bruta Acumulada 24m', 'R$ 4.805.700', `R$ ${totalRev.toLocaleString('pt-BR')}`, statusVsBp(totalRev, 4_805_700)],
+        ['Lucro Líquido Acumulado 24m', 'R$ 570.842 (DAS 6% fixo)', `R$ ${totalLL.toLocaleString('pt-BR')}`, statusVsBp(totalLL, 570_842)],
         ['Fator R Numerador', '28,01% a 28,70%', `${fatorR}%`, fatorRStatus],
         ['Armazenagem Quinzenal', 'R$ 22,50 / palete', 'R$ 22,50', 'CONFORME'],
         ['Movimentação Handling', 'R$ 25,00 / palete', 'R$ 25,00', 'CONFORME'],

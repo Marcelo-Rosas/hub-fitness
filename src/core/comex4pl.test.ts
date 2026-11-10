@@ -36,8 +36,10 @@ describe('receita 4PL no DRE', () => {
       ...defaultParams,
       comex4pl: { ...defaultParams.comex4pl, ativo },
     });
-  it('desligado por padrão: DRE inalterado', () => {
-    expect(defaultParams.comex4pl.ativo).toBe(false);
+  it('ligado no cenário oficial, RBT12 abaixo do sublimite R$ 3,6 mi', () => {
+    expect(defaultParams.comex4pl.ativo).toBe(true);
+    const d = projectScenario(INITIAL_GRANULAR_DRE_ITEMS, DEFAULT_SCENARIO_DRIVERS, defaultParams);
+    expect(d.every((m) => !m.simples?.acimaSublimite)).toBe(true);
   });
   it('ligado: soma processos × honorário a partir do mês de início e passa pelo DAS', () => {
     const off = dre(false), on = dre(true);

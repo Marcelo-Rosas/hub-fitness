@@ -184,6 +184,9 @@ describe('cenário v3.6-wms-proprio', () => {
   });
 });
 
+/** Mecânica isolada do ledger: 4PL comex desligado (é ligado no cenário oficial). */
+const SEM_4PL = { ...defaultParams, comex4pl: { ...defaultParams.comex4pl, ativo: false } };
+
 describe('ledger DRE ao vivo', () => {
   it('DAS progressivo: R$ 100k/mês → RBT12 1,2 mi, Anexo V sem folha (Fator R 0)', () => {
     const months = projectDreFromLedger(
@@ -200,6 +203,7 @@ describe('ledger DRE ao vivo', () => {
         },
       ],
       0.75,
+      SEM_4PL,
     );
     expect(months[11].receitaServicos).toBe(100_000);
     // M24: janela M12–M23 sem rampa → RBT12 = 1,2 mi.
@@ -226,7 +230,7 @@ describe('ledger DRE ao vivo', () => {
       ],
       0.75,
       {
-        ...defaultParams,
+        ...SEM_4PL,
         pricing: { ...defaultParams.pricing, dasPct: 0.05 },
         fiscal: { ...defaultParams.fiscal, dasMode: 'fixo' },
       },
@@ -393,8 +397,8 @@ describe('computeFatorRSeries', () => {
   });
 
   it('M12 cumulativo; M13+ vira trailing-12 rolante', () => {
-    const months = projectDreFromLedger(INITIAL_GRANULAR_DRE_ITEMS, 0.75);
-    const s = computeFatorRSeries(INITIAL_GRANULAR_DRE_ITEMS, months, defaultParams);
+    const months = projectDreFromLedger(INITIAL_GRANULAR_DRE_ITEMS, 0.75, SEM_4PL);
+    const s = computeFatorRSeries(INITIAL_GRANULAR_DRE_ITEMS, months, SEM_4PL);
     expect(s[11].folhaJanela).toBe(s.slice(0, 12).reduce((a, r) => a + r.folhaMes, 0));
     expect(s[12].folhaJanela).toBe(s.slice(1, 13).reduce((a, r) => a + r.folhaMes, 0));
     expect(s[23].folhaJanela).toBe(804_000);

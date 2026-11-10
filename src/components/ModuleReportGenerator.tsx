@@ -178,7 +178,7 @@ export const ModuleReportGenerator: React.FC<ModuleReportGeneratorProps> = ({
               {moduleTitles[moduleId] || moduleId}
             </h2>
             <p className="text-xs text-slate-600 mt-1">
-              Este relatório consolida os parâmetros ativos, projeções numéricas e regras de governança vigentes no Módulo {moduleId} em estrita aderência ao Plano de Negócios V3.5.
+              Este relatório consolida os parâmetros ativos, projeções numéricas e regras de governança vigentes no Módulo {moduleId} com DAS progressivo (LC 123) e receita 4PL; BP v3.5 aparece só como referência histórica.
             </p>
           </div>
 
@@ -187,17 +187,19 @@ export const ModuleReportGenerator: React.FC<ModuleReportGeneratorProps> = ({
             <div>
               <div className="text-[10px] font-bold text-slate-500 uppercase">Receita Bruta 24m</div>
               <div className="text-base font-extrabold text-[#1F3864] font-mono mt-0.5">
-                R$ 4.805.700
+                R$ {totalRev24m.toLocaleString('pt-BR')}
               </div>
-              <div className="text-[10px] text-emerald-700 font-bold mt-0.5">● Base BP v3.5 Auditada</div>
+              <div className="text-[10px] text-slate-600 font-bold mt-0.5">● DRE ao vivo (BP v3.5: R$ 4.805.700)</div>
             </div>
 
             <div>
               <div className="text-[10px] font-bold text-slate-500 uppercase">Lucro Líquido 24m</div>
-              <div className="text-base font-extrabold text-[#006100] font-mono mt-0.5">
-                R$ 570.842
+              <div className={`text-base font-extrabold font-mono mt-0.5 ${totalLL24m >= 0 ? 'text-[#006100]' : 'text-rose-700'}`}>
+                R$ {totalLL24m.toLocaleString('pt-BR')}
               </div>
-              <div className="text-[10px] text-slate-600 font-medium mt-0.5">Margem Média: 11,9%</div>
+              <div className="text-[10px] text-slate-600 font-medium mt-0.5">
+                Margem: {totalRev24m ? ((totalLL24m / totalRev24m) * 100).toFixed(1).replace('.', ',') : '—'}% (BP v3.5: R$ 570.842)
+              </div>
             </div>
 
             <div>

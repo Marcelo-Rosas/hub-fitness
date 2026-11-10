@@ -1,5 +1,5 @@
 import type { DreGranularItem, DreMonth, Scenario, ScenarioDrivers } from '../types';
-import { OFFICIAL_TOTALS_24M } from './bpV35Reference';
+import { OFFICIAL_CASHFLOW_SERIES, OFFICIAL_DRE_MONTHS } from './bpV35Reference';
 import type { HubParams } from './params';
 import {
   applyCliaToDreItems,
@@ -9,6 +9,36 @@ import {
   isRentOrCondoLine,
   projectDreFromLedger,
 } from './engine';
+
+export interface SaldoCaixaMes {
+  month: string;
+  monthNum: number;
+  fluxoPuro: number;
+  saldoPuro: number;
+  saldoCarenciaAluguel: number;
+}
+
+/**
+ * Caixa ao vivo: fluxo do BP v3.5 + (LL ao vivo − LL do BP) mês a mês.
+ * O fluxo oficial bate com o LL mensal do BP (ex.: M7 = 22.775); o total declarado
+ * R$ 570.842 não fecha com a soma mensal (408.060) e por isso NÃO é usado como âncora.
+ */
+export function saldoCaixaAoVivo(dreMonths: DreMonth[]): SaldoCaixaMes[] {
+  const llVivo = new Map(dreMonths.map((m) => [m.month, m.lucroLiquido]));
+  const llBp = new Map(OFFICIAL_DRE_MONTHS.map((m) => [m.monthNum, m.lucroLiquido]));
+  let delta = 0;
+  return OFFICIAL_CASHFLOW_SERIES.map((c) => {
+    const fluxoDelta = c.monthNum >= 1 ? (llVivo.get(c.monthNum) ?? 0) - (llBp.get(c.monthNum) ?? 0) : 0;
+    delta += fluxoDelta;
+    return {
+      month: c.month,
+      monthNum: c.monthNum,
+      fluxoPuro: Math.round(c.fluxoLiquidoPuro + fluxoDelta),
+      saldoPuro: Math.round(c.saldoAcumuladoPuro + delta),
+      saldoCarenciaAluguel: Math.round(c.saldoAcumuladoCarenciaAluguel + delta),
+    };
+  });
+}
 
 export interface ScenarioKpis {
   /** Média LL M7–M12 — KPI cruise / Board. */
@@ -131,10 +161,7 @@ export function deriveScenarioKpis(dreMonths: DreMonth[], params: HubParams): Sc
       : Math.round(slice.reduce((a, m) => a + m.lucroLiquido, 0) / slice.length);
   const sumLl = dreMonths.reduce((a, m) => a + m.lucroLiquido, 0);
   const llTotal24m = Math.round(sumLl);
-  const m24Cash = Math.round(
-    OFFICIAL_TOTALS_24M.saldoCaixaM24CarenciaAluguel +
-      (sumLl - OFFICIAL_TOTALS_24M.lucroLiquidoTotal),
-  );
+  const m24Cash = saldoCaixaAoVivo(dreMonths).at(-1)?.saldoCarenciaAluguel ?? 0;
   return {
     llM7Plus,
     llTotal24m,
