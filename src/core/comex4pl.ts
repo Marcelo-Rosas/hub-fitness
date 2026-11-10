@@ -38,6 +38,8 @@ export interface Opcoes4pl {
   trading?: TradingParams;
 }
 
+const pctBr = (f: number) => `${(f * 100).toFixed(1).replace('.', ',')}%`;
+
 export const DEFAULT_OPCOES_4PL: Opcoes4pl = { processosSemestre: 1, margemMinimaTroca: 0.01 };
 
 export function linhaDoTempo4pl(
@@ -81,12 +83,14 @@ export function linhaDoTempo4pl(
     if (ganho > custoDireta * o.margemMinimaTroca) {
       return {
         ano, modalidade: 'encomenda' as const, custoDireta, custoEncomenda, economia: ganho,
-        motivo: `Encomenda via ${prog.nome} ${((ganho / custoDireta) * 100).toFixed(1)}% mais barata`,
+        motivo: `Encomenda via ${prog.nome} ${pctBr(ganho / custoDireta)} mais barata`,
       };
     }
     return {
       ano, modalidade: 'direta' as const, custoDireta, custoEncomenda, economia: Math.max(0, -ganho),
-      motivo: ganho > 0 ? 'Ganho da encomenda abaixo da margem mínima' : 'Direta mais barata',
+      motivo: ganho > 0
+        ? `Encomenda ${pctBr(ganho / custoDireta)} mais barata (R$ ${Math.round(ganho).toLocaleString('pt-BR')}), abaixo da margem mínima de ${pctBr(o.margemMinimaTroca)}`
+        : 'Direta mais barata',
     };
   });
 }
