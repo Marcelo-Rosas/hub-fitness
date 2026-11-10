@@ -66,9 +66,11 @@ export const Shell: React.FC<ShellProps> = ({ children }) => {
     addAuditLog,
   } = usePlanner();
 
-  const rbt12 = useMemo(() => {
-    return dreMonths.slice(-12).reduce((acc, m) => acc + m.receitaServicos, 0);
-  }, [dreMonths]);
+  // RBT12 legal (12 meses anteriores ao M24), mesmo número do DRE/M1.
+  const rbt12 = useMemo(
+    () => dreMonths.at(-1)?.simples?.rbt12 ?? dreMonths.slice(-13, -1).reduce((acc, m) => acc + m.receitaServicos, 0),
+    [dreMonths],
+  );
 
   const year3Status = useMemo(() => projectYear3Baseline(hubParams, true), [hubParams]);
 
