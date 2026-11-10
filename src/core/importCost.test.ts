@@ -88,17 +88,17 @@ describe('Reforma na importação', () => {
 });
 
 describe('cobranças do agente em USD (planilha B316)', () => {
-  it('US$ 1.700 × PTAX × 1,14 = R$ 10.038,84, fora do VA e do CIF', () => {
+  it('US$ 1.900 × PTAX × 1,14 = R$ 11.219,88 (planilha v2), fora do VA e do CIF', () => {
     const com = computeImportacao(REF);
     const sem = computeImportacao({ ...REF, despesasAgenteUsd: 0 });
-    expect(com.despesasAgenteBrl).toBeCloseTo(10_038.84, 2);
+    expect(com.despesasAgenteBrl).toBeCloseTo(11_219.88, 2);
     expect(com.valorAduaneiro).toBe(sem.valorAduaneiro);
     expect(com.cifUsd).toBe(sem.cifUsd);
     expect(com.icms).toBe(sem.icms);
-    expect(com.custoTotal - sem.custoTotal).toBeCloseTo(10_038.84, 1);
+    expect(com.custoTotal - sem.custoTotal).toBeCloseTo(11_219.88, 1);
   });
   it('sem spread usa PTAX pura', () => {
     const r = computeImportacao({ ...REF, cambioAgenteSpread: 0 });
-    expect(r.despesasAgenteBrl).toBeCloseTo(1_700 * 5.18, 2);
+    expect(r.despesasAgenteBrl).toBeCloseTo(1_900 * 5.18, 2);
   });
 });

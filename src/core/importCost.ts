@@ -67,7 +67,8 @@ export interface ImportacaoInput {
   /**
    * Cobranças locais do agente de carga cotadas em USD (desconsolidação, handling, BL fee…),
    * pagas no destino após a chegada: não entram no valor aduaneiro, CIF/Radar nem AFRMM.
-   * Planilha: "Custos Logísticos" US$ 1.700 (CONVENCIONAL!B316, cotação digitada; VALORES!F7 diz 1.900).
+   * Planilha: "Custos Logísticos" CONVENCIONAL!B316 — v1 digitado US$ 1.700; v2 (auditada 10/11/2026)
+   * ligado a VALORES!F7 = US$ 1.900. Confirmar com a cotação do agente.
    */
   despesasAgenteUsd?: number;
   /**
@@ -289,7 +290,7 @@ export const SIMULACAO_REFERENCIA: ImportacaoInput = {
     freteRodoviario: 3_000,
     outras: 800,
   },
-  despesasAgenteUsd: 1_700,
+  despesasAgenteUsd: 1_900,
   cambioAgenteSpread: 0.14,
   honorarioHub: { tipo: 'fixo', valor: 25_000 },
   radar: 'expressa',
