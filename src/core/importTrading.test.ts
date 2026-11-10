@@ -51,3 +51,27 @@ describe('cenários', () => {
     expect(cen('RJ').contaOrdemAgressiva.risco).toMatch(/Tema 520/);
   });
 });
+
+describe('alíquota interestadual e DIFAL', () => {
+  it('importado 4%; lista CAMEX: 7% S/SE→N/NE/CO/ES, 12% demais', async () => {
+    const { aliqInterestadual } = await import('./icmsUf');
+    expect(aliqInterestadual('SC', 'RJ')).toBe(0.04);
+    expect(aliqInterestadual('SC', 'RJ', false)).toBe(0.12);
+    expect(aliqInterestadual('SC', 'BA', false)).toBe(0.07);
+    expect(aliqInterestadual('SC', 'ES', false)).toBe(0.07);
+    expect(aliqInterestadual('ES', 'SP', false)).toBe(0.12);
+  });
+  it('NF-e real SIM Fitness→UTF Catete (RJ), item 1: DIFAL+FCP = R$ 2.797,20 sobre base c/ IPI', async () => {
+    const { difal } = await import('./icmsUf');
+    // vBC 15.540 = vProd 13.752,21 + IPI 1.787,79; vICMSUFDest 2.486,40 + vFCPUFDest 310,80
+    expect(difal(15_540, 'RJ', 0.04)).toBeCloseTo(2_486.4 + 310.8, 2);
+  });
+  it('item lista CAMEX encarece a encomenda (sai dos 4%, sem incentivo)', () => {
+    const camex = { ...REF, itens: REF.itens.map((i) => ({ ...i, semSimilarCamex: true })) };
+    const normal = cen('SP').encomenda;
+    const lista = cen('SP', DEFAULT_TRADING, camex).encomenda;
+    expect(lista.custoTotal).toBeGreaterThan(normal.custoTotal);
+    // direta não muda: ICMS-importação usa a interna da academia de qualquer jeito
+    expect(cen('SP', DEFAULT_TRADING, camex).direta.custoTotal).toBe(cen('SP').direta.custoTotal);
+  });
+});

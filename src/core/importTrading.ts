@@ -17,8 +17,9 @@
  * Trading em UF = UF da academia é excluída (operação interna: sem 4%, sem incentivo de saída).
  */
 import {
-  ALIQ_INTERESTADUAL_IMPORTADO,
+  aliqInterestadual,
   aliqInterna,
+  difal as calcDifal,
   PROGRAMAS_IMPORTACAO,
   UFS,
   type ProgramaImportacao,
@@ -89,29 +90,36 @@ function saidaInterestadual(
   const creditos = creditaFederais ? imp.pis + imp.cofins + imp.ipi + imp.cbs + imp.ibs : 0;
   const base = imp.custoTotal - creditos + fee;
 
-  const a4 = ALIQ_INTERESTADUAL_IMPORTADO * icmsFr;
-  const pc = creditaFederais && !f ? t.pisCofinsSaida : 0;
-  const valorNf = base / (1 - a4 - pc); // ICMS e PIS/Cofins "por dentro"
-  const icmsDestacado = valorNf * a4;
-  const icmsPagoTrading = valorNf * prog.cargaEfetiva * icmsFr;
-  const repasse = (icmsDestacado - icmsPagoTrading) * t.repasseBeneficio;
-
+  // Alíquota interestadual ponderada por FOB: 4% (Res. Senado 13) ou 7/12% p/ itens lista CAMEX.
   const fob = input.itens.reduce((a, i) => a + i.fobUsd, 0) || 1;
+  const pesoCamex = input.itens.reduce((a, i) => a + (i.semSimilarCamex ? i.fobUsd : 0), 0) / fob;
+  const aCamex = aliqInterestadual(prog.uf, ufAcademia, false);
+  const aInterCheia = (1 - pesoCamex) * aliqInterestadual(prog.uf, ufAcademia) + pesoCamex * aCamex;
+  const aInter = aInterCheia * icmsFr;
+  const pc = creditaFederais && !f ? t.pisCofinsSaida : 0;
   const ipiMedio = input.itens.reduce((a, i) => a + i.ipi * i.fobUsd, 0) / fob;
-  const ipiSaida = creditaFederais ? valorNf * (f && input.ipiZeraNaReforma ? 0 : ipiMedio) : 0;
+  const ipiAliq = creditaFederais && !(f && input.ipiZeraNaReforma) ? ipiMedio : 0;
+
+  // Destinatário consumidor final: IPI integra a base do ICMS (CF 155 §2º XI) — confere NF-e real.
+  // P = valor dos produtos (ICMS e PIS/Cofins por dentro); V = P + IPI = valor da operação.
+  const produtos = base / (1 - aInter * (1 + ipiAliq) - pc);
+  const ipiSaida = produtos * ipiAliq;
+  const valorNf = produtos + ipiSaida;
+  const icmsDestacado = valorNf * aInter;
+  // Incentivo só sobre a parcela 4% (itens CAMEX: sem benefício — conservador).
+  const icmsPagoTrading =
+    valorNf * ((1 - pesoCamex) * prog.cargaEfetiva * icmsFr + pesoCamex * aCamex * icmsFr);
+  const repasse = (icmsDestacado - icmsPagoTrading) * t.repasseBeneficio;
   const ibsCbsSaida =
     creditaFederais && f ? (valorNf - icmsDestacado) * (rf.cbsRef + rf.ibsRef * f.ibsFracao) : 0;
 
-  const interna = aliqInterna(ufAcademia) * icmsFr;
-  const difal = t.academiaContribuinte
-    ? ((valorNf - icmsDestacado) / (1 - interna)) * interna - icmsDestacado // base dupla
-    : valorNf * (interna - a4); // base única (EC 87)
+  const difalV = calcDifal(valorNf, ufAcademia, aInterCheia, t.academiaContribuinte) * icmsFr;
 
   return {
-    custoTotal: valorNf - repasse + ipiSaida + ibsCbsSaida + Math.max(0, difal),
+    custoTotal: valorNf - repasse + ibsCbsSaida + difalV,
     icmsDestacado,
     icmsPagoTrading,
-    difal: Math.max(0, difal),
+    difal: difalV,
     fee,
   };
 }

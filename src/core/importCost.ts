@@ -33,6 +33,12 @@ export interface ItemImportacao {
   cofins: number;
   /** Antidumping em R$ (0 se não houver). */
   antidumpingBrl?: number;
+  /**
+   * Bem sem similar nacional — lista CAMEX (Res. CAMEX 79/2012: II 0%/2% ou Ex-tarifário).
+   * Fica fora dos 4% da Res. Senado 13/2012 na revenda interestadual (alíquota 7%/12%).
+   * 9506.91.00 genérica NÃO está na lista (II 18%); só Ex-tarifário específico aprovado.
+   */
+  semSimilarCamex?: boolean;
 }
 
 export type RadarModalidade = 'expressa' | 'limitada' | 'ilimitada';

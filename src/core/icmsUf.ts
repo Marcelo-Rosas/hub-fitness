@@ -68,6 +68,30 @@ export const aliqInterna = (uf: UF) => ICMS_UF[uf].interna + ICMS_UF[uf].fcp;
 /** Alíquota interestadual para importado com conteúdo de importação > 40%. */
 export const ALIQ_INTERESTADUAL_IMPORTADO = 0.04;
 
+const SUL_SUDESTE_SEM_ES: UF[] = ['SP', 'RJ', 'MG', 'PR', 'SC', 'RS'];
+
+/**
+ * Alíquota interestadual (Res. Senado 22/89 e 13/2012).
+ * Importado com CI > 40% e fora da lista CAMEX → 4%. Demais: 7% de S/SE (exceto ES) para
+ * N/NE/CO/ES; 12% nos outros casos.
+ */
+export function aliqInterestadual(origem: UF, destino: UF, importado4 = true): number {
+  if (importado4) return ALIQ_INTERESTADUAL_IMPORTADO;
+  return SUL_SUDESTE_SEM_ES.includes(origem) && !SUL_SUDESTE_SEM_ES.includes(destino) ? 0.07 : 0.12;
+}
+
+/**
+ * DIFAL (EC 87/2015, LC 190/2022). Inclui FCP do destino.
+ * Não contribuinte: base única (valor da operação). Contribuinte (ativo/uso): base dupla.
+ */
+export function difal(valorOperacao: number, destino: UF, aliqInter: number, contribuinte = false): number {
+  const interna = aliqInterna(destino);
+  const v = contribuinte
+    ? ((valorOperacao * (1 - aliqInter)) / (1 - interna)) * interna - valorOperacao * aliqInter
+    : valorOperacao * (interna - aliqInter);
+  return Math.max(0, v);
+}
+
 export interface ProgramaImportacao {
   id: string;
   uf: UF;
