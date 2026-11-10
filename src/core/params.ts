@@ -105,6 +105,22 @@ export interface HubParams {
     clientsAtM24: number;
     feuPerClientAtM24: number;
   };
+  /**
+   * 4PL comex — receita de serviço (gestão porta a porta + operação logística de importação).
+   * Hub NÃO importa nem revende: receita = honorário por processo (NFS-e). Entra no RBT12/DAS
+   * e no Fator R. Modalidade por ano em core/comex4pl.ts. Desligado por padrão (HIPÓTESE).
+   */
+  comex4pl: {
+    ativo: boolean;
+    inicioMes: number;
+    processosMesY1: number;
+    processosMesY2: number;
+    honorarioPorProcesso: number;
+    /** Custo direto (analista comex, sistemas, despachante parceiro) sobre a receita. */
+    custoPctReceita: number;
+    /** Fração do custo direto que é folha (CLT/pró-labore) → numerador do Fator R. */
+    folhaPctCusto: number;
+  };
   benchmarks: {
     sancoTcoInhouseMonthly: number;
     tplFitnessMonthly: number;
@@ -216,6 +232,17 @@ export const defaultParams: HubParams = {
     areaM2: 2_500,
     pricePerM2: 24,
     condominiumPerM2: 2.6,
+  },
+  comex4pl: {
+    ativo: false,
+    inicioMes: 7,
+    processosMesY1: 1,
+    processosMesY2: 3,
+    // Referência: consultoria cobra R$ 25,5 mil líquidos/processo; trading ~2% VA (~R$ 4,7 mil).
+    honorarioPorProcesso: 15_000,
+    custoPctReceita: 0.35,
+    // 35% × 80% = 28% da receita em folha: mantém o Fator R ≥ 28% (Anexo III) ao ligar o 4PL.
+    folhaPctCusto: 0.8,
   },
   cliaSpine: {
     rampStartMonth: 5,

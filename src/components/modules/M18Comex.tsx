@@ -44,6 +44,7 @@ import { ComexFieldDefsPanel } from './ComexFieldDefsPanel';
 import { SearchableSelect } from '../ui/SearchableSelect';
 import { mergeCatalog, COMEX_NCM_CATALOG } from '../../data/comexCatalogs';
 import { PdfDocumentIngestPanel } from '../PdfDocumentIngestPanel';
+import { Comex4plPanel } from './Comex4plPanel';
 
 function payloadText(proc: ComexProcessRecord, key: string): string {
   const value = proc.payload[key];
@@ -79,7 +80,8 @@ type SubTab =
   | 'atit_cities_table'
   | 'quick_consult'
   | 'ai_audit'
-  | 'api_docs';
+  | 'api_docs'
+  | 'comex_4pl';
 
 export const M18Comex: React.FC = () => {
   const [processes, setProcesses] = useState<ComexProcessRecord[]>([]);
@@ -698,6 +700,7 @@ export const M18Comex: React.FC = () => {
           {tabBtn('quick_consult', 'Consulta PUCOMEX', <Search className="w-4 h-4" />)}
           {tabBtn('ai_audit', 'Auditoria NCM IA', <Sparkles className="w-4 h-4 text-violet-500" />, 'violet')}
           {tabBtn('api_docs', 'Docs API', <BookOpen className="w-4 h-4" />)}
+          {tabBtn('comex_4pl', '4PL · Modalidade', <Layers className="w-4 h-4 text-emerald-600" />, 'emerald')}
         </div>
         {activeSubTab === 'processes' && (
           <div className="flex items-center gap-2 shrink-0">
@@ -1386,6 +1389,8 @@ export const M18Comex: React.FC = () => {
       )}
 
       {/* API Docs */}
+      {activeSubTab === 'comex_4pl' && <Comex4plPanel />}
+
       {activeSubTab === 'api_docs' && (
         <div className="space-y-4">
           <div className="bg-white rounded-xl p-6 border space-y-4">

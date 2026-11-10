@@ -380,6 +380,15 @@ export function plAdditionalForMonth(params: HubParams, monthNum: number): numbe
  * Encargos patronais (FGTS/INSS) e provisões PERMANECEM no numerador:
  * BP v3.5 M24 = 804.000 = (52.000 + 15.000) × 12 inclui encargos. Não "corrigir".
  */
+/** 4PL comex no mês: receita de serviço, custo direto e parcela de folha (Fator R). */
+export function comex4plMes(params: HubParams, monthNum: number) {
+  const c4 = params.comex4pl;
+  if (!c4?.ativo || monthNum < c4.inicioMes) return { receita: 0, custo: 0, folha: 0 };
+  const receita = (monthNum <= 12 ? c4.processosMesY1 : c4.processosMesY2) * c4.honorarioPorProcesso;
+  const custo = receita * c4.custoPctReceita;
+  return { receita, custo, folha: custo * c4.folhaPctCusto };
+}
+
 export function fatorRFolhaMensalFromLedger(
   items: DreGranularItem[],
   params: HubParams,
@@ -397,7 +406,7 @@ export function fatorRFolhaMensalFromLedger(
       const val = monthNum <= 12 ? item.monthlyAmountY1 : item.monthlyAmountY2;
       return acc + val;
     }, 0);
-  return baseHc + plAdditionalForMonth(params, monthNum);
+  return baseHc + plAdditionalForMonth(params, monthNum) + comex4plMes(params, monthNum).folha;
 }
 
 export interface FatorRSeriesRow {
@@ -526,6 +535,11 @@ export function projectDreFromLedger(
       otherDesp = otherDesp * rampFactor(r.start, r.end, m);
     }
     const baseDespesa = occupancyDesp + otherDesp;
+
+    // 4PL comex: receita de serviço por processo (não escala com ocupação do armazém).
+    const c4m = comex4plMes(params, m);
+    baseRev += c4m.receita;
+    baseCusto += c4m.custo;
 
     raw.push({ m, baseRev, baseCusto, baseDespesa });
   }
