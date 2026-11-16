@@ -14,8 +14,10 @@ import {
   PUCOMEX_ROLE_TYPES,
   TABADU_PRODUCAO,
   TABADU_VALIDACAO,
+  type PucomexRoleType,
 } from './environments';
 import { pucomexClient } from './pucomexClient';
+import { comexGuardStatus, requireComexOperator } from './comexGuard';
 import {
   consultValueFromProcess,
   getComexStore,
@@ -92,6 +94,7 @@ export function registerPucomexRoutes(app: Express): void {
       success: true,
       status: pucomexClient.getStatus(),
       session: pucomexClient.getSessionPublic(),
+      guard: comexGuardStatus(),
       environments: PUCOMEX_ENVIRONMENTS,
       roleTypes: PUCOMEX_ROLE_TYPES,
       store: { driver: store.driver, docsRoot: defaultDocsRoot() },
@@ -113,9 +116,17 @@ export function registerPucomexRoutes(app: Express): void {
     });
   });
 
-  app.post('/api/comex/pucomex/authenticate', async (req, res) => {
+  app.post('/api/comex/pucomex/authenticate', requireComexOperator, async (req, res) => {
     const force = !!req.body?.force;
-    const roleType = req.body?.roleType;
+    const rawRole = req.body?.roleType;
+    let roleType: PucomexRoleType | undefined;
+    if (rawRole !== undefined && rawRole !== null && rawRole !== '') {
+      const code = String(rawRole).toUpperCase();
+      if (!PUCOMEX_ROLE_TYPES.some((r) => r.code === code)) {
+        return sendError(res, 400, `roleType inválido: ${code}`);
+      }
+      roleType = code as PucomexRoleType;
+    }
     const result = await pucomexClient.authenticate(force, roleType);
     const status = result.success ? 200 : result.code === 'PUCOMEX_AUTH_THROTTLE' ? 429 : 401;
     res.status(result.mode === 'demo' && result.success ? 200 : status).json({
@@ -128,7 +139,7 @@ export function registerPucomexRoutes(app: Express): void {
     });
   });
 
-  app.post('/api/comex/due/consult', async (req, res) => {
+  app.post('/api/comex/due/consult', requireComexOperator, async (req, res) => {
     try {
       const dueNumber = String(req.body?.dueNumber || '').trim();
       if (!dueNumber) {
@@ -149,7 +160,7 @@ export function registerPucomexRoutes(app: Express): void {
     }
   });
 
-  app.post('/api/comex/duimp/consult', async (req, res) => {
+  app.post('/api/comex/duimp/consult', requireComexOperator, async (req, res) => {
     try {
       const duimpNumber = String(req.body?.duimpNumber || '').trim();
       const versao = String(req.body?.versao || '1');
@@ -171,7 +182,7 @@ export function registerPucomexRoutes(app: Express): void {
     }
   });
 
-  app.post('/api/comex/cct/consult', async (req, res) => {
+  app.post('/api/comex/cct/consult', requireComexOperator, async (req, res) => {
     try {
       const accessKey = String(req.body?.accessKey || req.body?.identificador || '').trim();
       const modal = (req.body?.modal === 'exportacao' ? 'exportacao' : 'aquaviario') as
@@ -195,7 +206,7 @@ export function registerPucomexRoutes(app: Express): void {
     }
   });
 
-  app.post('/api/comex/ncm/consult', async (req, res) => {
+  app.post('/api/comex/ncm/consult', requireComexOperator, async (req, res) => {
     try {
       const ncmCode = String(req.body?.ncmCode || '').trim();
       if (!ncmCode) return res.status(400).json({ success: false, error: 'ncmCode obrigatório' });
@@ -214,7 +225,7 @@ export function registerPucomexRoutes(app: Express): void {
     }
   });
 
-  app.post('/api/comex/catalogo/consult', async (req, res) => {
+  app.post('/api/comex/catalogo/consult', requireComexOperator, async (req, res) => {
     try {
       const query = (req.body?.query || {}) as Record<string, string>;
       const result = await pucomexClient.consultCatalogoProduto(query);
@@ -232,14 +243,29 @@ export function registerPucomexRoutes(app: Express): void {
     }
   });
 
-  app.post('/api/comex/pucomex/proxy', async (req, res) => {
+  app.post('/api/comex/pucomex/proxy', requireComexOperator, async (req, res) => {
     try {
-      const method = String(req.body?.method || 'GET').toUpperCase() as 'GET' | 'POST' | 'PUT' | 'DELETE';
-      const reqPath = String(req.body?.path || '').trim();
-      if (!reqPath.startsWith('/')) {
-        return res.status(400).json({ success: false, error: 'path deve começar com /' });
+      const method = String(req.body?.method || 'GET').toUpperCase();
+      if (!['GET', 'POST', 'PUT', 'DELETE'].includes(method)) {
+        return sendError(res, 400, `method inválido: ${method}`);
       }
-      const result = await pucomexClient.apiRequest(method, reqPath, req.body?.body);
+      // Escrita no Portal (registro/retificação) só com opt-in explícito no servidor.
+      if (method !== 'GET' && process.env.PUCOMEX_PROXY_ALLOW_WRITE !== 'true') {
+        return sendError(
+          res,
+          403,
+          'Proxy PUCOMEX somente leitura (GET). Defina PUCOMEX_PROXY_ALLOW_WRITE=true para liberar escrita.',
+        );
+      }
+      const reqPath = String(req.body?.path || '').trim();
+      if (!reqPath.startsWith('/') || reqPath.startsWith('//') || reqPath.includes('://')) {
+        return sendError(res, 400, 'path deve ser relativo ao Portal e começar com /');
+      }
+      const result = await pucomexClient.apiRequest(
+        method as 'GET' | 'POST' | 'PUT' | 'DELETE',
+        reqPath,
+        req.body?.body,
+      );
       return res.status(result.mode === 'live' && result.status >= 400 ? result.status : 200).json({
         success: result.status < 400 || result.mode === 'demo',
         mode: result.mode,
@@ -386,7 +412,7 @@ export function registerPucomexRoutes(app: Express): void {
     }
   });
 
-  app.post('/api/comex/processes/:id/consult', async (req, res) => {
+  app.post('/api/comex/processes/:id/consult', requireComexOperator, async (req, res) => {
     try {
       const store = await storeOf();
       const proc = await store.getProcess(req.params.id);
@@ -455,9 +481,10 @@ export function registerPucomexRoutes(app: Express): void {
     },
   );
 
-  app.post('/api/comex/documents/index', async (req, res) => {
+  app.post('/api/comex/documents/index', requireComexOperator, async (req, res) => {
     const store = await storeOf();
-    const root = String(req.body?.root || defaultDocsRoot());
+    // Raiz fixa do servidor — nunca caminho arbitrário vindo do cliente.
+    const root = defaultDocsRoot();
     const result = await indexComexDocuments(store, root);
     let extracted = 0;
     if (req.body?.extract) {

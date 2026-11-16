@@ -7,7 +7,7 @@
 Fonte: [Introdução API pública](https://docs.portalunico.siscomex.gov.br/introducao-api-publica/)
 
 1. mTLS com certificado ICP-Brasil A1/A3 (PFX no servidor)
-2. `POST {base}/portal/api/autenticar` + header `Role-Type` (HUB default: **DEPOSIT**)
+2. `POST {base}/portal/api/autenticar` + header `Role-Type` (HUB default: **OPERPORT** — perfil habilitado da VECTRA HUB; `DEPOSIT` só após habilitação de depositário na RFB)
 3. Resposta headers: `Set-Token` (JWT) + `X-CSRF-Token` (60 min, renovado a cada request)
 4. Demais calls: headers `Authorization` + `X-CSRF-Token`
 5. **Não** reautenticar a cada request — intervalo mínimo 60s entre `autenticar`
@@ -21,9 +21,17 @@ Fonte: [Ambientes](https://docs.portalunico.siscomex.gov.br/ambientes/)
 | `producao` | https://portalunico.siscomex.gov.br |
 | `homologacao` | https://hom.pucomex.serpro.gov.br (restrito) |
 
-Env: `PUCOMEX_ENV`, `PUCOMEX_CERT_PFX_PATH`, `PUCOMEX_CERT_PASSWORD`, `PUCOMEX_ROLE_TYPE`, `PUCOMEX_LIVE`
+Env: `PUCOMEX_ENV`, `PUCOMEX_CERT_PFX_PATH`, `PUCOMEX_CERT_PASSWORD`, `PUCOMEX_ROLE_TYPE`, `PUCOMEX_LIVE`, `COMEX_OPERATOR_TOKEN`, `PUCOMEX_PROXY_ALLOW_WRITE`
 
 Sem PFX → modo **DEMO** (sessão local + respostas stub; paths oficiais preservados).
+
+## Trava de segurança (`src/core/comex/comexGuard.ts`)
+- Login do app é mock (forjável, repo público) → **não** serve de autorização para o certificado.
+- Rotas que usam o certificado (authenticate, consultas DU-E/DUIMP/CCT/NCM/Catálogo, `processes/:id/consult`, proxy) e `documents/index` exigem header `x-comex-token` = `COMEX_OPERATOR_TOKEN`.
+- Live ligado sem `COMEX_OPERATOR_TOKEN` → 503 (fail-closed). DEMO sem token → livre.
+- Proxy: só `GET`; escrita exige `PUCOMEX_PROXY_ALLOW_WRITE=true`. Path absoluto/`//` recusado.
+- `/status` expõe `status.certError` (PFX testado com `tls.createSecureContext`; "mac verify failure" = senha errada ou .pfx corrompido) e `guard`.
+- `autenticar` respeita 60s mesmo com `force` e deduplica chamadas simultâneas.
 
 ## Persistência (metadado, ADR-003)
 - DDL Client: `supabase/client/migrations/20260814120000_comex_metadata.sql`

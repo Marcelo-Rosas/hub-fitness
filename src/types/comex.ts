@@ -118,6 +118,13 @@ export interface PucomexPortalStatus {
   docsHome: string;
   certThumbprint?: string | null;
   certSource?: 'pfx' | 'windows-store' | null;
+  /** Erro ao abrir o PFX (ex.: mac verify failure) — null quando ok */
+  certError?: string | null;
+}
+
+export interface ComexGuardStatus {
+  operatorTokenRequired: boolean;
+  operatorTokenConfigured: boolean;
 }
 
 export interface ComexPort {

@@ -30,7 +30,9 @@ import type {
   ComexProcessRecord,
   PucomexAuthSession,
   PucomexPortalStatus,
+  ComexGuardStatus,
 } from '../../types/comex';
+import { comexOperatorHeaders, getComexOperatorToken, setComexOperatorToken } from './comexOperatorToken';
 import { COMEX_PORTS_DATA, PORTO_TABLE_METADATA } from '../../data/comexPortsData';
 import { COMEX_ATIT_CITIES_DATA, ATIT_CITY_TABLE_METADATA } from '../../data/comexAtitCitiesData';
 import { INITIAL_PUCOMEX_AUTH } from '../../data/comexSeed';
@@ -134,6 +136,14 @@ export const M18Comex: React.FC = () => {
 
   const [authLoading, setAuthLoading] = useState(false);
   const [authSuccessMsg, setAuthSuccessMsg] = useState<string | null>(null);
+  const [guard, setGuard] = useState<ComexGuardStatus | null>(null);
+  const [operatorToken, setOperatorToken] = useState(getComexOperatorToken);
+
+  const saveOperatorToken = (value: string) => {
+    const v = value.trim();
+    setOperatorToken(v);
+    setComexOperatorToken(v);
+  };
 
   const refreshPortalStatus = async () => {
     try {
@@ -141,10 +151,11 @@ export const M18Comex: React.FC = () => {
       const json = await res.json();
       if (json.success) {
         setPortalStatus(json.status);
+        if (json.guard) setGuard(json.guard);
         if (json.session) {
           setPucomexAuth({
             cnpjeCPF: json.session.cnpjeCPF || 'Certificado ICP-Brasil',
-            role: json.session.roleType || json.session.role || 'DEPOSIT',
+            role: json.session.roleType || json.session.role || 'OPERPORT',
             environment: json.status?.environment || 'validacao',
             tokenPreview: json.session.tokenPreview || '—',
             csrfExpiresAt: json.session.csrfExpiresAt,
@@ -337,7 +348,7 @@ export const M18Comex: React.FC = () => {
     try {
       const res = await fetch('/api/comex/documents/index', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: comexOperatorHeaders(),
         body: JSON.stringify({ extract: true }),
       });
       const json = await res.json();
@@ -368,7 +379,10 @@ export const M18Comex: React.FC = () => {
     setConsultLoading(true);
     setConsultError(null);
     try {
-      const res = await fetch(`/api/comex/processes/${proc.id}/consult`, { method: 'POST' });
+      const res = await fetch(`/api/comex/processes/${proc.id}/consult`, {
+        method: 'POST',
+        headers: comexOperatorHeaders(),
+      });
       const json = await res.json();
       setConsultResult(json);
       setConsultMode(json.mode || null);
@@ -388,17 +402,17 @@ export const M18Comex: React.FC = () => {
     try {
       const res = await fetch('/api/comex/pucomex/authenticate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: comexOperatorHeaders(),
         body: JSON.stringify({
           force: false,
-          roleType: portalStatus?.roleType || 'DEPOSIT',
+          roleType: portalStatus?.roleType || 'OPERPORT',
         }),
       });
       const data = await res.json();
       if (data.session) {
         setPucomexAuth({
           cnpjeCPF: data.session.cnpjeCPF || 'Certificado ICP-Brasil',
-          role: data.session.roleType || data.session.role || 'DEPOSIT',
+          role: data.session.roleType || data.session.role || 'OPERPORT',
           environment: data.portalStatus?.environment || data.mode,
           tokenPreview: data.session.tokenPreview || '—',
           csrfExpiresAt: data.session.csrfExpiresAt,
@@ -445,7 +459,7 @@ export const M18Comex: React.FC = () => {
     try {
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: comexOperatorHeaders(),
         body: JSON.stringify(bodyData),
       });
       const json = await res.json();
@@ -561,7 +575,7 @@ export const M18Comex: React.FC = () => {
                 <p className="text-xs text-slate-300">
                   Auth oficial:{' '}
                   <span className="font-mono text-teal-300">POST /portal/api/autenticar</span> · Role-Type{' '}
-                  <span className="font-mono">{portalStatus?.roleType || 'DEPOSIT'}</span>
+                  <span className="font-mono">{portalStatus?.roleType || 'OPERPORT'}</span>
                   {portalStatus?.baseUrl ? (
                     <>
                       {' '}
@@ -587,8 +601,8 @@ export const M18Comex: React.FC = () => {
                   <div className="text-[10px] text-slate-400">ROLE-TYPE</div>
                   <div className="font-semibold text-slate-200">
                     {portalStatus?.roleType || pucomexAuth.role} ·{' '}
-                    {PUCOMEX_ROLE_TYPES.find((r) => r.code === (portalStatus?.roleType || 'DEPOSIT'))?.label ||
-                      'Depositário'}
+                    {PUCOMEX_ROLE_TYPES.find((r) => r.code === (portalStatus?.roleType || 'OPERPORT'))?.label ||
+                      'Operador Portuário'}
                   </div>
                 </div>
               </div>
@@ -646,6 +660,38 @@ export const M18Comex: React.FC = () => {
           <div className="mt-4 p-2.5 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-100 text-xs flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 shrink-0" />
             {authError}
+          </div>
+        )}
+        {portalStatus?.certError && (
+          <div className="mt-4 p-2.5 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-100 text-xs flex items-start gap-2">
+            <Key className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>
+              <span className="font-bold">Certificado não abre no servidor.</span> {portalStatus.certError}
+            </span>
+          </div>
+        )}
+        {guard?.operatorTokenRequired && (
+          <div className="mt-4 p-2.5 rounded-lg bg-slate-800/70 border border-slate-700 text-slate-200 text-xs flex flex-col sm:flex-row sm:items-center gap-2">
+            <ShieldCheck className="w-4 h-4 shrink-0 text-teal-300" />
+            {guard.operatorTokenConfigured ? (
+              <>
+                <span className="shrink-0">Token de operador (rotas do certificado):</span>
+                <input
+                  type="password"
+                  autoComplete="off"
+                  value={operatorToken}
+                  onChange={(e) => saveOperatorToken(e.target.value)}
+                  placeholder="COMEX_OPERATOR_TOKEN"
+                  className="flex-1 min-w-0 px-2 py-1 rounded bg-slate-900 border border-slate-600 font-mono text-slate-100"
+                />
+                <span className="text-[10px] text-slate-400 shrink-0">guardado só nesta aba</span>
+              </>
+            ) : (
+              <span className="text-amber-200">
+                Live ligado sem <span className="font-mono">COMEX_OPERATOR_TOKEN</span> no servidor — autenticar e
+                consultar o Portal ficam bloqueados até o secret ser definido.
+              </span>
+            )}
           </div>
         )}
       </div>
