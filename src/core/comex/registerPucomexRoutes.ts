@@ -26,6 +26,9 @@ import {
 import { indexComexDocuments } from './docsIndexer';
 import { extractProcessFromPdfs, mergeExtracted } from './pdfExtract';
 import { ingestPdfBuffer } from './pdfIngest';
+import { comexErrorStatus, registerComexClientRoutes } from './registerComexClientRoutes';
+import { computeRadarUsage, processRadarDate, type RadarUsage } from './radarUsage';
+import type { ComexProcessRecord } from '../../types/comex';
 
 function defaultDocsRoot(): string {
   return process.env.COMEX_DOCS_ROOT || 'D:\\Comex';
@@ -89,6 +92,7 @@ export async function bootstrapComexStore(): Promise<void> {
 
 export function registerPucomexRoutes(app: Express): void {
   app.use('/api/comex', comexGateway);
+  registerComexClientRoutes(app);
 
   app.get('/api/comex/pucomex/status', async (_req, res) => {
     const store = await storeOf();
@@ -319,44 +323,70 @@ export function registerPucomexRoutes(app: Express): void {
     res.json({ success: true, driver: store.driver, data });
   });
 
+  async function radarFor(store: ComexStore, proc: ComexProcessRecord): Promise<RadarUsage | undefined> {
+    if (!proc.cliente_id) return undefined;
+    const client = await store.getClient(proc.cliente_id);
+    if (!client) return undefined;
+    return computeRadarUsage(client, await store.listProcesses(), { refDate: processRadarDate(proc) });
+  }
+
   app.post('/api/comex/processes', async (req: Request, res: Response) => {
-    const store = await storeOf();
-    const payload = (req.body?.payload && typeof req.body.payload === 'object'
-      ? req.body.payload
-      : req.body) as Record<string, unknown>;
-    const data = await store.createProcess({
-      code: req.body?.code,
-      client_slug: req.body?.client_slug,
-      payload,
-    });
-    res.json({ success: true, data });
+    try {
+      const store = await storeOf();
+      const cliente_id = typeof req.body?.cliente_id === 'string' ? req.body.cliente_id.trim() : '';
+      if (!cliente_id) return sendError(res, 400, 'Selecione o cliente importador');
+      const payload = (req.body?.payload && typeof req.body.payload === 'object'
+        ? req.body.payload
+        : req.body) as Record<string, unknown>;
+      const data = await store.createProcess({
+        code: req.body?.code,
+        client_slug: req.body?.client_slug,
+        cliente_id,
+        payload,
+      });
+      res.json({ success: true, data, radar: await radarFor(store, data) });
+    } catch (err) {
+      const { status, message } = comexErrorStatus(err);
+      sendError(res, status, message);
+    }
   });
 
   app.put('/api/comex/processes/:id', async (req, res) => {
-    const store = await storeOf();
-    const body = req.body || {};
-    const payload =
-      body.payload && typeof body.payload === 'object'
-        ? body.payload
-        : (() => {
-            const {
-              id: _id,
-              code: _code,
-              client_slug: _slug,
-              documents: _docs,
-              created_at: _c,
-              updated_at: _u,
-              ...rest
-            } = body;
-            return rest;
-          })();
-    const data = await store.updateProcess(req.params.id, {
-      code: body.code,
-      client_slug: body.client_slug,
-      payload,
-    });
-    if (!data) return sendError(res, 404, 'Processo não encontrado');
-    res.json({ success: true, data });
+    try {
+      const store = await storeOf();
+      const body = req.body || {};
+      const payload =
+        body.payload && typeof body.payload === 'object'
+          ? body.payload
+          : (() => {
+              const {
+                id: _id,
+                code: _code,
+                client_slug: _slug,
+                cliente_id: _cid,
+                documents: _docs,
+                created_at: _c,
+                updated_at: _u,
+                ...rest
+              } = body;
+              return rest;
+            })();
+      const current = await store.getProcess(req.params.id);
+      if (!current) return sendError(res, 404, 'Processo não encontrado');
+      // Sem cliente_id no body: reaplica o cliente já vinculado (mantém client_name/slug coerentes).
+      const cliente_id = body.cliente_id !== undefined ? body.cliente_id : current.cliente_id;
+      const data = await store.updateProcess(req.params.id, {
+        code: body.code,
+        client_slug: body.client_slug,
+        cliente_id: cliente_id || null,
+        payload,
+      });
+      if (!data) return sendError(res, 404, 'Processo não encontrado');
+      res.json({ success: true, data, radar: await radarFor(store, data) });
+    } catch (err) {
+      const { status, message } = comexErrorStatus(err);
+      sendError(res, status, message);
+    }
   });
 
   app.delete('/api/comex/processes/:id', async (req, res) => {
