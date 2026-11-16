@@ -23,9 +23,12 @@ import {
   Paperclip,
   FolderOpen,
   Settings2,
+  Users,
+  Link2,
 } from 'lucide-react';
 import { ModuleHeader } from '../ModuleHeader';
 import type {
+  ComexClientRecord,
   ComexFieldDef,
   ComexProcessRecord,
   PucomexAuthSession,
@@ -48,6 +51,9 @@ import { SearchableSelect } from '../ui/SearchableSelect';
 import { mergeCatalog, COMEX_NCM_CATALOG } from '../../data/comexCatalogs';
 import { PdfDocumentIngestPanel } from '../PdfDocumentIngestPanel';
 import { Comex4plPanel } from './Comex4plPanel';
+import { ComexClientsPanel } from './ComexClientsPanel';
+import { RadarUsageBadge } from './RadarUsageBadge';
+import type { RadarUsage } from '../../core/comex/radarUsage';
 
 function payloadText(proc: ComexProcessRecord, key: string): string {
   const value = proc.payload[key];
@@ -79,6 +85,7 @@ const COUNTRY_NAME_MAP: Record<string, string> = {
 
 type SubTab =
   | 'processes'
+  | 'clients'
   | 'ports_table'
   | 'atit_cities_table'
   | 'quick_consult'
@@ -131,6 +138,10 @@ export const M18Comex: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProcess, setEditingProcess] = useState<ComexProcessRecord | null>(null);
   const [formPayload, setFormPayload] = useState<Record<string, unknown>>({});
+  const [clients, setClients] = useState<ComexClientRecord[]>([]);
+  const [formClienteId, setFormClienteId] = useState('');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveRadar, setSaveRadar] = useState<RadarUsage | null>(null);
   const [extractBusy, setExtractBusy] = useState(false);
   const [extractJson, setExtractJson] = useState<Record<string, unknown> | null>(null);
   const [extractMsg, setExtractMsg] = useState<string | null>(null);
@@ -187,10 +198,17 @@ export const M18Comex: React.FC = () => {
     if (json.driver) setStoreDriver(json.driver);
   };
 
+  const loadClients = async () => {
+    const res = await cfetch('/api/comex/clients');
+    const json = await res.json();
+    if (json.success && Array.isArray(json.data)) setClients(json.data);
+  };
+
   React.useEffect(() => {
     void refreshPortalStatus();
     void loadFieldDefs().catch(() => undefined);
     void loadProcesses().catch(() => undefined);
+    void loadClients().catch(() => undefined);
     void comexFetch('/api/comex/pucomex/catalog')
       .then((r) => r.json())
       .then((json) => {
@@ -207,6 +225,7 @@ export const M18Comex: React.FC = () => {
     () => fieldDefs.filter((f) => f.ui_form !== false).sort((a, b) => a.sort_order - b.sort_order),
     [fieldDefs],
   );
+  const clientsById = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
   const fobKey = fieldDefs.find((f) => f.kpi === 'fob')?.field_key;
   const cifKey = fieldDefs.find((f) => f.kpi === 'cif')?.field_key;
   const typeKey = fieldDefs.find((f) => f.field_key === 'type')?.field_key || 'type';
@@ -261,6 +280,9 @@ export const M18Comex: React.FC = () => {
   const handleOpenNewModal = () => {
     setEditingProcess(null);
     setFormPayload({ type: 'importacao' });
+    setFormClienteId('');
+    setSaveError(null);
+    setSaveRadar(null);
     setExtractJson(null);
     setExtractMsg(null);
     setIsModalOpen(true);
@@ -269,6 +291,9 @@ export const M18Comex: React.FC = () => {
   const handleOpenEditModal = (proc: ComexProcessRecord) => {
     setEditingProcess(proc);
     setFormPayload({ ...proc.payload });
+    setFormClienteId(proc.cliente_id || '');
+    setSaveError(null);
+    setSaveRadar(null);
     setExtractJson(null);
     setExtractMsg(null);
     setIsModalOpen(true);
@@ -316,22 +341,42 @@ export const M18Comex: React.FC = () => {
     e.preventDefault();
     const missing = formFields.filter((f) => f.required && (formPayload[f.field_key] == null || formPayload[f.field_key] === ''));
     if (missing.length) return;
-    if (editingProcess) {
-      const res = await cfetch(`/api/comex/processes/${editingProcess.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ payload: formPayload, code: editingProcess.code }),
-      });
-      const json = await res.json();
-      if (json.success && json.data) {
-        setProcesses((prev) => prev.map((p) => (p.id === json.data.id ? json.data : p)));
-      }
-    } else {
-      const res = await cfetch('/api/comex/processes', {
-        method: 'POST',
-        body: JSON.stringify({ payload: formPayload }),
-      });
-      const json = await res.json();
-      if (json.success && json.data) setProcesses((prev) => [json.data, ...prev]);
+    setSaveError(null);
+    setSaveRadar(null);
+    if (!formClienteId) {
+      setSaveError('Selecione o cliente importador');
+      return;
+    }
+    let json: { success?: boolean; error?: string; data?: ComexProcessRecord; radar?: RadarUsage };
+    try {
+      const res = editingProcess
+        ? await cfetch(`/api/comex/processes/${editingProcess.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ payload: formPayload, code: editingProcess.code, cliente_id: formClienteId }),
+          })
+        : await cfetch('/api/comex/processes', {
+            method: 'POST',
+            body: JSON.stringify({ cliente_id: formClienteId, payload: formPayload }),
+          });
+      json = await res.json().catch(() => ({ success: false, error: `HTTP ${res.status}` }));
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : 'Falha ao salvar processo');
+      return;
+    }
+    const saved = json.data;
+    if (!json.success || !saved) {
+      setSaveError(json.error || 'Falha ao salvar processo');
+      return;
+    }
+    setProcesses((prev) =>
+      prev.some((p) => p.id === saved.id) ? prev.map((p) => (p.id === saved.id ? saved : p)) : [saved, ...prev],
+    );
+    // Aviso do Radar (não bloqueia): mostra no modal antes de fechar. Um novo "Salvar" vira edição.
+    if (json.radar && (json.radar.level === 'atencao' || json.radar.level === 'estouro')) {
+      setEditingProcess(saved);
+      setFormPayload({ ...saved.payload });
+      setSaveRadar(json.radar);
+      return;
     }
     setIsModalOpen(false);
   };
@@ -727,6 +772,7 @@ export const M18Comex: React.FC = () => {
       <div className="border-b border-slate-200 flex items-center justify-between gap-4 overflow-x-auto">
         <div className="flex items-center gap-0.5">
           {tabBtn('processes', `Processos (${processes.length})`, <Layers className="w-4 h-4" />)}
+          {tabBtn('clients', `Clientes (${clients.length})`, <Users className="w-4 h-4" />)}
           {tabBtn('ports_table', `Portos (${COMEX_PORTS_DATA.length})`, <Globe className="w-4 h-4 text-teal-600" />, 'teal')}
           {tabBtn('atit_cities_table', `ATIT (${COMEX_ATIT_CITIES_DATA.length})`, <Building2 className="w-4 h-4 text-cyan-600" />, 'cyan')}
           {tabBtn('quick_consult', 'Consulta PUCOMEX', <Search className="w-4 h-4" />)}
@@ -811,6 +857,35 @@ export const M18Comex: React.FC = () => {
                       </td>
                       {listFields.map((f) => {
                         const raw = payloadText(proc, f.field_key);
+                        if (f.field_key === 'client_name') {
+                          const linked = proc.cliente_id ? clientsById.get(proc.cliente_id) : undefined;
+                          if (proc.cliente_id) {
+                            return (
+                              <td key={f.id} className="py-3 px-4 font-semibold text-slate-800">
+                                {linked?.legal_name || raw}
+                              </td>
+                            );
+                          }
+                          return (
+                            <td key={f.id} className="py-3 px-4">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[10px] uppercase px-2 py-0.5 rounded-full font-semibold bg-slate-100 text-slate-500 border border-slate-200">
+                                  sem cliente
+                                </span>
+                                <button
+                                  type="button"
+                                  title="Vincular cliente importador"
+                                  onClick={() => handleOpenEditModal(proc)}
+                                  className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 cursor-pointer"
+                                >
+                                  <Link2 className="w-3 h-3" />
+                                  Vincular
+                                </button>
+                              </div>
+                              {raw !== '—' ? <div className="text-[10px] text-slate-400 mt-0.5">{raw}</div> : null}
+                            </td>
+                          );
+                        }
                         if (f.field_key === typeKey) {
                           return (
                             <td key={f.id} className="py-3 px-4">
@@ -1424,6 +1499,10 @@ export const M18Comex: React.FC = () => {
       )}
 
       {/* API Docs */}
+      {activeSubTab === 'clients' && (
+        <ComexClientsPanel fetcher={cfetch} onChanged={() => void loadClients().catch(() => undefined)} />
+      )}
+
       {activeSubTab === 'comex_4pl' && <Comex4plPanel />}
 
       {activeSubTab === 'api_docs' && (
@@ -1586,6 +1665,32 @@ export const M18Comex: React.FC = () => {
               </div>
             )}
             <form onSubmit={handleSaveProcess} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-600 mb-1">
+                  Cliente importador<span className="text-rose-500"> *</span>
+                </label>
+                <select
+                  required
+                  value={formClienteId}
+                  onChange={(e) => {
+                    setFormClienteId(e.target.value);
+                    setSaveRadar(null);
+                  }}
+                  className="w-full px-3 py-2 bg-slate-50 border rounded-lg"
+                >
+                  <option value="">Selecione o cliente…</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.legal_name} · {c.cnpj_root}
+                    </option>
+                  ))}
+                </select>
+                {clients.length === 0 ? (
+                  <p className="mt-1 text-[11px] text-amber-700">
+                    Nenhum cliente cadastrado — cadastre na aba Clientes.
+                  </p>
+                ) : null}
+              </div>
               <ComexMetaForm
                 fields={formFields}
                 payload={formPayload}
@@ -1600,20 +1705,43 @@ export const M18Comex: React.FC = () => {
                   </pre>
                 </details>
               ) : null}
+              {saveError ? (
+                <div className="p-2.5 rounded-lg border border-rose-200 bg-rose-50 text-rose-800">{saveError}</div>
+              ) : null}
+              {saveRadar ? (
+                <div className="space-y-1">
+                  <p className="font-semibold text-slate-700">
+                    Processo salvo. Aviso do limite Radar do cliente (não bloqueia):
+                  </p>
+                  <RadarUsageBadge usage={saveRadar} />
+                </div>
+              ) : null}
               <div className="flex justify-end gap-2 pt-2 border-t">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="py-2 px-4 rounded-lg bg-slate-100 text-slate-700 font-semibold cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="py-2 px-5 rounded-lg bg-teal-600 text-white font-bold cursor-pointer"
-                >
-                  {editingProcess ? 'Salvar' : 'Cadastrar'}
-                </button>
+                {saveRadar ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="py-2 px-5 rounded-lg bg-teal-600 text-white font-bold cursor-pointer"
+                  >
+                    Fechar
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsModalOpen(false)}
+                      className="py-2 px-4 rounded-lg bg-slate-100 text-slate-700 font-semibold cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="py-2 px-5 rounded-lg bg-teal-600 text-white font-bold cursor-pointer"
+                    >
+                      {editingProcess ? 'Salvar' : 'Cadastrar'}
+                    </button>
+                  </>
+                )}
               </div>
             </form>
           </div>
