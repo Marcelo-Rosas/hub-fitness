@@ -60,10 +60,65 @@ export interface ComexDocumentRecord {
   created_at: string;
 }
 
+export type ComexRadarModality = 'expressa' | 'limitada_50k' | 'limitada_150k' | 'ilimitada';
+export type ComexRepStatus = 'pendente' | 'ativa' | 'vencida' | 'revogada';
+
+export interface ComexClientRecord {
+  id: string;
+  cnpj_root: string;
+  cnpj: string | null;
+  legal_name: string;
+  trade_name: string | null;
+  slug: string;
+  radar_status: string | null;
+  radar_modality: ComexRadarModality | null;
+  radar_limit_usd: number | null;
+  radar_operations: string | null;
+  radar_legal_basis: string | null;
+  radar_checked_at: string | null;
+  rep_status: ComexRepStatus;
+  rep_certificate: string | null;
+  rep_role_type: string | null;
+  rep_valid_from: string | null;
+  rep_valid_to: string | null;
+  broker_id: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ComexClientInput = Omit<ComexClientRecord, 'id' | 'slug' | 'created_at' | 'updated_at'> & {
+  id?: string;
+};
+
+export interface ComexBrokerRecord {
+  id: string;
+  name: string;
+  cpf: string | null;
+  rfb_registry: string | null;
+  email: string | null;
+  phone: string | null;
+  certificate_status: 'pendente';
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ComexBrokerInput {
+  id?: string;
+  name: string;
+  cpf?: string | null;
+  rfb_registry?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  active?: boolean;
+}
+
 export interface ComexProcessRecord {
   id: string;
   code: string;
   client_slug: string | null;
+  cliente_id: string | null;
   payload: Record<string, unknown>;
   created_at: string;
   updated_at: string;
