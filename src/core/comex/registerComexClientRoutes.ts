@@ -114,6 +114,9 @@ export function registerComexClientRoutes(app: Express): void {
       const body = (req.body || {}) as ComexBrokerInput;
       if (!String(body.name ?? '').trim()) return sendError(res, 400, 'Nome do despachante é obrigatório');
       const store = await getComexStore();
+      if (id && !(await store.listBrokers()).some((b) => b.id === id)) {
+        return sendError(res, 404, 'Despachante não encontrado');
+      }
       const data = await store.upsertBroker({ ...body, id });
       res.json({ success: true, data });
     } catch (err) {

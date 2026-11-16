@@ -138,6 +138,8 @@ describe('rotas de clientes/despachantes/radar', () => {
     expect((await api('DELETE', `/api/comex/brokers/${b.id}`)).status).toBe(409);
     expect((await api('POST', '/api/comex/clients', { cnpj_root: '99999999', legal_name: 'Z', broker_id: 'nope' })).status).toBe(400);
     expect((await api('DELETE', '/api/comex/brokers/nope')).status).toBe(404);
+    expect((await api('PUT', '/api/comex/brokers/nope', { name: 'Fantasma' })).status).toBe(404);
+    expect(((await (await api('GET', '/api/comex/brokers')).json()).data as unknown[]).length).toBe(1);
   });
 
   it('PUT processo sem cliente_id mantém client_name do cliente vinculado; troca e desvincula', async () => {
