@@ -691,6 +691,10 @@ export class PgComexStore implements ComexStore {
   async ensureReady(): Promise<void> {
     const db = await this.db();
     await db.query('SELECT 1 FROM comex_field_defs LIMIT 1');
+    // migration 20261116120000: sem ela create/update de processo quebram — falha explícita
+    await db.query('SELECT cliente_id FROM comex_processes LIMIT 1');
+    await db.query('SELECT 1 FROM comex_clients LIMIT 1');
+    await db.query('SELECT 1 FROM comex_brokers LIMIT 1');
     for (const def of DEFAULT_COMEX_FIELD_DEFS) {
       await this.upsertFieldDef(def);
     }

@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { SqliteComexStore } from '../core/comex/comexStore';
+import { SqliteComexStore, PgComexStore, createComexStore } from '../core/comex/comexStore';
 import { normalizeClientInput, defaultRadarLimit, slugify } from '../core/comex/comexRegistry';
 import type { ComexClientInput } from '../types/comex';
 
@@ -143,5 +143,44 @@ describe('Comex store — clientes e despachantes', () => {
     expect(cifUsd?.data_type).toBe('number');
     expect(cifUsd?.kpi).toBeNull();
     expect(defs.find((d) => d.field_key === 'client_name')?.ui_form).toBe(false);
+  });
+});
+
+describe('PgComexStore.ensureReady — sondagem da migration nova', () => {
+  const probes = ['SELECT cliente_id FROM comex_processes', 'SELECT 1 FROM comex_clients', 'SELECT 1 FROM comex_brokers'];
+
+  for (const probe of probes) {
+    it(`falha quando "${probe}" é rejeitada`, async () => {
+      const store = new PgComexStore('postgres://fake');
+      const seen: string[] = [];
+      (store as unknown as { pool: unknown }).pool = {
+        query: async (sql: string) => {
+          seen.push(sql);
+          if (sql.startsWith(probe)) throw new Error('relation/column does not exist');
+          return { rows: [] };
+        },
+      };
+      await expect(store.ensureReady()).rejects.toThrow(/does not exist/);
+      expect(seen.some((s) => s.startsWith(probe))).toBe(true);
+    });
+  }
+
+  it('createComexStore cai para sqlite quando a migration não foi aplicada', async () => {
+    const prev = { url: process.env.DATABASE_URL, db: process.env.COMEX_DB_PATH };
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'comex-fb-'));
+    process.env.DATABASE_URL = 'postgres://fake';
+    process.env.COMEX_DB_PATH = path.join(dir, 'fb.sqlite');
+    const spy = vi.spyOn(PgComexStore.prototype, 'ensureReady').mockRejectedValue(new Error('column "cliente_id" does not exist'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const s = await createComexStore();
+      expect(s.driver).toBe('sqlite');
+      expect(warn.mock.calls[0][0]).toContain('20261116120000_comex_clients_brokers.sql');
+    } finally {
+      spy.mockRestore();
+      warn.mockRestore();
+      if (prev.url === undefined) delete process.env.DATABASE_URL; else process.env.DATABASE_URL = prev.url;
+      if (prev.db === undefined) delete process.env.COMEX_DB_PATH; else process.env.COMEX_DB_PATH = prev.db;
+    }
   });
 });
