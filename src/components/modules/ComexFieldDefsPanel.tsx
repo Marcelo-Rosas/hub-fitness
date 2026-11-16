@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { ComexFieldDef, ComexFieldDefInput, ComexFieldWidget } from '../../types/comex';
 import { SearchableSelect } from '../ui/SearchableSelect';
+import { comexFetch } from './comexOperatorToken';
 
 interface ComexFieldDefsPanelProps {
   fields: ComexFieldDef[];
@@ -31,7 +32,7 @@ export const ComexFieldDefsPanel: React.FC<ComexFieldDefsPanelProps> = ({ fields
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch('/api/comex/field-defs', {
+      const res = await comexFetch('/api/comex/field-defs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(draft),
@@ -49,7 +50,7 @@ export const ComexFieldDefsPanel: React.FC<ComexFieldDefsPanelProps> = ({ fields
 
   const remove = async (id: string) => {
     if (!window.confirm('Remover este campo de metadado? Valores já gravados no payload permanecem.')) return;
-    await fetch(`/api/comex/field-defs/${id}`, { method: 'DELETE' });
+    await comexFetch(`/api/comex/field-defs/${id}`, { method: 'DELETE' });
     await onReload();
   };
 

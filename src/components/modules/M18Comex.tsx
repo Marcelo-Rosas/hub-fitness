@@ -32,7 +32,8 @@ import type {
   PucomexPortalStatus,
   ComexGuardStatus,
 } from '../../types/comex';
-import { comexOperatorHeaders, getComexOperatorToken, setComexOperatorToken } from './comexOperatorToken';
+import { comexFetch, getComexOperatorToken, isComexTokenRejection, openComexDocument } from './comexOperatorToken';
+import { ComexOperatorTokenPanel } from './ComexOperatorTokenPanel';
 import { COMEX_PORTS_DATA, PORTO_TABLE_METADATA } from '../../data/comexPortsData';
 import { COMEX_ATIT_CITIES_DATA, ATIT_CITY_TABLE_METADATA } from '../../data/comexAtitCitiesData';
 import { INITIAL_PUCOMEX_AUTH } from '../../data/comexSeed';
@@ -137,17 +138,20 @@ export const M18Comex: React.FC = () => {
   const [authLoading, setAuthLoading] = useState(false);
   const [authSuccessMsg, setAuthSuccessMsg] = useState<string | null>(null);
   const [guard, setGuard] = useState<ComexGuardStatus | null>(null);
-  const [operatorToken, setOperatorToken] = useState(getComexOperatorToken);
+  const [tokenRejected, setTokenRejected] = useState(false);
+  const [, setTokenVersion] = useState(0);
+  const needsToken = tokenRejected || !getComexOperatorToken();
 
-  const saveOperatorToken = (value: string) => {
-    const v = value.trim();
-    setOperatorToken(v);
-    setComexOperatorToken(v);
+  /** comexFetch + detecção de recusa do gateway por token (volta ao painel do token). */
+  const cfetch = async (path: string, init?: RequestInit) => {
+    const res = await comexFetch(path, init);
+    if (await isComexTokenRejection(res)) setTokenRejected(true);
+    return res;
   };
 
   const refreshPortalStatus = async () => {
     try {
-      const res = await fetch('/api/comex/pucomex/status');
+      const res = await comexFetch('/api/comex/pucomex/status');
       const json = await res.json();
       if (json.success) {
         setPortalStatus(json.status);
@@ -171,13 +175,13 @@ export const M18Comex: React.FC = () => {
   };
 
   const loadFieldDefs = async () => {
-    const res = await fetch('/api/comex/field-defs?entity=process');
+    const res = await cfetch('/api/comex/field-defs?entity=process');
     const json = await res.json();
     if (json.success && Array.isArray(json.data)) setFieldDefs(json.data);
   };
 
   const loadProcesses = async () => {
-    const res = await fetch('/api/comex/processes');
+    const res = await cfetch('/api/comex/processes');
     const json = await res.json();
     if (json.success && Array.isArray(json.data)) setProcesses(json.data);
     if (json.driver) setStoreDriver(json.driver);
@@ -187,7 +191,7 @@ export const M18Comex: React.FC = () => {
     void refreshPortalStatus();
     void loadFieldDefs().catch(() => undefined);
     void loadProcesses().catch(() => undefined);
-    void fetch('/api/comex/pucomex/catalog')
+    void comexFetch('/api/comex/pucomex/catalog')
       .then((r) => r.json())
       .then((json) => {
         if (json.success && Array.isArray(json.endpoints)) setEndpointCatalog(json.endpoints);
@@ -275,9 +279,8 @@ export const M18Comex: React.FC = () => {
     setExtractBusy(true);
     setExtractMsg(null);
     try {
-      const res = await fetch(`/api/comex/processes/${editingProcess.id}/extract`, {
+      const res = await cfetch(`/api/comex/processes/${editingProcess.id}/extract`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apply: mode }),
       });
       const json = await res.json();
@@ -314,9 +317,8 @@ export const M18Comex: React.FC = () => {
     const missing = formFields.filter((f) => f.required && (formPayload[f.field_key] == null || formPayload[f.field_key] === ''));
     if (missing.length) return;
     if (editingProcess) {
-      const res = await fetch(`/api/comex/processes/${editingProcess.id}`, {
+      const res = await cfetch(`/api/comex/processes/${editingProcess.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ payload: formPayload, code: editingProcess.code }),
       });
       const json = await res.json();
@@ -324,9 +326,8 @@ export const M18Comex: React.FC = () => {
         setProcesses((prev) => prev.map((p) => (p.id === json.data.id ? json.data : p)));
       }
     } else {
-      const res = await fetch('/api/comex/processes', {
+      const res = await cfetch('/api/comex/processes', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ payload: formPayload }),
       });
       const json = await res.json();
@@ -338,7 +339,7 @@ export const M18Comex: React.FC = () => {
   const handleDeleteProcess = async (proc: ComexProcessRecord) => {
     const label = payloadText(proc, 'client_name');
     if (!window.confirm(`Excluir processo ${proc.code}${label !== '—' ? ` (${label})` : ''}?`)) return;
-    await fetch(`/api/comex/processes/${proc.id}`, { method: 'DELETE' });
+    await cfetch(`/api/comex/processes/${proc.id}`, { method: 'DELETE' });
     setProcesses((prev) => prev.filter((p) => p.id !== proc.id));
   };
 
@@ -346,9 +347,8 @@ export const M18Comex: React.FC = () => {
     setIndexBusy(true);
     setIndexMsg(null);
     try {
-      const res = await fetch('/api/comex/documents/index', {
+      const res = await cfetch('/api/comex/documents/index', {
         method: 'POST',
-        headers: comexOperatorHeaders(),
         body: JSON.stringify({ extract: true }),
       });
       const json = await res.json();
@@ -379,9 +379,8 @@ export const M18Comex: React.FC = () => {
     setConsultLoading(true);
     setConsultError(null);
     try {
-      const res = await fetch(`/api/comex/processes/${proc.id}/consult`, {
+      const res = await cfetch(`/api/comex/processes/${proc.id}/consult`, {
         method: 'POST',
-        headers: comexOperatorHeaders(),
       });
       const json = await res.json();
       setConsultResult(json);
@@ -400,9 +399,8 @@ export const M18Comex: React.FC = () => {
     setAuthSuccessMsg(null);
     setAuthError(null);
     try {
-      const res = await fetch('/api/comex/pucomex/authenticate', {
+      const res = await cfetch('/api/comex/pucomex/authenticate', {
         method: 'POST',
-        headers: comexOperatorHeaders(),
         body: JSON.stringify({
           force: false,
           roleType: portalStatus?.roleType || 'OPERPORT',
@@ -457,9 +455,8 @@ export const M18Comex: React.FC = () => {
     }
 
     try {
-      const res = await fetch(endpoint, {
+      const res = await cfetch(endpoint, {
         method: 'POST',
-        headers: comexOperatorHeaders(),
         body: JSON.stringify(bodyData),
       });
       const json = await res.json();
@@ -670,31 +667,20 @@ export const M18Comex: React.FC = () => {
             </span>
           </div>
         )}
-        {guard?.operatorTokenRequired && (
-          <div className="mt-4 p-2.5 rounded-lg bg-slate-800/70 border border-slate-700 text-slate-200 text-xs flex flex-col sm:flex-row sm:items-center gap-2">
-            <ShieldCheck className="w-4 h-4 shrink-0 text-teal-300" />
-            {guard.operatorTokenConfigured ? (
-              <>
-                <span className="shrink-0">Token de operador (rotas do certificado):</span>
-                <input
-                  type="password"
-                  autoComplete="off"
-                  value={operatorToken}
-                  onChange={(e) => saveOperatorToken(e.target.value)}
-                  placeholder="COMEX_OPERATOR_TOKEN"
-                  className="flex-1 min-w-0 px-2 py-1 rounded bg-slate-900 border border-slate-600 font-mono text-slate-100"
-                />
-                <span className="text-[10px] text-slate-400 shrink-0">guardado só nesta aba</span>
-              </>
-            ) : (
-              <span className="text-amber-200">
-                Live ligado sem <span className="font-mono">COMEX_OPERATOR_TOKEN</span> no servidor — autenticar e
-                consultar o Portal ficam bloqueados até o secret ser definido.
-              </span>
-            )}
-          </div>
-        )}
       </div>
+
+      {needsToken ? (
+        <ComexOperatorTokenPanel
+          configuredOnServer={guard?.operatorTokenConfigured ?? false}
+          onSaved={() => {
+            setTokenRejected(false);
+            setTokenVersion((v) => v + 1);
+            void loadFieldDefs().catch(() => undefined);
+            void loadProcesses().catch(() => undefined);
+          }}
+        />
+      ) : (
+      <>
 
       {/* Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -911,16 +897,19 @@ export const M18Comex: React.FC = () => {
                             <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
                               {docs.map((doc) => (
                                 <li key={doc.id}>
-                                  <a
-                                    href={`/api/comex/documents/${doc.id}/file`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="flex items-center gap-2 text-[11px] px-2 py-1.5 rounded-lg border bg-white hover:border-teal-300"
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void openComexDocument(doc.id).catch((err: unknown) =>
+                                        window.alert(err instanceof Error ? err.message : 'Falha ao abrir documento'),
+                                      );
+                                    }}
+                                    className="w-full text-left flex items-center gap-2 text-[11px] px-2 py-1.5 rounded-lg border bg-white hover:border-teal-300 cursor-pointer"
                                   >
                                     <FileText className="w-3.5 h-3.5 text-teal-700 shrink-0" />
                                     <span className="uppercase font-bold text-slate-500">{doc.doc_type}</span>
                                     <span className="truncate">{doc.file_name}</span>
-                                  </a>
+                                  </button>
                                 </li>
                               ))}
                             </ul>
@@ -1629,6 +1618,8 @@ export const M18Comex: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );
