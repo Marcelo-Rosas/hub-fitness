@@ -1,6 +1,6 @@
 # M18 Comex — Clientes, Radar e operação como representante — Design
 
-**Status:** aprovado · 2026-11-16
+**Status:** Fase 1 implementada · 2026-11-16
 **Relacionados:** [integração PUCOMEX](2026-08-13-pucomex-integracao-m18.md) · [skill comex](../../../.agents/skills/hub-fitness/references/comex.md) · [ADR-003](../../adr/ADR-003-database-per-client.md)
 
 ## 1. Intenção e porquê
