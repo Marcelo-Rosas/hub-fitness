@@ -78,11 +78,29 @@ function goLiveWithPfx(password: string) {
 }
 
 describe('trava das rotas do certificado PUCOMEX', () => {
-  it('DEMO sem token configurado: passa livre (só stub)', async () => {
-    const res = await post('/api/comex/pucomex/proxy', { path: '/duimp/api/ext/duimp/1/1' });
-    const json = await res.json();
+  it('DEMO sem COMEX_OPERATOR_TOKEN: rotas travadas dão 503', async () => {
+    for (const [m, p] of [['GET', '/api/comex/processes'], ['POST', '/api/comex/pucomex/proxy'], ['GET', '/api/comex/field-defs']]) {
+      const res = await fetch(`${baseUrl}${p}`, {
+        method: m,
+        headers: { 'Content-Type': 'application/json' },
+        body: m === 'GET' ? undefined : '{}',
+      });
+      expect(res.status, p).toBe(503);
+      expect((await res.json()).code, p).toBe('COMEX_OPERATOR_TOKEN_UNSET');
+    }
+  });
+
+  it('rotas públicas passam sem token', async () => {
+    expect((await fetch(`${baseUrl}/api/comex/pucomex/catalog`)).status).toBe(200);
+    expect((await fetch(`${baseUrl}/api/comex/pucomex/status`)).status).toBe(200);
+  });
+
+  it('token com espaço/CRLF no header e no env é aceito', async () => {
+    process.env.COMEX_OPERATOR_TOKEN = ' abc123\r\n';
+    const res = await fetch(`${baseUrl}/api/comex/pucomex/catalog`);
     expect(res.status).toBe(200);
-    expect(json.mode).toBe('demo');
+    const ok = await post('/api/comex/pucomex/proxy', { path: '/x' }, { 'x-comex-token': 'abc123 ' });
+    expect(ok.status).toBe(200);
   });
 
   it('live sem COMEX_OPERATOR_TOKEN: fail-closed 503', async (ctx) => {
@@ -116,7 +134,8 @@ describe('trava das rotas do certificado PUCOMEX', () => {
   });
 
   it('authenticate recusa Role-Type fora da lista oficial', async () => {
-    const res = await post('/api/comex/pucomex/authenticate', { roleType: 'ADMIN' });
+    process.env.COMEX_OPERATOR_TOKEN = 't';
+    const res = await post('/api/comex/pucomex/authenticate', { roleType: 'ADMIN' }, { 'x-comex-token': 't' });
     expect(res.status).toBe(400);
   });
 });

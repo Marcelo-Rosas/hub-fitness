@@ -17,7 +17,7 @@ import {
   type PucomexRoleType,
 } from './environments';
 import { pucomexClient } from './pucomexClient';
-import { comexGuardStatus, requireComexOperator } from './comexGuard';
+import { comexGateway, comexGuardStatus } from './comexGuard';
 import {
   consultValueFromProcess,
   getComexStore,
@@ -88,6 +88,8 @@ export async function bootstrapComexStore(): Promise<void> {
 }
 
 export function registerPucomexRoutes(app: Express): void {
+  app.use('/api/comex', comexGateway);
+
   app.get('/api/comex/pucomex/status', async (_req, res) => {
     const store = await storeOf();
     res.json({
@@ -116,7 +118,7 @@ export function registerPucomexRoutes(app: Express): void {
     });
   });
 
-  app.post('/api/comex/pucomex/authenticate', requireComexOperator, async (req, res) => {
+  app.post('/api/comex/pucomex/authenticate', async (req, res) => {
     const force = !!req.body?.force;
     const rawRole = req.body?.roleType;
     let roleType: PucomexRoleType | undefined;
@@ -139,7 +141,7 @@ export function registerPucomexRoutes(app: Express): void {
     });
   });
 
-  app.post('/api/comex/due/consult', requireComexOperator, async (req, res) => {
+  app.post('/api/comex/due/consult', async (req, res) => {
     try {
       const dueNumber = String(req.body?.dueNumber || '').trim();
       if (!dueNumber) {
@@ -160,7 +162,7 @@ export function registerPucomexRoutes(app: Express): void {
     }
   });
 
-  app.post('/api/comex/duimp/consult', requireComexOperator, async (req, res) => {
+  app.post('/api/comex/duimp/consult', async (req, res) => {
     try {
       const duimpNumber = String(req.body?.duimpNumber || '').trim();
       const versao = String(req.body?.versao || '1');
@@ -182,7 +184,7 @@ export function registerPucomexRoutes(app: Express): void {
     }
   });
 
-  app.post('/api/comex/cct/consult', requireComexOperator, async (req, res) => {
+  app.post('/api/comex/cct/consult', async (req, res) => {
     try {
       const accessKey = String(req.body?.accessKey || req.body?.identificador || '').trim();
       const modal = (req.body?.modal === 'exportacao' ? 'exportacao' : 'aquaviario') as
@@ -206,7 +208,7 @@ export function registerPucomexRoutes(app: Express): void {
     }
   });
 
-  app.post('/api/comex/ncm/consult', requireComexOperator, async (req, res) => {
+  app.post('/api/comex/ncm/consult', async (req, res) => {
     try {
       const ncmCode = String(req.body?.ncmCode || '').trim();
       if (!ncmCode) return res.status(400).json({ success: false, error: 'ncmCode obrigatório' });
@@ -225,7 +227,7 @@ export function registerPucomexRoutes(app: Express): void {
     }
   });
 
-  app.post('/api/comex/catalogo/consult', requireComexOperator, async (req, res) => {
+  app.post('/api/comex/catalogo/consult', async (req, res) => {
     try {
       const query = (req.body?.query || {}) as Record<string, string>;
       const result = await pucomexClient.consultCatalogoProduto(query);
@@ -243,7 +245,7 @@ export function registerPucomexRoutes(app: Express): void {
     }
   });
 
-  app.post('/api/comex/pucomex/proxy', requireComexOperator, async (req, res) => {
+  app.post('/api/comex/pucomex/proxy', async (req, res) => {
     try {
       const method = String(req.body?.method || 'GET').toUpperCase();
       if (!['GET', 'POST', 'PUT', 'DELETE'].includes(method)) {
@@ -412,7 +414,7 @@ export function registerPucomexRoutes(app: Express): void {
     }
   });
 
-  app.post('/api/comex/processes/:id/consult', requireComexOperator, async (req, res) => {
+  app.post('/api/comex/processes/:id/consult', async (req, res) => {
     try {
       const store = await storeOf();
       const proc = await store.getProcess(req.params.id);
@@ -481,7 +483,7 @@ export function registerPucomexRoutes(app: Express): void {
     },
   );
 
-  app.post('/api/comex/documents/index', requireComexOperator, async (req, res) => {
+  app.post('/api/comex/documents/index', async (req, res) => {
     const store = await storeOf();
     // Raiz fixa do servidor — nunca caminho arbitrário vindo do cliente.
     const root = defaultDocsRoot();
