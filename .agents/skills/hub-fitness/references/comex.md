@@ -129,3 +129,15 @@ Sem PFX → modo **DEMO** (sessão local + respostas stub; paths oficiais preser
 - `POST /api/comex/benchmark` {ncmCode, country?, fobUsd?, kg?, freightUsd?} → `{benchmark, comparison|null}` — **pública** (`COMEX_PUBLIC_ROUTES`), limite global 30/min (429).
 - UI: `NcmBenchmarkCard.tsx` na Auditoria NCM (FOB do formulário + peso opcional) e no modal do processo (NCM + FOB; peso `gross_weight_kg`; país pelo UN/LOCODE do porto de origem; frete se existir `freight_value_usd`). Só informativo.
 - Ex. real (9506.91.00, China, 11/2025–10/2026): US$ 1,95/kg, frete ≈ 15% do FOB.
+
+## Integra Comex — consulta pública (2026-11-17)
+- Gratuita, sem autenticação: SERPRO devolve só **quando** o documento mudou (`dataAtualizacao`, sem fuso = Brasília), não **o quê**. Não valida números: inválido e sem dado são iguais (só volta o que achou). Cobertura desde 2017. Spec: `docs/superpowers/specs/2026-11-17-integra-comex-monitor-gratuito-design.md`.
+- `src/core/comex/integraComexPublic.ts` (puro, usado também no front): normaliza CE (15 díg.), DI (10, aceita `25/1234567-8`), LI (lista por vírgula, 10), DUIMP (`^\d{2}BR\d{11}$`); `formatWarning` (não bloqueia); `fetchLastUpdates(kind, numbers)` em lotes de 50 (`nr` repetido) / DUIMP 100 (`duimp=`, resposta `multiStatus` com `versaoVigente`). 404 de LI/DUIMP = vazio; 5xx/timeout 15 s = `IntegraComexError`.
+- **Pegadinha:** LI responde em `/siscomex-li-api/licencas-importacao/...`, não no basePath do swagger (`/li-consulta-atualizacao`).
+- BL ≠ CE-Mercante: o CE (15 díg.) vem do agente de carga/Mercante → campo próprio `ce_mercante_number`; também `di_number`, `li_numbers`. DUIMP = `declaration_number` quando `type=importacao`.
+- Tabela `comex_tracking` (SQLite + Postgres `db/neon/0003_comex_tracking.sql`, criada no `ensureReady`): uma linha por documento. `createProcess`/`updateProcess` do store sincronizam (só números de formato válido; apaga os que saíram; falha não quebra o salvamento).
+- `src/core/comex/comexTracking.ts`: `runTrackingCheck` ignora status `desembaracado`/`cancelado`; 1ª aparição grava data (CE/DUIMP também marcam "Alterado" = registrado); data diferente → guarda anterior + `changed_at`; não achado há >7 dias → "Não encontrado"; erro por tipo em `last_error`; trava de concorrência em memória. "Alterado" = `changed_at` e (`seen_at` nulo ou anterior).
+- Agendador no `server.ts`: 30 min, seg–sex 7h–20h (America/Sao_Paulo). `COMEX_TRACKING_DISABLED=1` desliga; nunca roda em testes. SERPRO pede uso racional: sem retry imediato.
+- Rotas (atrás do token): `GET /api/comex/tracking?process_id=`, `GET /api/comex/tracking/summary`, `POST /api/comex/tracking/check` {process_id?} (1 por processo/5 min → 429), `POST /api/comex/tracking/:id/seen`.
+- UI: `ComexTrackingCard.tsx` no modal do processo + `TrackingBadge` na lista (âmbar "Alterado", cinza "Não encontrado").
+- Pendente: confirmar que o container Cloudflare alcança `*.estaleiro.serpro.gov.br`.
