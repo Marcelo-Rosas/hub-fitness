@@ -7,7 +7,7 @@ import type {
   ComexRepStatus,
 } from '../../types/comex';
 import type { RadarUsage } from '../../core/comex/radarUsage';
-import { defaultRadarLimit } from '../../core/comex/comexRegistry';
+import { declarationRouteNote, defaultRadarLimit } from '../../core/comex/comexRegistry';
 import { comexFetch } from './comexOperatorToken';
 import { RadarUsageBadge } from './RadarUsageBadge';
 
@@ -400,6 +400,11 @@ export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged,
                     </td>
                     <td className="py-3 px-4">
                       <div>{modalityLabel(c.radar_modality)}</div>
+                      {declarationRouteNote(c.radar_modality) ? (
+                        <div className="text-[10px] font-semibold text-amber-700" title={declarationRouteNote(c.radar_modality) ?? ''}>
+                          ⚠ vai por DI (Radar Limitado)
+                        </div>
+                      ) : null}
                       <div className="text-[10px] text-slate-400">
                         {c.radar_status || '—'}
                         {c.radar_operations ? ` · ${c.radar_operations}` : ''}
@@ -618,6 +623,11 @@ export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged,
                         </option>
                       ))}
                     </select>
+                    {declarationRouteNote((clientDraft.radar_modality || null) as ComexRadarModality | null) ? (
+                      <p className="mt-1 text-[11px] text-amber-700">
+                        {declarationRouteNote((clientDraft.radar_modality || null) as ComexRadarModality | null)}
+                      </p>
+                    ) : null}
                   </Field>
                   <Field label="Limite (US$, 6 meses)">
                     <input

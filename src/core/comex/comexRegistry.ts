@@ -7,9 +7,12 @@ import type { ComexClientInput, ComexRadarModality, ComexRepStatus } from '../..
 const MODALITIES: ComexRadarModality[] = ['expressa', 'limitada_50k', 'limitada_150k', 'ilimitada'];
 const REP_STATUSES: ComexRepStatus[] = ['pendente', 'ativa', 'vencida', 'revogada'];
 
-/** Teto padrão por modalidade (US$/6 meses). Expressa = US$ 50 mil (confirmado pelo Marcelo, 2026-11-17). */
+/**
+ * Teto padrão por modalidade (US$/6 meses). Expressa e Ilimitada = sem teto:
+ * pela IN RFB 1.984/2020 a Expressa é de S.A. aberta, empresa pública e
+ * sociedade de economia mista, sem limite de operação (orientação da Receita).
+ */
 export function defaultRadarLimit(m: ComexRadarModality | null | undefined): number | null {
-  if (m === 'expressa') return 50000;
   if (m === 'limitada_50k') return 50000;
   if (m === 'limitada_150k') return 150000;
   return null;
@@ -33,6 +36,16 @@ function textOrNull(v: unknown): string | null {
   if (v === undefined || v === null) return null;
   const s = String(v).trim();
   return s ? s : null;
+}
+
+/**
+ * Aviso de rota da declaração: a Receita lista "Radar Limitado" como
+ * impossibilidade de DUIMP (cronograma de desligamento da DI) e a elaboração
+ * da DUIMP exige habilitação "diferente de limitada".
+ */
+export function declarationRouteNote(m: ComexRadarModality | null | undefined): string | null {
+  if (m !== 'limitada_50k' && m !== 'limitada_150k') return null;
+  return 'Radar Limitado: a Receita lista como impossibilidade de DUIMP — a importação segue por DI. Confirmar com o despachante (cronograma de desligamento da DI).';
 }
 
 /** true só para data real no formato AAAA-MM-DD (rejeita 2026-02-30). */

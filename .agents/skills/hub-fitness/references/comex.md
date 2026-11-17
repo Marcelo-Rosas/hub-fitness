@@ -62,7 +62,7 @@ Sem PFX → modo **DEMO** (sessão local + respostas stub; paths oficiais preser
 - Data do processo: `duimp_registered_at` → `eta_date` → `created_at`.
 - Base: `COMEX_RADAR_BASIS=fob` (padrão, campo `fob_value_usd`) ou `cif` (`cif_value_usd`). Processo sem o valor conta 0 e aparece em `missingValue`.
 - Janela: `COMEX_RADAR_WINDOW=rolling` (padrão) = 6 meses que terminam na data de referência (início exclusivo, fim inclusivo). `calendar` = semestre civil da referência.
-- Faixas: < 80% ok · 80–100% atenção · > 100% estouro. Teto padrão: `expressa` e `limitada_50k` = US$ 50 mil, `limitada_150k` = US$ 150 mil; `ilimitada` → `sem_limite`. Datas do cadastro validadas como AAAA-MM-DD; "hoje" do Radar no fuso America/Sao_Paulo.
+- Faixas: < 80% ok · 80–100% atenção · > 100% estouro. Teto padrão: `limitada_50k` = US$ 50 mil, `limitada_150k` = US$ 150 mil; `expressa` (S.A. aberta, empresa pública, economia mista — IN 1.984/2020) e `ilimitada` → `sem_limite`. Radar Limitado = impossibilidade de DUIMP no cronograma da Receita → aviso "vai por DI" no cadastro e no processo. Datas do cadastro validadas como AAAA-MM-DD; "hoje" do Radar no fuso America/Sao_Paulo.
 - Limite padrão: `limitada_50k` = US$ 50.000; `limitada_150k` = US$ 150.000. `radar_limit_usd` sobrescreve.
 
 ## Arquivos

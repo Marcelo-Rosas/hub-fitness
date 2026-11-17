@@ -53,6 +53,7 @@ import { PdfDocumentIngestPanel } from '../PdfDocumentIngestPanel';
 import { Comex4plPanel } from './Comex4plPanel';
 import { ComexClientsPanel } from './ComexClientsPanel';
 import { RadarUsageBadge } from './RadarUsageBadge';
+import { declarationRouteNote } from '../../core/comex/comexRegistry';
 import type { RadarUsage } from '../../core/comex/radarUsage';
 
 function payloadText(proc: ComexProcessRecord, key: string): string {
@@ -1690,6 +1691,11 @@ export const M18Comex: React.FC = () => {
                 {clients.length === 0 ? (
                   <p className="mt-1 text-[11px] text-amber-700">
                     Nenhum cliente cadastrado — cadastre na aba Clientes.
+                  </p>
+                ) : null}
+                {declarationRouteNote(clientsById.get(formClienteId)?.radar_modality) ? (
+                  <p className="mt-1 text-[11px] text-amber-700">
+                    {declarationRouteNote(clientsById.get(formClienteId)?.radar_modality)}
                   </p>
                 ) : null}
               </div>

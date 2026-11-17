@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { SqliteComexStore, PgComexStore, createComexStore } from '../core/comex/comexStore';
-import { normalizeClientInput, defaultRadarLimit, slugify, isValidYmd, todayYmd } from '../core/comex/comexRegistry';
+import { normalizeClientInput, defaultRadarLimit, slugify, isValidYmd, todayYmd, declarationRouteNote } from '../core/comex/comexRegistry';
 import type { ComexClientInput } from '../types/comex';
 
 describe('comexRegistry', () => {
@@ -33,11 +33,19 @@ describe('comexRegistry', () => {
   it('limite padrão por modalidade e slug', () => {
     expect(defaultRadarLimit('limitada_50k')).toBe(50000);
     expect(defaultRadarLimit('limitada_150k')).toBe(150000);
-    expect(defaultRadarLimit('expressa')).toBe(50000);
+    expect(defaultRadarLimit('expressa')).toBeNull();
     expect(defaultRadarLimit('ilimitada')).toBeNull();
     expect(defaultRadarLimit(null)).toBeNull();
     expect(slugify('RM Academia Ltda.')).toBe('rm-academia-ltda');
     expect(slugify('Ação & Cia')).toBe('acao-cia');
+  });
+
+  it('aviso de DI só para Radar Limitado', () => {
+    expect(declarationRouteNote('limitada_50k')).toMatch(/segue por DI/);
+    expect(declarationRouteNote('limitada_150k')).toMatch(/segue por DI/);
+    expect(declarationRouteNote('ilimitada')).toBeNull();
+    expect(declarationRouteNote('expressa')).toBeNull();
+    expect(declarationRouteNote(null)).toBeNull();
   });
 
   it('valida datas AAAA-MM-DD do cadastro', () => {
