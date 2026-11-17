@@ -1,5 +1,6 @@
 import type { ComexFieldDefInput } from '../../types/comex';
 import { PUCOMEX_ROLE_TYPES } from './environments';
+import { RADAR_LEGAL_BASIS_IN_1984 } from './comexRegistry';
 
 /**
  * Cadastro de cliente importador — cada def é uma coluna de comex_clients
@@ -45,7 +46,16 @@ const CLIENT_FIELD_DEFS: ComexFieldDefInput[] = [
   },
   { entity: 'client', ui_group: 'Radar', field_key: 'radar_limit_usd', label: 'Limite (US$, 6 meses)', data_type: 'number', widget: 'number', sort_order: 130 },
   { entity: 'client', ui_group: 'Radar', field_key: 'radar_operations', label: 'Operações', data_type: 'text', widget: 'text', sort_order: 140 },
-  { entity: 'client', ui_group: 'Radar', field_key: 'radar_legal_basis', label: 'Fundamento legal', data_type: 'text', widget: 'text', sort_order: 150 },
+  {
+    entity: 'client',
+    ui_group: 'Radar',
+    field_key: 'radar_legal_basis',
+    label: 'Base legal',
+    data_type: 'text', // lista aberta: sugestões + texto livre
+    widget: 'select',
+    sort_order: 150,
+    enum_options: [{ value: RADAR_LEGAL_BASIS_IN_1984, label: RADAR_LEGAL_BASIS_IN_1984 }],
+  },
   { entity: 'client', ui_group: 'Radar', field_key: 'radar_checked_at', label: 'Conferido no Portal em', data_type: 'date', widget: 'date', sort_order: 160 },
   {
     entity: 'client',

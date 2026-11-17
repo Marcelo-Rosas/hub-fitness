@@ -123,6 +123,17 @@ export function validateRecordAgainstDefs(
   return null;
 }
 
+/** Norma que rege a habilitação no Radar (como aparece em "Base Legal" na tela da Receita). */
+export const RADAR_LEGAL_BASIS_IN_1984 = 'Instrução Normativa RFB nº 1.984, de 27 de outubro de 2020';
+
+/**
+ * Base legal sugerida pela modalidade. Hoje todas as modalidades (Expressa, Limitadas,
+ * Ilimitada) seguem a IN RFB 1.984/2020 — mudou a norma, muda só aqui.
+ */
+export function defaultRadarLegalBasis(m: ComexRadarModality | null | undefined): string | null {
+  return m ? RADAR_LEGAL_BASIS_IN_1984 : null;
+}
+
 /**
  * Teto padrão por modalidade (US$/6 meses). Expressa e Ilimitada = sem teto:
  * pela IN RFB 1.984/2020 a Expressa é de S.A. aberta, empresa pública e

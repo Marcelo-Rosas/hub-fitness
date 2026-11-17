@@ -261,3 +261,22 @@ describe('store de field_defs (cliente/despachante)', () => {
     }
   });
 });
+
+describe('base legal do Radar', () => {
+  it('modalidade escolhida sugere a IN RFB 1.984/2020; sem modalidade, nada', async () => {
+    const { defaultRadarLegalBasis, RADAR_LEGAL_BASIS_IN_1984 } = await import('../core/comex/comexRegistry');
+    expect(RADAR_LEGAL_BASIS_IN_1984).toBe('Instrução Normativa RFB nº 1.984, de 27 de outubro de 2020');
+    for (const m of ['expressa', 'limitada_50k', 'limitada_150k', 'ilimitada'] as const) {
+      expect(defaultRadarLegalBasis(m)).toBe(RADAR_LEGAL_BASIS_IN_1984);
+    }
+    expect(defaultRadarLegalBasis(null)).toBeNull();
+  });
+
+  it('seed: base legal é lista aberta com a IN 1.984 como sugestão', async () => {
+    const { DEFAULT_COMEX_FIELD_DEFS } = await import('../core/comex/fieldDefsSeed');
+    const def = DEFAULT_COMEX_FIELD_DEFS.find((d) => d.entity === 'client' && d.field_key === 'radar_legal_basis')!;
+    expect(def.data_type).toBe('text');
+    expect(def.widget).toBe('select');
+    expect(def.enum_options?.[0]?.value).toMatch(/1\.984/);
+  });
+});

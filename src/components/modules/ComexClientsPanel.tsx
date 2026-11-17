@@ -7,7 +7,7 @@ import type {
   ComexRadarModality,
 } from '../../types/comex';
 import type { RadarUsage } from '../../core/comex/radarUsage';
-import { declarationRouteNote, defaultRadarLimit } from '../../core/comex/comexRegistry';
+import { declarationRouteNote, defaultRadarLegalBasis, defaultRadarLimit } from '../../core/comex/comexRegistry';
 import { comexFetch } from './comexOperatorToken';
 import { RadarUsageBadge } from './RadarUsageBadge';
 import { RegistryMetaForm, optionLabel, type RegistryValue } from './RegistryMetaForm';
@@ -170,10 +170,16 @@ export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged,
   const setC = (key: string, value: RegistryValue) =>
     setClientDraft((d) => {
       if (key !== 'radar_modality') return { ...d, [key]: value };
-      // trocar a modalidade preenche o limite padrão (continua editável)
+      // trocar a modalidade preenche o limite padrão e, se vazia, a base legal (continuam editáveis)
       const m = String(value || '') as ComexRadarModality | '';
       const limit = m ? defaultRadarLimit(m) : null;
-      return { ...d, radar_modality: value, radar_limit_usd: limit == null ? '' : String(limit) };
+      const basis = String(d.radar_legal_basis ?? '').trim() || defaultRadarLegalBasis(m || null) || '';
+      return {
+        ...d,
+        radar_modality: value,
+        radar_limit_usd: limit == null ? '' : String(limit),
+        radar_legal_basis: basis,
+      };
     });
 
   const openNewClient = () => {
