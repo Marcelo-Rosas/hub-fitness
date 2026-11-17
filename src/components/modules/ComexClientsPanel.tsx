@@ -61,7 +61,7 @@ function draftToBody(d: Draft, defs: ComexFieldDef[]): Record<string, unknown> {
 }
 
 function cnpjRootLabel(root: string): string {
-  const d = root.replace(/D/g, '');
+  const d = root.replace(/\D/g, '');
   return d.length === 8 ? `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}` : root;
 }
 
@@ -84,6 +84,7 @@ export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged,
   const [brokerDefs, setBrokerDefs] = useState<ComexFieldDef[]>([]);
   const [loading, setLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
+  const [defsError, setDefsError] = useState<string | null>(null);
 
   const [clientFormOpen, setClientFormOpen] = useState(false);
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
@@ -114,29 +115,34 @@ export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged,
     setUsages(next);
   };
 
-  const loadAll = async () => {
-    setLoading(true);
-    setListError(null);
+  /** Falha nos campos não bloqueia as listas — só os formulários ficam indisponíveis. */
+  const loadDefs = async () => {
+    setDefsError(null);
     try {
-      const [cRes, bRes, cdRes, bdRes] = await Promise.all([
-        fetcher('/api/comex/clients'),
-        fetcher('/api/comex/brokers'),
+      const [cdRes, bdRes] = await Promise.all([
         fetcher('/api/comex/field-defs?entity=client'),
         fetcher('/api/comex/field-defs?entity=broker'),
       ]);
-      const [cJson, bJson, cdJson, bdJson] = await Promise.all([
-        readJson(cRes),
-        readJson(bRes),
-        readJson(cdRes),
-        readJson(bdRes),
-      ]);
-      if (!cJson.success) throw new Error(cJson.error || 'Falha ao carregar clientes');
-      if (!bJson.success) throw new Error(bJson.error || 'Falha ao carregar despachantes');
+      const [cdJson, bdJson] = await Promise.all([readJson(cdRes), readJson(bdRes)]);
       if (!cdJson.success || !bdJson.success) {
-        throw new Error(cdJson.error || bdJson.error || 'Falha ao carregar os campos do cadastro');
+        throw new Error(cdJson.error || bdJson.error || `HTTP ${cdRes.status}/${bdRes.status}`);
       }
       setClientDefs(Array.isArray(cdJson.data) ? (cdJson.data as ComexFieldDef[]) : []);
       setBrokerDefs(Array.isArray(bdJson.data) ? (bdJson.data as ComexFieldDef[]) : []);
+    } catch (err) {
+      setDefsError(`Campos não carregados: ${err instanceof Error ? err.message : 'falha de rede'}`);
+    }
+  };
+
+  const loadAll = async () => {
+    setLoading(true);
+    setListError(null);
+    void loadDefs();
+    try {
+      const [cRes, bRes] = await Promise.all([fetcher('/api/comex/clients'), fetcher('/api/comex/brokers')]);
+      const [cJson, bJson] = await Promise.all([readJson(cRes), readJson(bRes)]);
+      if (!cJson.success) throw new Error(cJson.error || 'Falha ao carregar clientes');
+      if (!bJson.success) throw new Error(bJson.error || 'Falha ao carregar despachantes');
       const list = Array.isArray(cJson.data) ? (cJson.data as ComexClientRecord[]) : [];
       setClients(list);
       setBrokers(Array.isArray(bJson.data) ? (bJson.data as ComexBrokerRecord[]) : []);
@@ -278,6 +284,11 @@ export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged,
     <div className="space-y-4">
       {listError ? (
         <div className="p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-800 text-xs">{listError}</div>
+      ) : null}
+      {defsError ? (
+        <div className="p-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 text-xs">
+          {defsError} — os formulários de cadastro ficam indisponíveis até clicar em Atualizar.
+        </div>
       ) : null}
 
       {/* Clientes */}

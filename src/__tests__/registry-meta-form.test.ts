@@ -69,6 +69,19 @@ describe('RegistryMetaForm', () => {
   });
 });
 
+describe('RegistryMetaForm · valor antigo', () => {
+  it('enum fechado com valor fora das opções mostra "(valor antigo)" selecionado', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(RegistryMetaForm, {
+        fields,
+        values: { radar_modality: 'xpto' },
+        onChange: () => undefined,
+      }),
+    );
+    expect(html).toContain('<option value="xpto" selected="">xpto (valor antigo)</option>');
+  });
+});
+
 describe('ComexFieldDefsPanel · editor de opções', () => {
   it('parseOptionsText lê "valor=Rótulo" por linha', async () => {
     const { parseOptionsText } = await import('../components/modules/ComexFieldDefsPanel');

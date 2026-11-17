@@ -724,6 +724,49 @@ function pgFieldParams(id: string, input: ComexFieldDefInput): unknown[] {
   ];
 }
 
+const ENTITY_CHECK_SQL = "CHECK (entity IN ('process','document','client','broker'))";
+
+function quoteIdent(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
+}
+
+/**
+ * db/neon/0002: troca o CHECK de entity só quando o atual ainda não aceita
+ * client/broker (qualquer CHECK que liste valores de entity, não só pelo nome
+ * esperado). DROP+ADD num único DO (atômico); "já existe" é tolerado. Falha
+ * aqui avisa e segue — não derruba o store para o SQLite.
+ */
+async function ensureEntityCheck(db: PgPool): Promise<void> {
+  try {
+    const { rows } = await db.query(
+      `SELECT conname, pg_get_constraintdef(oid) AS def
+         FROM pg_constraint
+        WHERE conrelid = 'comex_field_defs'::regclass AND contype = 'c'
+          AND pg_get_constraintdef(oid) ILIKE '%entity%'`,
+    );
+    const stale = rows.filter((r) => {
+      const def = String(r.def);
+      return def.includes("'process'") && !(def.includes("'client'") && def.includes("'broker'"));
+    });
+    if (stale.length === 0) return;
+    const drops = stale
+      .map((r) => `  ALTER TABLE comex_field_defs DROP CONSTRAINT IF EXISTS ${quoteIdent(String(r.conname))};`)
+      .join('\n');
+    await db.query(`DO $$
+BEGIN
+${drops}
+  BEGIN
+    ALTER TABLE comex_field_defs ADD CONSTRAINT comex_field_defs_entity_check ${ENTITY_CHECK_SQL};
+  EXCEPTION WHEN duplicate_object THEN NULL;
+  END;
+END $$`);
+  } catch (err) {
+    console.warn(
+      `[comex] não foi possível ajustar o CHECK de entity em comex_field_defs (aplicar db/neon/0002_field_defs_entities.sql): ${redactDbError(err instanceof Error ? err.message : String(err))}`,
+    );
+  }
+}
+
 type PgPool = {
   query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
 };
@@ -747,23 +790,29 @@ export class PgComexStore implements ComexStore {
     await db.query('SELECT 1 FROM comex_field_defs LIMIT 1');
     // db/neon/0002_field_defs_entities.sql — idempotente (o app conecta como dono do banco)
     await db.query('ALTER TABLE comex_field_defs ADD COLUMN IF NOT EXISTS ui_group text');
-    await db.query('ALTER TABLE comex_field_defs DROP CONSTRAINT IF EXISTS comex_field_defs_entity_check');
-    await db.query(
-      "ALTER TABLE comex_field_defs ADD CONSTRAINT comex_field_defs_entity_check CHECK (entity IN ('process','document','client','broker'))",
-    );
+    await ensureEntityCheck(db);
     // migration 20261116120000: sem ela create/update de processo quebram — falha explícita
     await db.query('SELECT cliente_id FROM comex_processes LIMIT 1');
     await db.query('SELECT 1 FROM comex_clients LIMIT 1');
     await db.query('SELECT 1 FROM comex_brokers LIMIT 1');
     // Seed só-inserção: não sobrescreve edições feitas pelo painel Campos.
+    // Falha num def (ex.: CHECK antigo recusando 'client') avisa e segue no Postgres.
+    const seedErrors: string[] = [];
     for (const def of DEFAULT_COMEX_FIELD_DEFS) {
-      await db.query(
-        `INSERT INTO comex_field_defs
-          (id, entity, field_key, label, data_type, required, enum_options, widget, ui_list, ui_form, consult_key, kpi, sort_order, ui_group)
-         VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14)
-         ON CONFLICT (entity, field_key) DO NOTHING`,
-        pgFieldParams(randomUUID(), def),
-      );
+      try {
+        await db.query(
+          `INSERT INTO comex_field_defs
+            (id, entity, field_key, label, data_type, required, enum_options, widget, ui_list, ui_form, consult_key, kpi, sort_order, ui_group)
+           VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14)
+           ON CONFLICT (entity, field_key) DO NOTHING`,
+          pgFieldParams(randomUUID(), def),
+        );
+      } catch (err) {
+        seedErrors.push(`${def.entity}.${def.field_key}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    if (seedErrors.length) {
+      console.warn(`[comex] seed de comex_field_defs incompleto (${seedErrors.length}): ${redactDbError(seedErrors[0])}`);
     }
   }
 

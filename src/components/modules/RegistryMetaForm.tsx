@@ -113,14 +113,18 @@ export const RegistryMetaForm: React.FC<RegistryMetaFormProps> = ({
     }
 
     if (f.data_type === 'enum') {
+      const current = str(value);
+      // valor gravado que saiu da lista: continua visível e selecionado
+      const legacy = current !== '' && !f.enum_options.some((o) => String(o.value) === current);
       return (
         <select
           required={f.required}
-          value={str(value)}
+          value={current}
           onChange={(e) => onChange(key, e.target.value)}
           className={inputCls}
         >
           {f.required ? null : <option value="">—</option>}
+          {legacy ? <option value={current}>{`${current} (valor antigo)`}</option> : null}
           {f.enum_options.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}

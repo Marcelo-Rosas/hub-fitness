@@ -46,6 +46,16 @@ export const REGISTRY_COLUMNS: Record<'client' | 'broker', readonly string[]> = 
   broker: ['name', 'cpf', 'rfb_registry', 'email', 'phone', 'active'],
 };
 
+/** Campos que o backend exige no cadastro: não podem ficar ocultos nem opcionais. */
+export const REQUIRED_SYSTEM_FIELDS: Record<'client' | 'broker', readonly string[]> = {
+  client: ['cnpj_root', 'legal_name'],
+  broker: ['name'],
+};
+
+export function isRequiredSystemField(entity: unknown, fieldKey: unknown): boolean {
+  return isRegistryEntity(entity) && REQUIRED_SYSTEM_FIELDS[entity].includes(String(fieldKey));
+}
+
 export function isRegistryEntity(entity: unknown): entity is 'client' | 'broker' {
   return entity === 'client' || entity === 'broker';
 }
@@ -86,9 +96,14 @@ function isEmptyValue(v: unknown): boolean {
  * Valida um registro (cliente/despachante) contra o metadado: obrigatórios
  * presentes e enum fechado (data_type 'enum') com valor dentro das opções.
  * Lista aberta (widget select + data_type text) aceita valor novo; widget
- * 'broker' tem opções dinâmicas e é ignorado.
+ * 'broker' tem opções dinâmicas e é ignorado. No update, `existing` (registro
+ * gravado) libera valor antigo que não mudou mesmo fora das opções atuais.
  */
-export function validateRecordAgainstDefs(input: Record<string, unknown>, defs: ComexFieldDef[]): string | null {
+export function validateRecordAgainstDefs(
+  input: Record<string, unknown>,
+  defs: ComexFieldDef[],
+  existing?: Record<string, unknown> | null,
+): string | null {
   for (const def of defs) {
     if (def.widget === 'broker') continue;
     const value = input[def.field_key];
@@ -98,6 +113,8 @@ export function validateRecordAgainstDefs(input: Record<string, unknown>, defs: 
     }
     if (def.data_type === 'enum' && (def.enum_options || []).length > 0) {
       const v = String(value).trim();
+      const stored = existing?.[def.field_key];
+      if (stored !== undefined && stored !== null && String(stored).trim() === v) continue;
       if (!def.enum_options.some((o) => String(o.value) === v)) {
         return `Valor inválido para ${def.label}: ${v}`;
       }

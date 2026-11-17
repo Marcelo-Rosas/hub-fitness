@@ -274,4 +274,35 @@ describe('cadastros 100% metadado (field-defs client/broker)', () => {
     const id = (await procField.json()).data.id;
     expect((await api('DELETE', `/api/comex/field-defs/${id}`)).status).toBe(200);
   });
+
+  it('obrigatório do backend não pode ficar oculto nem opcional (400)', async () => {
+    const legal = (await defsOf('client')).find((d) => d.field_key === 'legal_name')!;
+    expect((await api('PUT', `/api/comex/field-defs/${legal.id}`, { ui_form: false })).status).toBe(400);
+    expect((await api('PUT', `/api/comex/field-defs/${legal.id}`, { required: false })).status).toBe(400);
+    expect((await api('PUT', `/api/comex/field-defs/${legal.id}`, { label: 'Razão social (nome empresarial)' })).status).toBe(200);
+    const name = (await defsOf('broker')).find((d) => d.field_key === 'name')!;
+    expect((await api('PUT', `/api/comex/field-defs/${name.id}`, { ui_form: false })).status).toBe(400);
+    const notes = (await defsOf('client')).find((d) => d.field_key === 'notes')!;
+    expect((await api('PUT', `/api/comex/field-defs/${notes.id}`, { ui_form: false })).status).toBe(200);
+  });
+
+  it('valor antigo fora das opções continua salvável se não mudou', async () => {
+    const c = await mkClient({ rep_role_type: 'IMPEXP' });
+    const role = (await defsOf('client')).find((d) => d.field_key === 'rep_role_type')!;
+    // a opção IMPEXP sai da lista: o valor gravado vira "antigo"
+    const ok = await api('PUT', `/api/comex/field-defs/${role.id}`, {
+      enum_options: role.enum_options.filter((o) => o.value !== 'IMPEXP'),
+    });
+    expect(ok.status).toBe(200);
+    const keep = await api('PUT', `/api/comex/clients/${c.id}`, {
+      cnpj_root: '60450605',
+      legal_name: 'RM ACADEMIA LTDA',
+      rep_role_type: 'IMPEXP',
+      notes: 'só mudei a nota',
+    });
+    expect(keep.status).toBe(200);
+    const fresh = await api('POST', '/api/comex/clients', { cnpj_root: '11111111', legal_name: 'Novo', rep_role_type: 'IMPEXP' });
+    expect(fresh.status).toBe(400);
+  });
 });
+

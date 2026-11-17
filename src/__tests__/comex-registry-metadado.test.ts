@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -66,6 +66,13 @@ describe('validateRecordAgainstDefs', () => {
 
   it('lista aberta aceita valor novo', () => {
     expect(validateRecordAgainstDefs({ legal_name: 'A', rep_certificate: 'e-CNPJ Novo' }, defs)).toBeNull();
+  });
+
+  it('valor antigo inalterado passa no update; valor antigo novo continua recusado', () => {
+    expect(validateRecordAgainstDefs({ legal_name: 'A', radar_status: 'antigo' }, defs, { radar_status: 'antigo' })).toBeNull();
+    expect(validateRecordAgainstDefs({ legal_name: 'A', radar_status: 'outro' }, defs, { radar_status: 'antigo' })).toMatch(
+      /Situação/,
+    );
   });
 
   it('widget broker é ignorado (opções dinâmicas)', () => {
@@ -192,21 +199,65 @@ describe('store de field_defs (cliente/despachante)', () => {
     await s.ensureReady(); // idempotente
   });
 
-  it('Pg ensureReady adiciona ui_group, troca o CHECK de entity e semeia sem sobrescrever', async () => {
+  const fakePg = (constraints: { conname: string; def: string }[], failOn?: RegExp) => {
     const store = new PgComexStore('postgres://fake');
     const seen: string[] = [];
     (store as unknown as { pool: unknown }).pool = {
       query: async (sql: string) => {
-        seen.push(sql.replace(/\s+/g, ' '));
+        const flat = sql.replace(/\s+/g, ' ');
+        seen.push(flat);
+        if (failOn && failOn.test(flat)) throw new Error('permission denied');
+        if (flat.includes('pg_get_constraintdef')) return { rows: constraints };
         return { rows: [] };
       },
     };
+    return { store, seen };
+  };
+
+  it('Pg ensureReady: CHECK sem client → DROP+ADD num único bloco DO; seed sem sobrescrever', async () => {
+    const { store, seen } = fakePg([
+      { conname: 'comex_field_defs_entity_check', def: "CHECK ((entity = ANY (ARRAY['process'::text, 'document'::text])))" },
+      { conname: 'legado_entity', def: "CHECK ((entity = ANY (ARRAY['process'::text, 'document'::text])))" },
+      { conname: 'entity_nao_vazia', def: "CHECK ((entity <> ''::text))" },
+    ]);
     await store.ensureReady();
     expect(seen.some((s) => s.includes('ADD COLUMN IF NOT EXISTS ui_group text'))).toBe(true);
-    expect(seen.some((s) => s.includes('DROP CONSTRAINT IF EXISTS comex_field_defs_entity_check'))).toBe(true);
-    expect(seen.some((s) => s.includes("CHECK (entity IN ('process','document','client','broker'))"))).toBe(true);
+    const ddl = seen.filter((s) => s.includes('DROP CONSTRAINT') || s.includes('ADD CONSTRAINT'));
+    expect(ddl).toHaveLength(1);
+    expect(ddl[0].startsWith('DO $$')).toBe(true);
+    expect(ddl[0]).toContain('DROP CONSTRAINT IF EXISTS "comex_field_defs_entity_check"');
+    expect(ddl[0]).toContain('DROP CONSTRAINT IF EXISTS "legado_entity"');
+    expect(ddl[0]).not.toContain('entity_nao_vazia');
+    expect(ddl[0]).toContain("CHECK (entity IN ('process','document','client','broker'))");
+    expect(ddl[0]).toContain('duplicate_object');
     const inserts = seen.filter((s) => s.startsWith('INSERT INTO comex_field_defs'));
     expect(inserts.length).toBe(DEFAULT_COMEX_FIELD_DEFS.length);
     expect(inserts.every((s) => s.includes('DO NOTHING'))).toBe(true);
+  });
+
+  it('Pg ensureReady: CHECK que já aceita client → nenhum DROP/ADD', async () => {
+    const { store, seen } = fakePg([
+      {
+        conname: 'comex_field_defs_entity_check',
+        def: "CHECK ((entity = ANY (ARRAY['process'::text, 'document'::text, 'client'::text, 'broker'::text])))",
+      },
+    ]);
+    await store.ensureReady();
+    expect(seen.some((s) => s.includes('DROP CONSTRAINT') || s.includes('ADD CONSTRAINT'))).toBe(false);
+  });
+
+  it('Pg ensureReady: falha no DDL do CHECK não derruba o store (avisa e segue)', async () => {
+    const { store, seen } = fakePg(
+      [{ conname: 'comex_field_defs_entity_check', def: "CHECK ((entity = ANY (ARRAY['process'::text])))" }],
+      /^DO \$\$|^INSERT INTO comex_field_defs/,
+    );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await expect(store.ensureReady()).resolves.toBeUndefined();
+      expect(warn).toHaveBeenCalled();
+      expect(seen.some((s) => s.startsWith('INSERT INTO comex_field_defs'))).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

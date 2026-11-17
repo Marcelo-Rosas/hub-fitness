@@ -39,6 +39,7 @@ import {
 } from './comexTreatments';
 import {
   isRegistryEntity,
+  isRequiredSystemField,
   isSystemField,
   lockedOptionsError,
   REGISTRY_COLUMNS,
@@ -59,6 +60,9 @@ function fieldDefError(def: ComexFieldDefInput, existing?: ComexFieldDef): strin
   if (isRegistryEntity(def.entity) && !REGISTRY_COLUMNS[def.entity].includes(def.field_key)) {
     const nome = def.entity === 'client' ? 'cliente' : 'despachante';
     return `Campo "${def.field_key}" não é coluna do cadastro de ${nome} — não há onde gravar`;
+  }
+  if (isRequiredSystemField(def.entity, def.field_key) && (def.ui_form === false || def.required !== true)) {
+    return `Campo "${def.label || def.field_key}" é exigido pelo cadastro — não pode ficar oculto nem opcional`;
   }
   return lockedOptionsError(def);
 }
