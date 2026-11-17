@@ -130,6 +130,44 @@ export interface ComexProcessRecord {
   documents?: ComexDocumentRecord[];
 }
 
+/** Documento acompanhado na consulta pública Integra Comex (data da última atualização). */
+export type ComexTrackingKind = 'ce' | 'di' | 'li' | 'duimp';
+
+export interface ComexTrackingRecord {
+  id: string;
+  process_id: string;
+  doc_kind: ComexTrackingKind;
+  /** Só dígitos (DUIMP: 25BR + 11 dígitos). */
+  doc_number: string;
+  /** dataAtualizacao atual do Siscomex (sem fuso, horário de Brasília). */
+  remote_updated_at: string | null;
+  previous_remote_updated_at: string | null;
+  /** versaoVigente (só DUIMP). */
+  version: number | null;
+  /** true depois que a API devolveu o número uma vez. */
+  found: boolean;
+  checked_at: string | null;
+  changed_at: string | null;
+  seen_at: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ComexTrackingPatch = Partial<
+  Pick<
+    ComexTrackingRecord,
+    | 'remote_updated_at'
+    | 'previous_remote_updated_at'
+    | 'version'
+    | 'found'
+    | 'checked_at'
+    | 'changed_at'
+    | 'seen_at'
+    | 'last_error'
+  >
+>;
+
 /** @deprecated use ComexProcessRecord.payload — mantido só para seed DEMO de auth */
 export interface ComexProcess {
   id: string;
