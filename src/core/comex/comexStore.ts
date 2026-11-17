@@ -12,9 +12,14 @@ import type {
   ComexFieldDefInput,
   ComexFieldEntity,
   ComexProcessRecord,
+  ComexTrackingKind,
+  ComexTrackingPatch,
+  ComexTrackingRecord,
 } from '../../types/comex';
 import { DEFAULT_COMEX_FIELD_DEFS } from './fieldDefsSeed';
 import { normalizeClientInput, slugify } from './comexRegistry';
+import { syncProcessTracking } from './comexTracking';
+import type { TrackingDocRef } from './integraComexPublic';
 
 const SQLITE_SCHEMA = `
 CREATE TABLE IF NOT EXISTS comex_field_defs (
@@ -91,6 +96,49 @@ CREATE TABLE IF NOT EXISTS comex_documents (
   FOREIGN KEY (process_id) REFERENCES comex_processes(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS comex_documents_process_idx ON comex_documents (process_id);
+CREATE TABLE IF NOT EXISTS comex_tracking (
+  id TEXT PRIMARY KEY,
+  process_id TEXT NOT NULL REFERENCES comex_processes(id) ON DELETE CASCADE,
+  doc_kind TEXT NOT NULL CHECK (doc_kind IN ('ce','di','li','duimp')),
+  doc_number TEXT NOT NULL,
+  remote_updated_at TEXT,
+  previous_remote_updated_at TEXT,
+  version INTEGER,
+  found INTEGER NOT NULL DEFAULT 0,
+  checked_at TEXT,
+  changed_at TEXT,
+  seen_at TEXT,
+  last_error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (process_id, doc_kind, doc_number)
+);
+CREATE INDEX IF NOT EXISTS comex_tracking_kind_idx ON comex_tracking (doc_kind, doc_number);
+`;
+
+/**
+ * Postgres: mesmo SQL de db/neon/0003_comex_tracking.sql. Idempotente — o
+ * PgComexStore.ensureReady roda a cada boot (o app conecta como dono do banco).
+ */
+export const PG_TRACKING_SCHEMA = `
+CREATE TABLE IF NOT EXISTS comex_tracking (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  process_id uuid NOT NULL REFERENCES comex_processes(id) ON DELETE CASCADE,
+  doc_kind text NOT NULL CHECK (doc_kind IN ('ce','di','li','duimp')),
+  doc_number text NOT NULL,
+  remote_updated_at text,
+  previous_remote_updated_at text,
+  version integer,
+  found boolean NOT NULL DEFAULT false,
+  checked_at timestamptz,
+  changed_at timestamptz,
+  seen_at timestamptz,
+  last_error text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (process_id, doc_kind, doc_number)
+);
+CREATE INDEX IF NOT EXISTS comex_tracking_kind_idx ON comex_tracking (doc_kind, doc_number);
 `;
 
 export interface ComexProcessCreateInput {
@@ -138,6 +186,51 @@ export interface ComexStore {
   }): Promise<ComexDocumentRecord>;
   linkDocument(id: string, processId: string | null): Promise<ComexDocumentRecord | null>;
   deleteDocument(id: string): Promise<boolean>;
+  /** Upsert das linhas de acompanhamento do processo; apaga as que saíram. */
+  syncTrackingDocs(processId: string, docs: TrackingDocRef[]): Promise<void>;
+  /** Sem processId: todas as linhas. */
+  listTracking(processId?: string): Promise<ComexTrackingRecord[]>;
+  getTracking(id: string): Promise<ComexTrackingRecord | null>;
+  updateTracking(id: string, patch: ComexTrackingPatch): Promise<ComexTrackingRecord | null>;
+}
+
+const TRACKING_PATCH_COLUMNS = [
+  'remote_updated_at',
+  'previous_remote_updated_at',
+  'version',
+  'found',
+  'checked_at',
+  'changed_at',
+  'seen_at',
+  'last_error',
+] as const;
+
+function patchEntries(patch: ComexTrackingPatch): Array<[string, unknown]> {
+  return TRACKING_PATCH_COLUMNS.filter((k) => patch[k] !== undefined).map((k) => [k, patch[k]]);
+}
+
+function tsOrNull(v: unknown): string | null {
+  if (v === null || v === undefined || v === '') return null;
+  return tsStr(v);
+}
+
+function hydrateTracking(row: Record<string, unknown>): ComexTrackingRecord {
+  return {
+    id: String(row.id),
+    process_id: String(row.process_id),
+    doc_kind: String(row.doc_kind) as ComexTrackingKind,
+    doc_number: String(row.doc_number),
+    remote_updated_at: strOrNull(row.remote_updated_at),
+    previous_remote_updated_at: strOrNull(row.previous_remote_updated_at),
+    version: row.version == null ? null : Number(row.version),
+    found: asBool(row.found),
+    checked_at: tsOrNull(row.checked_at),
+    changed_at: tsOrNull(row.changed_at),
+    seen_at: tsOrNull(row.seen_at),
+    last_error: strOrNull(row.last_error),
+    created_at: tsStr(row.created_at),
+    updated_at: tsStr(row.updated_at),
+  };
 }
 
 function nowIso(): string {
@@ -475,6 +568,7 @@ export class SqliteComexStore implements ComexStore {
         'INSERT INTO comex_processes (id, code, client_slug, cliente_id, payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
       .run(id, code, client_slug, cliente_id, JSON.stringify(payload), ts, ts);
+    await syncProcessTracking(this, id, payload);
     return (await this.getProcess(id))!;
   }
 
@@ -500,6 +594,7 @@ export class SqliteComexStore implements ComexStore {
         'UPDATE comex_processes SET code = ?, client_slug = ?, cliente_id = ?, payload = ?, updated_at = ? WHERE id = ?',
       )
       .run(code, client_slug, cliente_id, JSON.stringify(payload), nowIso(), id);
+    await syncProcessTracking(this, id, payload);
     return this.getProcess(id);
   }
 
@@ -703,6 +798,50 @@ export class SqliteComexStore implements ComexStore {
     const result = this.db.prepare('DELETE FROM comex_documents WHERE id = ?').run(id);
     return result.changes > 0;
   }
+
+  async syncTrackingDocs(processId: string, docs: TrackingDocRef[]): Promise<void> {
+    const ts = nowIso();
+    const insert = this.db.prepare(
+      `INSERT INTO comex_tracking (id, process_id, doc_kind, doc_number, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(process_id, doc_kind, doc_number) DO NOTHING`,
+    );
+    for (const d of docs) insert.run(randomUUID(), processId, d.kind, d.number, ts, ts);
+    const keep = new Set(docs.map((d) => `${d.kind}|${d.number}`));
+    const rows = this.db
+      .prepare('SELECT id, doc_kind, doc_number FROM comex_tracking WHERE process_id = ?')
+      .all(processId) as Array<{ id: string; doc_kind: string; doc_number: string }>;
+    const del = this.db.prepare('DELETE FROM comex_tracking WHERE id = ?');
+    for (const r of rows) if (!keep.has(`${r.doc_kind}|${r.doc_number}`)) del.run(r.id);
+  }
+
+  async listTracking(processId?: string): Promise<ComexTrackingRecord[]> {
+    const rows = processId
+      ? (this.db
+          .prepare('SELECT * FROM comex_tracking WHERE process_id = ? ORDER BY doc_kind, doc_number')
+          .all(processId) as Record<string, unknown>[])
+      : (this.db
+          .prepare('SELECT * FROM comex_tracking ORDER BY process_id, doc_kind, doc_number')
+          .all() as Record<string, unknown>[]);
+    return rows.map(hydrateTracking);
+  }
+
+  async getTracking(id: string): Promise<ComexTrackingRecord | null> {
+    const row = this.db.prepare('SELECT * FROM comex_tracking WHERE id = ?').get(id) as
+      | Record<string, unknown>
+      | undefined;
+    return row ? hydrateTracking(row) : null;
+  }
+
+  async updateTracking(id: string, patch: ComexTrackingPatch): Promise<ComexTrackingRecord | null> {
+    const entries = patchEntries(patch).map(([k, v]) => [k, k === 'found' ? (v ? 1 : 0) : v] as const);
+    const sets = [...entries.map(([k]) => `${k} = ?`), 'updated_at = ?'].join(', ');
+    const result = this.db
+      .prepare(`UPDATE comex_tracking SET ${sets} WHERE id = ?`)
+      .run(...(entries.map(([, v]) => v) as Array<string | number | null>), nowIso(), id);
+    if (!result.changes) return null;
+    return this.getTracking(id);
+  }
 }
 
 function pgFieldParams(id: string, input: ComexFieldDefInput): unknown[] {
@@ -771,6 +910,20 @@ type PgPool = {
   query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
 };
 
+/**
+ * db/neon/0003_comex_tracking.sql — idempotente. Falha avisa e segue: o
+ * acompanhamento Siscomex fica indisponível, mas o resto do M18 continua no Postgres.
+ */
+async function ensureTrackingTable(db: PgPool): Promise<void> {
+  try {
+    await db.query(PG_TRACKING_SCHEMA);
+  } catch (err) {
+    console.warn(
+      `[comex] não foi possível criar comex_tracking (aplicar db/neon/0003_comex_tracking.sql): ${redactDbError(err instanceof Error ? err.message : String(err))}`,
+    );
+  }
+}
+
 export class PgComexStore implements ComexStore {
   driver = 'postgres' as const;
   private pool: PgPool | null = null;
@@ -795,6 +948,7 @@ export class PgComexStore implements ComexStore {
     await db.query('SELECT cliente_id FROM comex_processes LIMIT 1');
     await db.query('SELECT 1 FROM comex_clients LIMIT 1');
     await db.query('SELECT 1 FROM comex_brokers LIMIT 1');
+    await ensureTrackingTable(db);
     // Seed só-inserção: não sobrescreve edições feitas pelo painel Campos.
     // Falha num def (ex.: CHECK antigo recusando 'client') avisa e segue no Postgres.
     const seedErrors: string[] = [];
@@ -892,6 +1046,7 @@ export class PgComexStore implements ComexStore {
        VALUES ($1,$2,$3,$4::jsonb) RETURNING *`,
       [code, client_slug, cliente_id, JSON.stringify(payload)],
     );
+    await syncProcessTracking(this, String(rows[0].id), payload);
     return hydrateProcess(rows[0], []);
   }
 
@@ -918,7 +1073,9 @@ export class PgComexStore implements ComexStore {
        WHERE id = $1 RETURNING *`,
       [id, patch.code ?? current.code, client_slug, cliente_id, JSON.stringify(payload)],
     );
-    return rows[0] ? hydrateProcess(rows[0], current.documents || []) : null;
+    if (!rows[0]) return null;
+    await syncProcessTracking(this, id, payload);
+    return hydrateProcess(rows[0], current.documents || []);
   }
 
   async listClients(): Promise<ComexClientRecord[]> {
@@ -1107,6 +1264,53 @@ export class PgComexStore implements ComexStore {
     const db = await this.db();
     const { rows } = await db.query('DELETE FROM comex_documents WHERE id = $1 RETURNING id', [id]);
     return rows.length > 0;
+  }
+
+  async syncTrackingDocs(processId: string, docs: TrackingDocRef[]): Promise<void> {
+    if (!UUID_RE.test(processId)) return;
+    const db = await this.db();
+    for (const d of docs) {
+      await db.query(
+        `INSERT INTO comex_tracking (process_id, doc_kind, doc_number)
+         VALUES ($1,$2,$3)
+         ON CONFLICT (process_id, doc_kind, doc_number) DO NOTHING`,
+        [processId, d.kind, d.number],
+      );
+    }
+    const keep = docs.map((d) => `${d.kind}|${d.number}`);
+    await db.query(
+      `DELETE FROM comex_tracking
+        WHERE process_id = $1 AND NOT ((doc_kind || '|' || doc_number) = ANY($2::text[]))`,
+      [processId, keep],
+    );
+  }
+
+  async listTracking(processId?: string): Promise<ComexTrackingRecord[]> {
+    const db = await this.db();
+    if (processId !== undefined && !UUID_RE.test(processId)) return [];
+    const { rows } = processId
+      ? await db.query('SELECT * FROM comex_tracking WHERE process_id = $1 ORDER BY doc_kind, doc_number', [processId])
+      : await db.query('SELECT * FROM comex_tracking ORDER BY process_id, doc_kind, doc_number');
+    return rows.map(hydrateTracking);
+  }
+
+  async getTracking(id: string): Promise<ComexTrackingRecord | null> {
+    if (!UUID_RE.test(id)) return null;
+    const db = await this.db();
+    const { rows } = await db.query('SELECT * FROM comex_tracking WHERE id = $1', [id]);
+    return rows[0] ? hydrateTracking(rows[0]) : null;
+  }
+
+  async updateTracking(id: string, patch: ComexTrackingPatch): Promise<ComexTrackingRecord | null> {
+    if (!UUID_RE.test(id)) return null;
+    const db = await this.db();
+    const entries = patchEntries(patch);
+    const sets = [...entries.map(([k], i) => `${k} = $${i + 2}`), 'updated_at = now()'].join(', ');
+    const { rows } = await db.query(`UPDATE comex_tracking SET ${sets} WHERE id = $1 RETURNING *`, [
+      id,
+      ...entries.map(([, v]) => v),
+    ]);
+    return rows[0] ? hydrateTracking(rows[0]) : null;
   }
 }
 

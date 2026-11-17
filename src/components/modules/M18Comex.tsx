@@ -56,6 +56,8 @@ import { ComexClientsPanel } from './ComexClientsPanel';
 import { RadarUsageBadge } from './RadarUsageBadge';
 import { NcmTreatmentsPanel, type NcmTreatmentsData } from './NcmTreatmentsPanel';
 import { NcmBenchmarkCard } from './NcmBenchmarkCard';
+import { ComexTrackingCard, TrackingBadge, type TrackingSummaryItem } from './ComexTrackingCard';
+import { formatWarning } from '../../core/comex/integraComexPublic';
 import { declarationRouteNote } from '../../core/comex/comexRegistry';
 import type { RadarUsage } from '../../core/comex/radarUsage';
 
@@ -156,6 +158,7 @@ export const M18Comex: React.FC = () => {
   const [extractBusy, setExtractBusy] = useState(false);
   const [extractJson, setExtractJson] = useState<Record<string, unknown> | null>(null);
   const [extractMsg, setExtractMsg] = useState<string | null>(null);
+  const [trackingSummary, setTrackingSummary] = useState<Record<string, TrackingSummaryItem>>({});
 
   const [authLoading, setAuthLoading] = useState(false);
   const [authSuccessMsg, setAuthSuccessMsg] = useState<string | null>(null);
@@ -217,10 +220,17 @@ export const M18Comex: React.FC = () => {
     if (json.success && Array.isArray(json.data)) setClients(json.data);
   };
 
+  const loadTrackingSummary = async () => {
+    const res = await cfetch('/api/comex/tracking/summary');
+    const json = await res.json();
+    if (json.success && json.data && typeof json.data === 'object') setTrackingSummary(json.data);
+  };
+
   React.useEffect(() => {
     void refreshPortalStatus();
     void loadFieldDefs().catch(() => undefined);
     void loadProcesses().catch(() => undefined);
+    void loadTrackingSummary().catch(() => undefined);
     void loadClients().catch(() => undefined);
     void comexFetch('/api/comex/pucomex/catalog')
       .then((r) => r.json())
@@ -384,6 +394,8 @@ export const M18Comex: React.FC = () => {
     setProcesses((prev) =>
       prev.some((p) => p.id === saved.id) ? prev.map((p) => (p.id === saved.id ? saved : p)) : [saved, ...prev],
     );
+    // Números CE/DI/LI/DUIMP podem ter mudado: atualiza os selos.
+    void loadTrackingSummary().catch(() => undefined);
     // Aviso do Radar (não bloqueia): mostra no modal antes de fechar. Um novo "Salvar" vira edição.
     if (json.radar && (json.radar.level === 'atencao' || json.radar.level === 'estouro')) {
       setEditingProcess(saved);
@@ -931,6 +943,7 @@ export const M18Comex: React.FC = () => {
                       <td className="py-3 px-4">
                         <div className="font-bold text-slate-900">{proc.code}</div>
                         <div className="text-[10px] text-slate-400">{proc.client_slug || 'Client DB local'}</div>
+                        <TrackingBadge summary={trackingSummary[proc.id]} />
                       </td>
                       {listFields.map((f) => {
                         const raw = payloadText(proc, f.field_key);
@@ -1814,6 +1827,39 @@ export const M18Comex: React.FC = () => {
                 onChange={setFormPayload}
                 extraCatalogs={extraCatalogs}
               />
+              {(() => {
+                // Avisos de formato do acompanhamento Siscomex — não bloqueiam o salvamento.
+                const isImport = String(formPayload.type || 'importacao') === 'importacao';
+                const warnings = [
+                  formatWarning('ce', formPayload.ce_mercante_number),
+                  formatWarning('di', formPayload.di_number),
+                  formatWarning('li', formPayload.li_numbers),
+                  isImport ? formatWarning('duimp', formPayload.declaration_number) : null,
+                ].filter((w): w is string => !!w);
+                const ceHint = isImport && !String(formPayload.ce_mercante_number ?? '').trim();
+                if (!warnings.length && !ceHint) return null;
+                return (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-[11px] text-amber-900 space-y-0.5">
+                    {warnings.map((w) => (
+                      <p key={w}>{w}</p>
+                    ))}
+                    {ceHint ? (
+                      <p className="text-slate-600">
+                        Nº CE-Mercante: 15 dígitos — pedir ao agente de carga ou ver no Mercante (o BL não é o CE).
+                      </p>
+                    ) : null}
+                  </div>
+                );
+              })()}
+              {editingProcess ? (
+                <ComexTrackingCard
+                  // remonta (recarrega) quando o processo é salvo com o modal aberto
+                  key={`${editingProcess.id}:${editingProcess.updated_at}`}
+                  processId={editingProcess.id}
+                  processStatus={String(editingProcess.payload.status ?? '')}
+                  onChanged={() => void loadTrackingSummary().catch(() => undefined)}
+                />
+              ) : null}
               {editingProcess && formPayload.ncm_code && Number(formPayload.fob_value_usd) > 0 ? (
                 <NcmBenchmarkCard
                   compact

@@ -7,6 +7,8 @@ import { buildSystemPrompt } from "./src/core/advisor/prompt";
 import { buildAdvisorContext } from "./src/core/advisor/context";
 import { bootstrapComexStore, registerPucomexRoutes } from "./src/core/comex/registerPucomexRoutes";
 import { pucomexClient } from "./src/core/comex/pucomexClient";
+import { getComexStore } from "./src/core/comex/comexStore";
+import { startTrackingScheduler } from "./src/core/comex/comexTracking";
 import { fetchPortalNcmIfAuthorized } from "./src/core/comex/comexAiNcm";
 import { registerIntranetRoutes } from "./src/core/intranet/registerIntranetRoutes";
 import { registerApproveRoutes } from "./src/core/intranet/registerApproveRoutes";
@@ -440,6 +442,10 @@ async function startServer() {
       `🌐 PUCOMEX: env=${px.environment} live=${px.liveModeEnabled} role=${px.roleType} base=${px.baseUrl}`,
     );
     startOutboxDispatcher(getIntranetStore());
+    // Integra Comex (consulta pública): 30 min, seg–sex 7h–20h. COMEX_TRACKING_DISABLED=1 desliga.
+    if (startTrackingScheduler({ getStore: getComexStore })) {
+      console.log("🛰️  Acompanhamento Siscomex ligado (30 min, seg–sex 7h–20h)");
+    }
   });
 
   httpServer.on("error", (err: NodeJS.ErrnoException) => {
