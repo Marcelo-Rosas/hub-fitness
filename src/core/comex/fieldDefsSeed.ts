@@ -1,4 +1,107 @@
 import type { ComexFieldDefInput } from '../../types/comex';
+import { PUCOMEX_ROLE_TYPES } from './environments';
+
+/**
+ * Cadastro de cliente importador — cada def é uma coluna de comex_clients
+ * (campo de sistema: não pode ser excluído). Lista fechada = data_type 'enum';
+ * lista aberta (sugestões) = data_type 'text' + widget 'select'.
+ * radar_modality e rep_status têm valores travados (LOCKED_ENUM_VALUES).
+ */
+const CLIENT_FIELD_DEFS: ComexFieldDefInput[] = [
+  { entity: 'client', ui_group: 'Empresa', field_key: 'cnpj_root', label: 'CNPJ raiz (8 dígitos)', data_type: 'text', widget: 'text', required: true, ui_list: true, sort_order: 10 },
+  { entity: 'client', ui_group: 'Empresa', field_key: 'cnpj', label: 'CNPJ completo (opcional)', data_type: 'text', widget: 'text', sort_order: 20 },
+  { entity: 'client', ui_group: 'Empresa', field_key: 'legal_name', label: 'Razão social', data_type: 'text', widget: 'text', required: true, ui_list: true, sort_order: 30 },
+  { entity: 'client', ui_group: 'Empresa', field_key: 'trade_name', label: 'Nome fantasia', data_type: 'text', widget: 'text', sort_order: 40 },
+  {
+    entity: 'client',
+    ui_group: 'Radar',
+    field_key: 'radar_status',
+    label: 'Situação',
+    data_type: 'enum',
+    widget: 'select',
+    sort_order: 110,
+    enum_options: [
+      { value: 'habilitada', label: 'Habilitada' },
+      { value: 'suspensa', label: 'Suspensa' },
+      { value: 'desabilitada', label: 'Desabilitada' },
+      { value: 'nao_habilitada', label: 'Não habilitada' },
+    ],
+  },
+  {
+    entity: 'client',
+    ui_group: 'Radar',
+    field_key: 'radar_modality',
+    label: 'Modalidade',
+    data_type: 'enum',
+    widget: 'select',
+    ui_list: true,
+    sort_order: 120,
+    enum_options: [
+      { value: 'expressa', label: 'Expressa' },
+      { value: 'limitada_50k', label: 'Limitada até US$ 50 mil' },
+      { value: 'limitada_150k', label: 'Limitada até US$ 150 mil' },
+      { value: 'ilimitada', label: 'Ilimitada' },
+    ],
+  },
+  { entity: 'client', ui_group: 'Radar', field_key: 'radar_limit_usd', label: 'Limite (US$, 6 meses)', data_type: 'number', widget: 'number', sort_order: 130 },
+  { entity: 'client', ui_group: 'Radar', field_key: 'radar_operations', label: 'Operações', data_type: 'text', widget: 'text', sort_order: 140 },
+  { entity: 'client', ui_group: 'Radar', field_key: 'radar_legal_basis', label: 'Fundamento legal', data_type: 'text', widget: 'text', sort_order: 150 },
+  { entity: 'client', ui_group: 'Radar', field_key: 'radar_checked_at', label: 'Conferido no Portal em', data_type: 'date', widget: 'date', sort_order: 160 },
+  {
+    entity: 'client',
+    ui_group: 'Representação',
+    field_key: 'rep_status',
+    label: 'Status',
+    data_type: 'enum',
+    widget: 'select',
+    required: true,
+    ui_list: true,
+    sort_order: 210,
+    enum_options: [
+      { value: 'pendente', label: 'Pendente' },
+      { value: 'ativa', label: 'Ativa' },
+      { value: 'vencida', label: 'Vencida' },
+      { value: 'revogada', label: 'Revogada' },
+    ],
+  },
+  {
+    entity: 'client',
+    ui_group: 'Representação',
+    field_key: 'rep_certificate',
+    label: 'Certificado que nos representa',
+    data_type: 'text',
+    widget: 'select',
+    sort_order: 220,
+    enum_options: [
+      { value: 'e-CPF Marcelo', label: 'e-CPF Marcelo' },
+      { value: 'e-CNPJ VECTRA HUB', label: 'e-CNPJ VECTRA HUB' },
+    ],
+  },
+  {
+    entity: 'client',
+    ui_group: 'Representação',
+    field_key: 'rep_role_type',
+    label: 'Role-Type no Portal',
+    data_type: 'enum',
+    widget: 'select',
+    sort_order: 230,
+    enum_options: PUCOMEX_ROLE_TYPES.map((r) => ({ value: r.code, label: `${r.code} — ${r.label}` })),
+  },
+  { entity: 'client', ui_group: 'Representação', field_key: 'rep_valid_from', label: 'Válida de', data_type: 'date', widget: 'date', sort_order: 240 },
+  { entity: 'client', ui_group: 'Representação', field_key: 'rep_valid_to', label: 'Válida até', data_type: 'date', widget: 'date', sort_order: 250 },
+  { entity: 'client', ui_group: 'Despachante', field_key: 'broker_id', label: 'Despachante responsável', data_type: 'text', widget: 'broker', ui_list: true, sort_order: 310 },
+  { entity: 'client', ui_group: 'Despachante', field_key: 'notes', label: 'Observações', data_type: 'text', widget: 'textarea', sort_order: 320 },
+];
+
+/** Cadastro de despachante — colunas de comex_brokers. */
+const BROKER_FIELD_DEFS: ComexFieldDefInput[] = [
+  { entity: 'broker', ui_group: 'Dados', field_key: 'name', label: 'Nome', data_type: 'text', widget: 'text', required: true, ui_list: true, sort_order: 10 },
+  { entity: 'broker', ui_group: 'Dados', field_key: 'cpf', label: 'CPF', data_type: 'text', widget: 'text', ui_list: true, sort_order: 20 },
+  { entity: 'broker', ui_group: 'Dados', field_key: 'rfb_registry', label: 'Registro RFB', data_type: 'text', widget: 'text', ui_list: true, sort_order: 30 },
+  { entity: 'broker', ui_group: 'Dados', field_key: 'email', label: 'E-mail', data_type: 'text', widget: 'text', ui_list: true, sort_order: 40 },
+  { entity: 'broker', ui_group: 'Dados', field_key: 'phone', label: 'Telefone', data_type: 'text', widget: 'text', ui_list: true, sort_order: 50 },
+  { entity: 'broker', ui_group: 'Dados', field_key: 'active', label: 'Ativo', data_type: 'boolean', widget: 'text', ui_list: true, sort_order: 60 },
+];
 
 /**
  * Catálogo inicial de campos — gravado em comex_field_defs na primeira abertura.
@@ -215,4 +318,6 @@ export const DEFAULT_COMEX_FIELD_DEFS: ComexFieldDefInput[] = [
     ui_form: true,
     sort_order: 150,
   },
+  ...CLIENT_FIELD_DEFS,
+  ...BROKER_FIELD_DEFS,
 ];

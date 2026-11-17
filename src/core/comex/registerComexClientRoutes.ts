@@ -5,7 +5,7 @@
 
 import type { Express, Request, Response } from 'express';
 import type { ComexBrokerInput, ComexClientInput } from '../../types/comex';
-import { isValidYmd, normalizeClientInput, todayYmd } from './comexRegistry';
+import { isValidYmd, normalizeClientInput, todayYmd, validateRecordAgainstDefs } from './comexRegistry';
 import { getComexStore } from './comexStore';
 import { computeRadarUsage } from './radarUsage';
 
@@ -44,13 +44,20 @@ export function registerComexClientRoutes(app: Express): void {
   const saveClient = async (req: Request, res: Response, id?: string) => {
     try {
       const store = await getComexStore();
-      if (id && !(await store.getClient(id))) return sendError(res, 404, 'Cliente não encontrado');
+      const current = id ? await store.getClient(id) : null;
+      if (id && !current) return sendError(res, 404, 'Cliente não encontrado');
       let input: ComexClientInput;
       try {
         input = normalizeClientInput({ ...(req.body || {}), id });
       } catch (err) {
         return sendError(res, 400, err instanceof Error ? err.message : String(err));
       }
+      const invalid = validateRecordAgainstDefs(
+        input as Record<string, unknown>,
+        await store.listFieldDefs('client'),
+        current as unknown as Record<string, unknown> | null,
+      );
+      if (invalid) return sendError(res, 400, invalid);
       const data = await store.upsertClient(input);
       res.json({ success: true, data });
     } catch (err) {
@@ -104,9 +111,16 @@ export function registerComexClientRoutes(app: Express): void {
       const body = (req.body || {}) as ComexBrokerInput;
       if (!String(body.name ?? '').trim()) return sendError(res, 400, 'Nome do despachante é obrigatório');
       const store = await getComexStore();
-      if (id && !(await store.listBrokers()).some((b) => b.id === id)) {
+      const current = id ? (await store.listBrokers()).find((b) => b.id === id) : undefined;
+      if (id && !current) {
         return sendError(res, 404, 'Despachante não encontrado');
       }
+      const invalid = validateRecordAgainstDefs(
+        body as unknown as Record<string, unknown>,
+        await store.listFieldDefs('broker'),
+        current as unknown as Record<string, unknown> | undefined,
+      );
+      if (invalid) return sendError(res, 400, invalid);
       const data = await store.upsertBroker({ ...body, id });
       res.json({ success: true, data });
     } catch (err) {

@@ -5,6 +5,7 @@
  * Sessão JWT/CSRF: https://docs.portalunico.siscomex.gov.br/introducao-api-publica/
  */
 
+import { X509Certificate } from 'crypto';
 import fs from 'fs';
 import https from 'https';
 import tls from 'tls';
@@ -42,13 +43,26 @@ export interface PucomexSessionTokens {
   mode: 'live' | 'demo';
 }
 
+/**
+ * Perfil de credencial:
+ * - empresa: e-CNPJ VECTRA HUB (PUCOMEX_CERT_*, PUCOMEX_ROLE_TYPE; fallback Windows store)
+ * - representante: e-CPF do representante do importador (PUCOMEX_REP_CERT_*,
+ *   PUCOMEX_REP_ROLE_TYPE, padrão IMPEXP — só aceita e-CPF; sem fallback Windows)
+ */
+export type PucomexProfile = 'empresa' | 'representante';
+
 export interface PucomexClientStatus {
+  profile: PucomexProfile;
   certConfigured: boolean;
   certPath: string | null;
   certThumbprint: string | null;
   certSource: 'pfx' | 'windows-store' | null;
   /** Erro ao abrir o PFX com a senha (ex.: "mac verify failure"); null = ok ou não-PFX */
   certError: string | null;
+  /** Titular (CN) do certificado PFX, quando abre; null caso contrário. */
+  certSubject: string | null;
+  /** Validade (ISO) do certificado PFX, quando abre. */
+  certValidTo: string | null;
   liveModeEnabled: boolean;
   environment: PucomexEnvironmentId;
   baseUrl: string;
@@ -86,10 +100,24 @@ function parseBodyJson(bodyText: string): unknown {
   }
 }
 
+/**
+ * Mascara CPF (11 dígitos) e CNPJ (14) num texto — o CN do e-CPF é "NOME:CPF".
+ * Para respostas públicas (/status sem x-comex-token); uso interno fica com o valor completo.
+ */
+export function maskDocuments(text: string | null | undefined): string | null {
+  if (text === null || text === undefined) return null;
+  return text.replace(/\d[\d./-]*\d/g, (m) => {
+    const d = m.replace(/\D/g, '');
+    if (d.length === 11) return `***.${d.slice(3, 6)}.${d.slice(6, 9)}-**`;
+    if (d.length === 14) return `${d.slice(0, 2)}.${d.slice(2, 5)}.***/${d.slice(8, 12)}-**`;
+    return m;
+  });
+}
+
 /** Traduz erros do OpenSSL ao abrir PFX para algo acionável. */
-export function explainPfxError(message: string): string {
+export function explainPfxError(message: string, passwordEnv = 'PUCOMEX_CERT_PASSWORD'): string {
   if (/mac verify failure/i.test(message)) {
-    return `PFX não abre com PUCOMEX_CERT_PASSWORD (mac verify failure): senha errada ou arquivo .pfx corrompido (base64 remontado com erro). ${message}`;
+    return `PFX não abre com ${passwordEnv} (mac verify failure): senha errada ou arquivo .pfx corrompido (base64 remontado com erro). ${message}`;
   }
   if (/unsupported/i.test(message)) {
     return `PFX com algoritmo legado (RC2/3DES) não suportado pelo OpenSSL 3 — reexporte o certificado com AES-256. ${message}`;
@@ -102,12 +130,34 @@ export class PucomexClient {
   private lastAuthAttemptMs = 0;
   private pfxAgent: https.Agent | null = null;
   private pfxAgentKey = '';
-  private certCheck: { key: string; error: string | null } | null = null;
+  private certCheck: {
+    key: string;
+    error: string | null;
+    subject: string | null;
+    validTo: string | null;
+  } | null = null;
   private inflightAuth: Promise<Awaited<ReturnType<PucomexClient['authenticate']>>> | null = null;
+
+  constructor(readonly profile: PucomexProfile = 'empresa') {}
+
+  /** Nome da env do perfil: PUCOMEX_<X> (empresa) ou PUCOMEX_REP_<X> (representante). */
+  private envName(suffix: 'CERT_PFX_PATH' | 'CERT_PASSWORD' | 'ROLE_TYPE'): string {
+    return this.profile === 'representante' ? `PUCOMEX_REP_${suffix}` : `PUCOMEX_${suffix}`;
+  }
+
+  private env(suffix: 'CERT_PFX_PATH' | 'CERT_PASSWORD' | 'ROLE_TYPE'): string | undefined {
+    return process.env[this.envName(suffix)];
+  }
 
   /** Senha sem espaço/CRLF acidental do secret. */
   private getCertPassword(): string {
-    return (process.env.PUCOMEX_CERT_PASSWORD ?? '').trim();
+    return (this.env('CERT_PASSWORD') ?? '').trim();
+  }
+
+  /** Titular (CN) e validade do PFX — só depois de getCertError() abrir o arquivo. */
+  private getCertInfo(): { subject: string | null; validTo: string | null } {
+    if (this.getCertError() !== null || !this.certCheck) return { subject: null, validTo: null };
+    return { subject: this.certCheck.subject, validTo: this.certCheck.validTo };
   }
 
   /**
@@ -126,12 +176,25 @@ export class PucomexClient {
     }
     if (this.certCheck?.key === key) return this.certCheck.error;
     let error: string | null = null;
+    let subject: string | null = null;
+    let validTo: string | null = null;
     try {
-      tls.createSecureContext({ pfx: fs.readFileSync(certPath), passphrase: this.getCertPassword() });
+      const ctx = tls.createSecureContext({ pfx: fs.readFileSync(certPath), passphrase: this.getCertPassword() });
+      try {
+        // API interna do Node (SecureContext.getCertificate → DER); só informativo.
+        const der = (ctx as unknown as { context?: { getCertificate?: () => Buffer | null } }).context?.getCertificate?.();
+        if (der) {
+          const x = new X509Certificate(der);
+          subject = /(?:^|\n)CN=([^\n]+)/.exec(x.subject)?.[1] ?? x.subject;
+          validTo = new Date(x.validTo).toISOString();
+        }
+      } catch {
+        /* titular/validade indisponíveis — não é erro do PFX */
+      }
     } catch (err) {
-      error = explainPfxError(err instanceof Error ? err.message : String(err));
+      error = explainPfxError(err instanceof Error ? err.message : String(err), this.envName('CERT_PASSWORD'));
     }
-    this.certCheck = { key, error };
+    this.certCheck = { key, error, subject, validTo };
     return error;
   }
 
@@ -149,16 +212,19 @@ export class PucomexClient {
   }
 
   getRoleType(): PucomexRoleType {
-    const raw = (process.env.PUCOMEX_ROLE_TYPE || DEFAULT_PUCOMEX_ROLE).toUpperCase();
-    return (raw as PucomexRoleType) || DEFAULT_PUCOMEX_ROLE;
+    const fallback: PucomexRoleType = this.profile === 'representante' ? 'IMPEXP' : DEFAULT_PUCOMEX_ROLE;
+    const raw = (this.env('ROLE_TYPE')?.trim() || fallback).toUpperCase();
+    return (raw as PucomexRoleType) || fallback;
   }
 
   getCertPath(): string | null {
-    const p = process.env.PUCOMEX_CERT_PFX_PATH?.trim();
+    const p = this.env('CERT_PFX_PATH')?.trim();
     return p || null;
   }
 
   getCertThumbprint(): string | null {
+    // Representante (e-CPF) só por PFX — sem certificado do Windows.
+    if (this.profile === 'representante') return null;
     const t = (process.env.PUCOMEX_CERT_THUMBPRINT || '').replace(/\s/g, '').toUpperCase();
     if (t) return t;
     // Default: VECTRA HUB no store local quando em Windows
@@ -170,7 +236,7 @@ export class PucomexClient {
 
   getCertSource(): 'pfx' | 'windows-store' | null {
     const p = this.getCertPath();
-    if (p && fs.existsSync(p) && process.env.PUCOMEX_CERT_PASSWORD !== undefined) return 'pfx';
+    if (p && fs.existsSync(p) && this.env('CERT_PASSWORD') !== undefined) return 'pfx';
     if (this.getCertThumbprint() && process.platform === 'win32') return 'windows-store';
     return null;
   }
@@ -188,12 +254,16 @@ export class PucomexClient {
   getStatus(): PucomexClientStatus {
     const env = this.getEnvironmentId();
     const source = this.getCertSource();
+    const info = this.getCertInfo();
     return {
+      profile: this.profile,
       certConfigured: this.isCertConfigured(),
       certPath: this.getCertPath(),
       certThumbprint: this.getCertThumbprint(),
       certSource: source,
       certError: this.getCertError(),
+      certSubject: info.subject,
+      certValidTo: info.validTo,
       liveModeEnabled: this.isLiveModeEnabled(),
       environment: env,
       baseUrl: this.getBaseUrl(),
@@ -209,6 +279,18 @@ export class PucomexClient {
     };
   }
 
+  /** Status para a rota pública /status: titular com CPF/CNPJ mascarado. */
+  getStatusMasked(): PucomexClientStatus {
+    const st = this.getStatus();
+    return { ...st, certSubject: maskDocuments(st.certSubject) };
+  }
+
+  /** Sessão para a rota pública /status: documento do titular mascarado. */
+  getSessionMasked(): ReturnType<PucomexClient['getSessionPublic']> {
+    const s = this.getSessionPublic();
+    return s ? { ...s, cnpjeCPF: maskDocuments(s.cnpjeCPF) ?? '' } : null;
+  }
+
   getSessionPublic() {
     if (!this.session) return null;
     return {
@@ -219,10 +301,12 @@ export class PucomexClient {
       csrfExpiresAt: new Date(this.session.csrfExpirationMs).toISOString(),
       tokenPreview: `${this.session.authorization.slice(0, 16)}…`,
       cnpjeCPF:
-        process.env.PUCOMEX_CNPJ_LABEL ||
-        (this.getCertSource() === 'windows-store'
-          ? VECTRA_HUB_CNPJ_LABEL_DEFAULT
-          : 'Certificado ICP-Brasil (servidor)'),
+        this.profile === 'representante'
+          ? process.env.PUCOMEX_REP_LABEL || this.getCertInfo().subject || 'e-CPF do representante (servidor)'
+          : process.env.PUCOMEX_CNPJ_LABEL ||
+            (this.getCertSource() === 'windows-store'
+              ? VECTRA_HUB_CNPJ_LABEL_DEFAULT
+              : 'Certificado ICP-Brasil (servidor)'),
       role: this.session.roleType,
     };
   }
@@ -442,7 +526,9 @@ export class PucomexClient {
         session: this.getSessionPublic(),
         mode: 'demo',
         error:
-          'Certificado não configurado (PFX ou PUCOMEX_CERT_THUMBPRINT / VECTRA HUB no Windows). Sessão DEMO ativa.',
+          this.profile === 'representante'
+            ? 'e-CPF do representante não configurado (PUCOMEX_REP_CERT_PFX_PATH + PUCOMEX_REP_CERT_PASSWORD). Sessão DEMO ativa.'
+            : 'Certificado não configurado (PFX ou PUCOMEX_CERT_THUMBPRINT / VECTRA HUB no Windows). Sessão DEMO ativa.',
         code: 'PUCOMEX_DEMO_MODE',
       };
     }
@@ -629,6 +715,43 @@ export class PucomexClient {
     }
   }
 
+  /**
+   * Tratamento administrativo (LPCO/anuentes) da importação — serviço documentado e autenticado.
+   * fundamentoLegal NAO_SE_APLICA = importação comum (mesmo valor que a tela do Portal usa).
+   */
+  simulateTaImport(ncm: string, paisIso2: string) {
+    return this.apiRequest('POST', '/talpco/api/ext/simular-ta/importacao', {
+      pais: paisIso2,
+      condicaoMercadoria: 'NOVA',
+      ncm: ncm.replace(/\D/g, ''),
+      atributos: [],
+      fundamentoLegal: 'NAO_SE_APLICA',
+      camposAdicionais: [],
+    });
+  }
+
+  private ttceCache = new Map<string, unknown>();
+
+  /** Tratamentos tributários do capítulo (TTCE em lote): obtém o hash do dia e baixa o arquivo (cache por hash). */
+  async ttceChapter(capitulo: string, data: string): Promise<{ status: number; data: unknown; mode: 'live' | 'demo' }> {
+    const cap = capitulo.padStart(2, '0').slice(0, 2);
+    const h = await this.apiRequest('GET', `/ttce/api/ext/importacao/ncm-capitulos/${cap}/hash?data=${data}`);
+    if (h.mode === 'demo' || h.status >= 400) return { status: h.status, data: h.data, mode: h.mode };
+    const hash = String((h.data as { hash?: string } | null)?.hash ?? '');
+    if (!hash) return { status: 502, data: { error: 'TTCE não devolveu hash do capítulo' }, mode: 'live' };
+    const key = `${cap}|${hash}`;
+    if (this.ttceCache.has(key)) return { status: 200, data: this.ttceCache.get(key), mode: 'live' };
+    const f = await this.apiRequest(
+      'GET',
+      `/ttce/api/ext/importacao/ncm-capitulos/${cap}/tratamentos-tributarios?data=${data}&hash=${encodeURIComponent(hash)}`,
+    );
+    if (f.status < 400) {
+      this.ttceCache.clear(); // guarda só o capítulo mais recente (arquivos grandes)
+      this.ttceCache.set(key, f.data);
+    }
+    return { status: f.status, data: f.data, mode: f.mode };
+  }
+
   consultCatalogoProduto(query: Record<string, string> = {}) {
     const qs = new URLSearchParams(query).toString();
     const path = `/catalogo-produtos-ext/api/ext/produto${qs ? `?${qs}` : ''}`;
@@ -636,4 +759,7 @@ export class PucomexClient {
   }
 }
 
-export const pucomexClient = new PucomexClient();
+/** e-CNPJ VECTRA HUB (OPERPORT) — perfil padrão de todas as consultas. */
+export const pucomexClient = new PucomexClient('empresa');
+/** e-CPF do representante do importador (IMPEXP) — TA/LPCO e TTCE de importação. */
+export const pucomexRepClient = new PucomexClient('representante');

@@ -168,3 +168,141 @@ describe('rotas de clientes/despachantes/radar', () => {
     expect((await api('PUT', `/api/comex/processes/${p.id}`, { cliente_id: 'nope', payload: {} })).status).toBe(404);
   });
 });
+
+describe('POST /api/comex/ncm/tratamentos', () => {
+  it('junta TA + TTCE + documentos pelo Radar do cliente; erros do Portal viram mensagem', async () => {
+    const { pucomexClient } = await import('../core/comex/pucomexClient');
+    const { vi } = await import('vitest');
+    const ta = vi.spyOn(pucomexClient, 'simulateTaImport').mockResolvedValue({
+      status: 200, mode: 'live', path: '/talpco',
+      data: [{ numeroTa: 'I0927', tipoTratamento: 'Requer LPCO', orgao: 'INMETRO', impedeDesembaraco: true,
+        modelos: [{ codigo: 'I00014', nome: 'Registro de objeto', preenchimento: 'Ambos' }], efeitos: [] }],
+    });
+    const tt = vi.spyOn(pucomexClient, 'ttceChapter').mockResolvedValue({ status: 401, mode: 'live', data: { message: 'Usuário não autenticado' } });
+    try {
+      const c = await (await api('POST', '/api/comex/clients', { cnpj_root: '60450605', legal_name: 'RM ACADEMIA LTDA', radar_modality: 'limitada_50k' })).json();
+      const r = await (await api('POST', '/api/comex/ncm/tratamentos', { ncmCode: '9506.91.00', country: 'China (CN)', clienteId: c.data.id })).json();
+      expect(ta).toHaveBeenCalledWith('95069100', 'CN');
+      expect(r.data.ta.exigeLpco).toBe(true);
+      expect(r.data.ttce).toBeNull();
+      expect(r.data.ttceError).toMatch(/Portal HTTP 401/);
+      expect(r.data.documentos).toContain('DI (Radar Limitado — DUIMP indisponível)');
+      expect(r.data.documentos.some((d: string) => d.startsWith('LPCO INMETRO'))).toBe(true);
+      expect(r.data.simuladorUrl).toMatch(/receita\.fazenda/);
+    } finally {
+      ta.mockRestore();
+      tt.mockRestore();
+    }
+  });
+
+  it('NCM inválida → 400; sem token → 401', async () => {
+    expect((await api('POST', '/api/comex/ncm/tratamentos', { ncmCode: '9506' })).status).toBe(400);
+    expect((await api('POST', '/api/comex/ncm/tratamentos', { ncmCode: '95069100' }, {})).status).toBe(401);
+  });
+});
+
+describe('cadastros 100% metadado (field-defs client/broker)', () => {
+  const defsOf = async (entity: string) =>
+    (await (await api('GET', `/api/comex/field-defs?entity=${entity}`)).json()).data as Array<{
+      id: string;
+      entity: string;
+      field_key: string;
+      label: string;
+      data_type: string;
+      enum_options: { value: string; label: string }[];
+      ui_group: string | null;
+    }>;
+
+  it('GET ?entity=client devolve os defs do seed com grupo', async () => {
+    const defs = await defsOf('client');
+    expect(defs.length).toBe(17);
+    expect(defs.every((d) => d.entity === 'client')).toBe(true);
+    expect(defs.find((d) => d.field_key === 'radar_modality')?.ui_group).toBe('Radar');
+    const broker = await defsOf('broker');
+    expect(broker.map((d) => d.field_key)).toContain('name');
+  });
+
+  it('cliente com radar_status fora das opções → 400', async () => {
+    const r = await api('POST', '/api/comex/clients', { cnpj_root: '60450605', legal_name: 'X', radar_status: 'xyz' });
+    expect(r.status).toBe(400);
+    expect((await r.json()).error).toMatch(/Situação/);
+    const ok = await api('POST', '/api/comex/clients', { cnpj_root: '60450605', legal_name: 'X', radar_status: 'suspensa' });
+    expect(ok.status).toBe(200);
+  });
+
+  it('mudar valores de radar_modality → 400; mudar só rótulo/ordem → ok', async () => {
+    const m = (await defsOf('client')).find((d) => d.field_key === 'radar_modality')!;
+    const bad = await api('PUT', `/api/comex/field-defs/${m.id}`, {
+      ...m,
+      enum_options: [...m.enum_options, { value: 'nova', label: 'Nova' }],
+    });
+    expect(bad.status).toBe(400);
+    expect((await bad.json()).error).toMatch(/Radar/);
+    const badPost = await api('POST', '/api/comex/field-defs', {
+      ...m,
+      id: undefined,
+      enum_options: m.enum_options.slice(1),
+    });
+    expect(badPost.status).toBe(400);
+    const relabeled = m.enum_options.map((o) => ({ ...o, label: `${o.label}!` })).reverse();
+    const ok = await api('PUT', `/api/comex/field-defs/${m.id}`, { ...m, label: 'Modalidade Radar', enum_options: relabeled });
+    expect(ok.status).toBe(200);
+    const after = (await defsOf('client')).find((d) => d.field_key === 'radar_modality')!;
+    expect(after.label).toBe('Modalidade Radar');
+    expect(after.enum_options[0].label).toBe('Ilimitada!');
+  });
+
+  it('DELETE de campo de sistema → 409; criar campo client fora das colunas → 400', async () => {
+    const notes = (await defsOf('client')).find((d) => d.field_key === 'notes')!;
+    const del = await api('DELETE', `/api/comex/field-defs/${notes.id}`);
+    expect(del.status).toBe(409);
+    expect((await del.json()).error).toBe('Campo de sistema não pode ser excluído (é coluna da tabela)');
+    const create = await api('POST', '/api/comex/field-defs', {
+      entity: 'client',
+      field_key: 'inexistente',
+      label: 'Inexistente',
+      data_type: 'text',
+    });
+    expect(create.status).toBe(400);
+    const procField = await api('POST', '/api/comex/field-defs', {
+      entity: 'process',
+      field_key: 'campo_livre',
+      label: 'Livre',
+      data_type: 'text',
+    });
+    expect(procField.status).toBe(200);
+    const id = (await procField.json()).data.id;
+    expect((await api('DELETE', `/api/comex/field-defs/${id}`)).status).toBe(200);
+  });
+
+  it('obrigatório do backend não pode ficar oculto nem opcional (400)', async () => {
+    const legal = (await defsOf('client')).find((d) => d.field_key === 'legal_name')!;
+    expect((await api('PUT', `/api/comex/field-defs/${legal.id}`, { ui_form: false })).status).toBe(400);
+    expect((await api('PUT', `/api/comex/field-defs/${legal.id}`, { required: false })).status).toBe(400);
+    expect((await api('PUT', `/api/comex/field-defs/${legal.id}`, { label: 'Razão social (nome empresarial)' })).status).toBe(200);
+    const name = (await defsOf('broker')).find((d) => d.field_key === 'name')!;
+    expect((await api('PUT', `/api/comex/field-defs/${name.id}`, { ui_form: false })).status).toBe(400);
+    const notes = (await defsOf('client')).find((d) => d.field_key === 'notes')!;
+    expect((await api('PUT', `/api/comex/field-defs/${notes.id}`, { ui_form: false })).status).toBe(200);
+  });
+
+  it('valor antigo fora das opções continua salvável se não mudou', async () => {
+    const c = await mkClient({ rep_role_type: 'IMPEXP' });
+    const role = (await defsOf('client')).find((d) => d.field_key === 'rep_role_type')!;
+    // a opção IMPEXP sai da lista: o valor gravado vira "antigo"
+    const ok = await api('PUT', `/api/comex/field-defs/${role.id}`, {
+      enum_options: role.enum_options.filter((o) => o.value !== 'IMPEXP'),
+    });
+    expect(ok.status).toBe(200);
+    const keep = await api('PUT', `/api/comex/clients/${c.id}`, {
+      cnpj_root: '60450605',
+      legal_name: 'RM ACADEMIA LTDA',
+      rep_role_type: 'IMPEXP',
+      notes: 'só mudei a nota',
+    });
+    expect(keep.status).toBe(200);
+    const fresh = await api('POST', '/api/comex/clients', { cnpj_root: '11111111', legal_name: 'Novo', rep_role_type: 'IMPEXP' });
+    expect(fresh.status).toBe(400);
+  });
+});
+

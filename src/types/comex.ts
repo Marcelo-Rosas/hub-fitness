@@ -4,7 +4,7 @@ export type ComexOperationType = 'exportacao' | 'importacao';
 
 export type ComexIncoterm = 'FOB' | 'CIF' | 'FCA' | 'DDP' | 'EXW';
 
-export type ComexFieldEntity = 'process' | 'document';
+export type ComexFieldEntity = 'process' | 'document' | 'client' | 'broker';
 export type ComexFieldDataType = 'text' | 'number' | 'date' | 'enum' | 'boolean' | 'json';
 export type ComexFieldWidget =
   | 'text'
@@ -15,7 +15,9 @@ export type ComexFieldWidget =
   | 'date'
   | 'client'
   | 'ncm'
-  | 'customs';
+  | 'customs'
+  /** Opções = despachantes ativos (dinâmico). */
+  | 'broker';
 
 export interface ComexEnumOption {
   value: string;
@@ -35,6 +37,8 @@ export interface ComexFieldDefInput {
   consult_key?: boolean;
   kpi?: string | null;
   sort_order?: number;
+  /** Seção do formulário de cadastro (ex.: 'Empresa', 'Radar'). */
+  ui_group?: string | null;
 }
 
 export interface ComexFieldDef extends ComexFieldDefInput {
@@ -47,6 +51,7 @@ export interface ComexFieldDef extends ComexFieldDefInput {
   consult_key: boolean;
   kpi: string | null;
   sort_order: number;
+  ui_group: string | null;
 }
 
 export interface ComexDocumentRecord {
@@ -175,6 +180,17 @@ export interface PucomexPortalStatus {
   certSource?: 'pfx' | 'windows-store' | null;
   /** Erro ao abrir o PFX (ex.: mac verify failure) — null quando ok */
   certError?: string | null;
+  /** 'empresa' (e-CNPJ) ou 'representante' (e-CPF IMPEXP) */
+  profile?: 'empresa' | 'representante';
+  /** Titular (CN) e validade (ISO) do PFX, quando abre */
+  certSubject?: string | null;
+  certValidTo?: string | null;
+}
+
+/** Bloco do representante em GET /api/comex/pucomex/status. */
+export interface PucomexRepresentativeStatus {
+  status: PucomexPortalStatus;
+  session: { csrfExpiresAt?: string; mode?: 'live' | 'demo'; authenticatedAt?: string } | null;
 }
 
 export interface ComexGuardStatus {

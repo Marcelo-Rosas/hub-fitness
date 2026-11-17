@@ -14,4 +14,14 @@ if [ -n "$PUCOMEX_CERT_PFX_B64_1" ]; then
 fi
 unset PUCOMEX_CERT_PFX_B64_1 PUCOMEX_CERT_PFX_B64_2 PUCOMEX_CERT_PFX_B64_3
 
+# Segunda credencial: e-CPF do representante do importador (Role-Type IMPEXP,
+# que só aceita e-CPF). Mesmo esquema: PUCOMEX_REP_CERT_PFX_B64_1..3.
+if [ -n "$PUCOMEX_REP_CERT_PFX_B64_1" ]; then
+  umask 077
+  printf '%s%s%s' "$PUCOMEX_REP_CERT_PFX_B64_1" "${PUCOMEX_REP_CERT_PFX_B64_2:-}" "${PUCOMEX_REP_CERT_PFX_B64_3:-}" \
+    | tr -d ' \t\r\n' | base64 -d > /tmp/pucomex-rep-cert.pfx
+  export PUCOMEX_REP_CERT_PFX_PATH=/tmp/pucomex-rep-cert.pfx
+fi
+unset PUCOMEX_REP_CERT_PFX_B64_1 PUCOMEX_REP_CERT_PFX_B64_2 PUCOMEX_REP_CERT_PFX_B64_3
+
 exec "$@"

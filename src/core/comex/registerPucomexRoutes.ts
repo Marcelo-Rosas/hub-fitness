@@ -16,7 +16,7 @@ import {
   TABADU_VALIDACAO,
   type PucomexRoleType,
 } from './environments';
-import { pucomexClient } from './pucomexClient';
+import { pucomexClient, pucomexRepClient } from './pucomexClient';
 import { comexGateway, comexGuardStatus } from './comexGuard';
 import {
   consultValueFromProcess,
@@ -29,7 +29,54 @@ import { extractProcessFromPdfs, mergeExtracted } from './pdfExtract';
 import { ingestPdfBuffer } from './pdfIngest';
 import { comexErrorStatus, registerComexClientRoutes } from './registerComexClientRoutes';
 import { computeRadarUsage, processRadarDate, type RadarUsage } from './radarUsage';
-import type { ComexProcessRecord } from '../../types/comex';
+import {
+  buildRequiredDocuments,
+  ISO2_TO_SISCOMEX,
+  parseCountryIso2,
+  parseTtceFile,
+  SIMULADOR_RECEITA_URL,
+  summarizeTa,
+  ttceDiagnostics,
+  ttceForNcm,
+} from './comexTreatments';
+import {
+  isRegistryEntity,
+  isRequiredSystemField,
+  isSystemField,
+  lockedOptionsError,
+  REGISTRY_COLUMNS,
+  todayYmd,
+} from './comexRegistry';
+import type { ComexFieldDef, ComexFieldDefInput, ComexProcessRecord } from '../../types/comex';
+
+const FIELD_ENTITIES = ['process', 'document', 'client', 'broker'];
+
+/** Erro do Portal legível: "message (code)" quando o corpo é JSON; senão o texto cortado. */
+function portalErrorText(data: unknown): string {
+  const body = data as { message?: unknown; code?: unknown } | null;
+  if (body && typeof body === 'object' && typeof body.message === 'string') {
+    return body.code ? `${body.message} (${String(body.code)})` : body.message;
+  }
+  return (typeof data === 'string' ? data : JSON.stringify(data)).slice(0, 300);
+}
+
+/** Regras de metadado de cliente/despachante: entidade, coluna real, valores travados. */
+function fieldDefError(def: ComexFieldDefInput, existing?: ComexFieldDef): string | null {
+  if (!FIELD_ENTITIES.includes(def.entity)) return `Entidade inválida: ${def.entity}`;
+  if (existing && isSystemField(existing.entity, existing.field_key)) {
+    if (existing.entity !== def.entity || existing.field_key !== def.field_key) {
+      return 'Campo de sistema não pode mudar de entidade nem de chave';
+    }
+  }
+  if (isRegistryEntity(def.entity) && !REGISTRY_COLUMNS[def.entity].includes(def.field_key)) {
+    const nome = def.entity === 'client' ? 'cliente' : 'despachante';
+    return `Campo "${def.field_key}" não é coluna do cadastro de ${nome} — não há onde gravar`;
+  }
+  if (isRequiredSystemField(def.entity, def.field_key) && (def.ui_form === false || def.required !== true)) {
+    return `Campo "${def.label || def.field_key}" é exigido pelo cadastro — não pode ficar oculto nem opcional`;
+  }
+  return lockedOptionsError(def);
+}
 
 function defaultDocsRoot(): string {
   return process.env.COMEX_DOCS_ROOT || 'D:\\Comex';
@@ -99,8 +146,10 @@ export function registerPucomexRoutes(app: Express): void {
     const store = await storeOf();
     res.json({
       success: true,
-      status: pucomexClient.getStatus(),
-      session: pucomexClient.getSessionPublic(),
+      // Rota pública (sem x-comex-token): CPF/CNPJ do titular mascarados.
+      status: pucomexClient.getStatusMasked(),
+      session: pucomexClient.getSessionMasked(),
+      representante: { status: pucomexRepClient.getStatusMasked(), session: pucomexRepClient.getSessionMasked() },
       guard: comexGuardStatus(),
       environments: PUCOMEX_ENVIRONMENTS,
       roleTypes: PUCOMEX_ROLE_TYPES,
@@ -134,7 +183,11 @@ export function registerPucomexRoutes(app: Express): void {
       }
       roleType = code as PucomexRoleType;
     }
-    const result = await pucomexClient.authenticate(force, roleType);
+    // Autentica os dois perfis configurados; roleType do corpo vale só para a empresa.
+    const [result, rep] = await Promise.all([
+      pucomexClient.authenticate(force, roleType),
+      pucomexRepClient.isCertConfigured() ? pucomexRepClient.authenticate(force) : Promise.resolve(null),
+    ]);
     const status = result.success ? 200 : result.code === 'PUCOMEX_AUTH_THROTTLE' ? 429 : 401;
     res.status(result.mode === 'demo' && result.success ? 200 : status).json({
       success: result.success || result.mode === 'demo',
@@ -143,6 +196,16 @@ export function registerPucomexRoutes(app: Express): void {
       error: result.error,
       code: result.code,
       portalStatus: pucomexClient.getStatus(),
+      representante: rep
+        ? {
+            success: rep.success,
+            mode: rep.mode,
+            session: rep.session,
+            error: rep.error,
+            code: rep.code,
+            portalStatus: pucomexRepClient.getStatus(),
+          }
+        : null,
     });
   });
 
@@ -232,6 +295,63 @@ export function registerPucomexRoutes(app: Express): void {
     }
   });
 
+  // Tratamentos da NCM: administrativo (LPCO/anuentes) + tributário (TTCE) + documentos pelo Radar do cliente
+  app.post('/api/comex/ncm/tratamentos', async (req, res) => {
+    try {
+      const ncm = String(req.body?.ncmCode || '').replace(/\D/g, '');
+      if (ncm.length !== 8) return sendError(res, 400, 'ncmCode deve ter 8 dígitos');
+      const paisIso2 = parseCountryIso2(String(req.body?.country || '')) ?? 'CN';
+      const clienteId = typeof req.body?.clienteId === 'string' ? req.body.clienteId : '';
+      const client = clienteId ? await (await storeOf()).getClient(clienteId) : null;
+
+      // IMPEXP (e-CPF do representante) quando configurado; senão a empresa (OPERPORT).
+      const perfilUsado =
+        pucomexRepClient.isLiveModeEnabled() && !pucomexRepClient.getCertError() ? 'representante' : 'empresa';
+      const portal = perfilUsado === 'representante' ? pucomexRepClient : pucomexClient;
+      const [taRes, ttceRes] = await Promise.allSettled([
+        portal.simulateTaImport(ncm, paisIso2),
+        portal.ttceChapter(ncm.slice(0, 2), todayYmd()),
+      ]);
+      const errorOf = (r: PromiseSettledResult<{ status: number; data: unknown; mode: string }>) =>
+        r.status === 'rejected'
+          ? String((r.reason as Error)?.message ?? r.reason)
+          : r.value.mode === 'demo'
+            ? 'Modo DEMO — sem consulta ao Portal'
+            : r.value.status >= 400
+              ? `Portal HTTP ${r.value.status}: ${portalErrorText(r.value.data)}`
+              : null;
+
+      const paisCodigo = ISO2_TO_SISCOMEX[paisIso2] ?? null;
+      const taError = errorOf(taRes);
+      const ta = !taError && taRes.status === 'fulfilled' ? summarizeTa(taRes.value.data) : null;
+      const ttceError = errorOf(ttceRes);
+      const ttceRaw = !ttceError && ttceRes.status === 'fulfilled' ? ttceRes.value.data : undefined;
+      const ttce = ttceRaw !== undefined ? ttceForNcm(parseTtceFile(ttceRaw), ncm, paisCodigo) : null;
+      const ttceVazio = !!ttce && ttce.tributos.length === 0 && ttce.normais.length === 0 && ttce.opcionais.length === 0;
+      const ttceDiag = ttceVazio ? ttceDiagnostics(ttceRaw, ncm, paisCodigo) : undefined;
+
+      return res.json({
+        success: true,
+        data: {
+          ncm,
+          paisIso2,
+          cliente: client ? { id: client.id, legal_name: client.legal_name, radar_modality: client.radar_modality } : null,
+          ta,
+          taError,
+          ttce,
+          ttceError,
+          ttceDiag,
+          perfilUsado,
+          ttcePaisConhecido: ISO2_TO_SISCOMEX[paisIso2] != null,
+          documentos: buildRequiredDocuments({ radarModality: client?.radar_modality ?? null, ta }),
+          simuladorUrl: SIMULADOR_RECEITA_URL,
+        },
+      });
+    } catch (err: unknown) {
+      return sendError(res, 500, err instanceof Error ? err.message : String(err));
+    }
+  });
+
   app.post('/api/comex/catalogo/consult', async (req, res) => {
     try {
       const query = (req.body?.query || {}) as Record<string, string>;
@@ -301,18 +421,32 @@ export function registerPucomexRoutes(app: Express): void {
       return sendError(res, 400, 'entity, field_key, label e data_type obrigatórios');
     }
     const store = await storeOf();
+    const existing = (await store.listFieldDefs(body.entity)).find((f) => f.field_key === body.field_key);
+    const invalid = fieldDefError(body, existing);
+    if (invalid) return sendError(res, 400, invalid);
     const data = await store.upsertFieldDef(body);
     res.json({ success: true, data });
   });
 
   app.put('/api/comex/field-defs/:id', async (req, res) => {
     const store = await storeOf();
-    const data = await store.upsertFieldDef({ ...req.body, id: req.params.id });
+    const existing = (await store.listFieldDefs()).find((f) => f.id === req.params.id);
+    const merged = { ...(existing || {}), ...(req.body || {}), id: req.params.id } as ComexFieldDefInput & { id: string };
+    if (!merged.entity || !merged.field_key || !merged.label || !merged.data_type) {
+      return sendError(res, 400, 'entity, field_key, label e data_type obrigatórios');
+    }
+    const invalid = fieldDefError(merged, existing);
+    if (invalid) return sendError(res, 400, invalid);
+    const data = await store.upsertFieldDef(merged);
     res.json({ success: true, data });
   });
 
   app.delete('/api/comex/field-defs/:id', async (req, res) => {
     const store = await storeOf();
+    const existing = (await store.listFieldDefs()).find((f) => f.id === req.params.id);
+    if (existing && isSystemField(existing.entity, existing.field_key)) {
+      return sendError(res, 409, 'Campo de sistema não pode ser excluído (é coluna da tabela)');
+    }
     const ok = await store.deleteFieldDef(req.params.id);
     if (!ok) return sendError(res, 404, 'Campo não encontrado');
     res.json({ success: true });

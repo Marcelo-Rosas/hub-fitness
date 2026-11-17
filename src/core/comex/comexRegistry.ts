@@ -2,10 +2,126 @@
  * Normalização/validação PURA do cadastro de clientes Comex.
  * Sem imports node:* — o front React importa defaultRadarLimit daqui.
  */
-import type { ComexClientInput, ComexRadarModality, ComexRepStatus } from '../../types/comex';
+import type {
+  ComexClientInput,
+  ComexEnumOption,
+  ComexFieldDef,
+  ComexFieldDefInput,
+  ComexRadarModality,
+  ComexRepStatus,
+} from '../../types/comex';
 
 const MODALITIES: ComexRadarModality[] = ['expressa', 'limitada_50k', 'limitada_150k', 'ilimitada'];
 const REP_STATUSES: ComexRepStatus[] = ['pendente', 'ativa', 'vencida', 'revogada'];
+
+/**
+ * Valores de enum que o código usa (cálculo do Radar, aviso de DI, CHECKs das
+ * tabelas). Pelo painel Campos só rótulo e ordem mudam — o conjunto não.
+ */
+export const LOCKED_ENUM_VALUES: Record<string, Record<string, string[]>> = {
+  client: { radar_modality: [...MODALITIES], rep_status: [...REP_STATUSES] },
+};
+
+/** Colunas editáveis das tabelas comex_clients/comex_brokers (campos de sistema). */
+export const REGISTRY_COLUMNS: Record<'client' | 'broker', readonly string[]> = {
+  client: [
+    'cnpj_root',
+    'cnpj',
+    'legal_name',
+    'trade_name',
+    'radar_status',
+    'radar_modality',
+    'radar_limit_usd',
+    'radar_operations',
+    'radar_legal_basis',
+    'radar_checked_at',
+    'rep_status',
+    'rep_certificate',
+    'rep_role_type',
+    'rep_valid_from',
+    'rep_valid_to',
+    'broker_id',
+    'notes',
+  ],
+  broker: ['name', 'cpf', 'rfb_registry', 'email', 'phone', 'active'],
+};
+
+/** Campos que o backend exige no cadastro: não podem ficar ocultos nem opcionais. */
+export const REQUIRED_SYSTEM_FIELDS: Record<'client' | 'broker', readonly string[]> = {
+  client: ['cnpj_root', 'legal_name'],
+  broker: ['name'],
+};
+
+export function isRequiredSystemField(entity: unknown, fieldKey: unknown): boolean {
+  return isRegistryEntity(entity) && REQUIRED_SYSTEM_FIELDS[entity].includes(String(fieldKey));
+}
+
+export function isRegistryEntity(entity: unknown): entity is 'client' | 'broker' {
+  return entity === 'client' || entity === 'broker';
+}
+
+/** Campo de sistema = def client/broker cujo field_key é coluna da tabela. */
+export function isSystemField(entity: unknown, fieldKey: unknown): boolean {
+  return isRegistryEntity(entity) && REGISTRY_COLUMNS[entity].includes(String(fieldKey));
+}
+
+export function isLockedField(entity: unknown, fieldKey: unknown): boolean {
+  return Boolean(LOCKED_ENUM_VALUES[String(entity)]?.[String(fieldKey)]);
+}
+
+/**
+ * Recusa mudança no conjunto de valores (ou no tipo) de um campo travado.
+ * Rótulo e ordem das opções podem mudar.
+ */
+export function lockedOptionsError(
+  def: Pick<ComexFieldDefInput, 'entity' | 'field_key' | 'data_type'> & {
+    enum_options?: ComexEnumOption[];
+    label?: string;
+  },
+): string | null {
+  const locked = LOCKED_ENUM_VALUES[def.entity]?.[def.field_key];
+  if (!locked) return null;
+  const msg = `Os valores de "${def.label || def.field_key}" são usados pelo cálculo do Radar — só rótulo e ordem podem mudar (${locked.join(', ')})`;
+  if (def.data_type !== 'enum') return msg;
+  const values = (def.enum_options || []).map((o) => String(o.value));
+  const same = values.length === locked.length && new Set(values).size === locked.length && locked.every((v) => values.includes(v));
+  return same ? null : msg;
+}
+
+function isEmptyValue(v: unknown): boolean {
+  return v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
+}
+
+/**
+ * Valida um registro (cliente/despachante) contra o metadado: obrigatórios
+ * presentes e enum fechado (data_type 'enum') com valor dentro das opções.
+ * Lista aberta (widget select + data_type text) aceita valor novo; widget
+ * 'broker' tem opções dinâmicas e é ignorado. No update, `existing` (registro
+ * gravado) libera valor antigo que não mudou mesmo fora das opções atuais.
+ */
+export function validateRecordAgainstDefs(
+  input: Record<string, unknown>,
+  defs: ComexFieldDef[],
+  existing?: Record<string, unknown> | null,
+): string | null {
+  for (const def of defs) {
+    if (def.widget === 'broker') continue;
+    const value = input[def.field_key];
+    if (isEmptyValue(value)) {
+      if (def.required) return `Campo obrigatório: ${def.label}`;
+      continue;
+    }
+    if (def.data_type === 'enum' && (def.enum_options || []).length > 0) {
+      const v = String(value).trim();
+      const stored = existing?.[def.field_key];
+      if (stored !== undefined && stored !== null && String(stored).trim() === v) continue;
+      if (!def.enum_options.some((o) => String(o.value) === v)) {
+        return `Valor inválido para ${def.label}: ${v}`;
+      }
+    }
+  }
+  return null;
+}
 
 /**
  * Teto padrão por modalidade (US$/6 meses). Expressa e Ilimitada = sem teto:

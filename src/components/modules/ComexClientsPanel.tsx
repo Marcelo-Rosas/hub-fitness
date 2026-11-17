@@ -3,13 +3,14 @@ import { Building2, Edit2, Plus, RefreshCw, Trash2, UserCheck } from 'lucide-rea
 import type {
   ComexBrokerRecord,
   ComexClientRecord,
+  ComexFieldDef,
   ComexRadarModality,
-  ComexRepStatus,
 } from '../../types/comex';
 import type { RadarUsage } from '../../core/comex/radarUsage';
 import { declarationRouteNote, defaultRadarLimit } from '../../core/comex/comexRegistry';
 import { comexFetch } from './comexOperatorToken';
 import { RadarUsageBadge } from './RadarUsageBadge';
+import { RegistryMetaForm, optionLabel, type RegistryValue } from './RegistryMetaForm';
 
 type Fetcher = (path: string, init?: RequestInit) => Promise<Response>;
 
@@ -19,103 +20,45 @@ interface ComexClientsPanelProps {
   fetcher?: Fetcher;
 }
 
-const RADAR_STATUS_OPTIONS = [
-  { value: 'habilitada', label: 'Habilitada' },
-  { value: 'suspensa', label: 'Suspensa' },
-  { value: 'desabilitada', label: 'Desabilitada' },
-  { value: 'nao_habilitada', label: 'Não habilitada' },
-];
+/** Rascunho do formulário: chaves = field_key dos defs (comex_field_defs). */
+type Draft = Record<string, RegistryValue>;
 
-const RADAR_MODALITY_OPTIONS: { value: ComexRadarModality; label: string }[] = [
-  { value: 'expressa', label: 'Expressa' },
-  { value: 'limitada_50k', label: 'Limitada até US$ 50 mil' },
-  { value: 'limitada_150k', label: 'Limitada até US$ 150 mil' },
-  { value: 'ilimitada', label: 'Ilimitada' },
-];
-
-const REP_STATUS_OPTIONS: { value: ComexRepStatus; label: string }[] = [
-  { value: 'pendente', label: 'Pendente' },
-  { value: 'ativa', label: 'Ativa' },
-  { value: 'vencida', label: 'Vencida' },
-  { value: 'revogada', label: 'Revogada' },
-];
-
-const REP_CERTIFICATE_SUGGESTIONS = ['e-CPF Marcelo', 'e-CNPJ VECTRA HUB'];
-
-/** Rascunho do formulário: tudo string (inputs controlados). */
-type ClientDraft = Record<
-  | 'cnpj_root'
-  | 'cnpj'
-  | 'legal_name'
-  | 'trade_name'
-  | 'radar_status'
-  | 'radar_modality'
-  | 'radar_limit_usd'
-  | 'radar_operations'
-  | 'radar_legal_basis'
-  | 'radar_checked_at'
-  | 'rep_status'
-  | 'rep_certificate'
-  | 'rep_role_type'
-  | 'rep_valid_from'
-  | 'rep_valid_to'
-  | 'broker_id'
-  | 'notes',
-  string
->;
-
-const EMPTY_CLIENT: ClientDraft = {
-  cnpj_root: '',
-  cnpj: '',
-  legal_name: '',
-  trade_name: '',
+/** Defaults de novo cliente (mesmos do seed/tela anterior). */
+const EMPTY_CLIENT: Draft = {
   radar_status: 'habilitada',
-  radar_modality: '',
-  radar_limit_usd: '',
-  radar_operations: '',
-  radar_legal_basis: '',
-  radar_checked_at: '',
   rep_status: 'pendente',
   rep_certificate: 'e-CPF Marcelo',
   rep_role_type: 'IMPEXP',
-  rep_valid_from: '',
-  rep_valid_to: '',
-  broker_id: '',
-  notes: '',
 };
 
-function toDraft(c: ComexClientRecord): ClientDraft {
-  const s = (v: unknown) => (v == null ? '' : String(v));
-  return {
-    cnpj_root: s(c.cnpj_root),
-    cnpj: s(c.cnpj),
-    legal_name: s(c.legal_name),
-    trade_name: s(c.trade_name),
-    radar_status: s(c.radar_status),
-    radar_modality: s(c.radar_modality),
-    radar_limit_usd: s(c.radar_limit_usd),
-    radar_operations: s(c.radar_operations),
-    radar_legal_basis: s(c.radar_legal_basis),
-    radar_checked_at: s(c.radar_checked_at).slice(0, 10),
-    rep_status: s(c.rep_status) || 'pendente',
-    rep_certificate: s(c.rep_certificate),
-    rep_role_type: s(c.rep_role_type),
-    rep_valid_from: s(c.rep_valid_from).slice(0, 10),
-    rep_valid_to: s(c.rep_valid_to).slice(0, 10),
-    broker_id: s(c.broker_id),
-    notes: s(c.notes),
-  };
+const EMPTY_BROKER: Draft = { active: true };
+
+const DATE_KEYS = new Set(['radar_checked_at', 'rep_valid_from', 'rep_valid_to']);
+
+function toDraft(record: object): Draft {
+  const out: Draft = {};
+  for (const [k, v] of Object.entries(record as Record<string, unknown>)) {
+    if (v === null || v === undefined) out[k] = '';
+    else if (typeof v === 'boolean') out[k] = v;
+    else out[k] = DATE_KEYS.has(k) ? String(v).slice(0, 10) : String(v);
+  }
+  return out;
 }
 
-function draftToBody(d: ClientDraft): Record<string, unknown> {
+/** Só as chaves dos defs vão no corpo; texto vazio vira null. */
+function draftToBody(d: Draft, defs: ComexFieldDef[]): Record<string, unknown> {
   const body: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(d)) body[k] = v.trim() === '' ? null : v.trim();
-  body.radar_limit_usd = d.radar_limit_usd.trim() === '' ? null : Number(d.radar_limit_usd);
+  for (const f of defs) {
+    const v = d[f.field_key];
+    if (typeof v === 'boolean') body[f.field_key] = v;
+    else if (f.data_type === 'boolean') body[f.field_key] = false;
+    else {
+      const t = String(v ?? '').trim();
+      body[f.field_key] = t === '' ? null : f.data_type === 'number' ? Number(t) : t;
+    }
+  }
   return body;
 }
-
-type BrokerDraft = { name: string; cpf: string; rfb_registry: string; email: string; phone: string; active: boolean };
-const EMPTY_BROKER: BrokerDraft = { name: '', cpf: '', rfb_registry: '', email: '', phone: '', active: true };
 
 function cnpjRootLabel(root: string): string {
   const d = root.replace(/\D/g, '');
@@ -133,38 +76,25 @@ async function readJson(res: Response): Promise<{ success?: boolean; error?: str
 const inputCls = 'w-full px-3 py-2 bg-slate-50 border rounded-lg text-xs';
 const labelCls = 'block font-semibold text-slate-600 mb-1 text-xs';
 
-const Field: React.FC<{ label: string; hint?: string; children: React.ReactNode; required?: boolean }> = ({
-  label,
-  hint,
-  children,
-  required,
-}) => (
-  <div>
-    <label className={labelCls}>
-      {label}
-      {required ? <span className="text-rose-500"> *</span> : null}
-      {hint ? <span className="ml-1 font-normal text-amber-600">({hint})</span> : null}
-    </label>
-    {children}
-  </div>
-);
-
 export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged, fetcher = comexFetch }) => {
   const [clients, setClients] = useState<ComexClientRecord[]>([]);
   const [brokers, setBrokers] = useState<ComexBrokerRecord[]>([]);
   const [usages, setUsages] = useState<Record<string, RadarUsage>>({});
+  const [clientDefs, setClientDefs] = useState<ComexFieldDef[]>([]);
+  const [brokerDefs, setBrokerDefs] = useState<ComexFieldDef[]>([]);
   const [loading, setLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
+  const [defsError, setDefsError] = useState<string | null>(null);
 
   const [clientFormOpen, setClientFormOpen] = useState(false);
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
-  const [clientDraft, setClientDraft] = useState<ClientDraft>(EMPTY_CLIENT);
+  const [clientDraft, setClientDraft] = useState<Draft>(EMPTY_CLIENT);
   const [clientError, setClientError] = useState<string | null>(null);
   const [clientBusy, setClientBusy] = useState(false);
 
   const [brokerFormOpen, setBrokerFormOpen] = useState(false);
   const [editingBrokerId, setEditingBrokerId] = useState<string | null>(null);
-  const [brokerDraft, setBrokerDraft] = useState<BrokerDraft>(EMPTY_BROKER);
+  const [brokerDraft, setBrokerDraft] = useState<Draft>(EMPTY_BROKER);
   const [brokerError, setBrokerError] = useState<string | null>(null);
   const [brokerBusy, setBrokerBusy] = useState(false);
 
@@ -185,9 +115,29 @@ export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged,
     setUsages(next);
   };
 
+  /** Falha nos campos não bloqueia as listas — só os formulários ficam indisponíveis. */
+  const loadDefs = async () => {
+    setDefsError(null);
+    try {
+      const [cdRes, bdRes] = await Promise.all([
+        fetcher('/api/comex/field-defs?entity=client'),
+        fetcher('/api/comex/field-defs?entity=broker'),
+      ]);
+      const [cdJson, bdJson] = await Promise.all([readJson(cdRes), readJson(bdRes)]);
+      if (!cdJson.success || !bdJson.success) {
+        throw new Error(cdJson.error || bdJson.error || `HTTP ${cdRes.status}/${bdRes.status}`);
+      }
+      setClientDefs(Array.isArray(cdJson.data) ? (cdJson.data as ComexFieldDef[]) : []);
+      setBrokerDefs(Array.isArray(bdJson.data) ? (bdJson.data as ComexFieldDef[]) : []);
+    } catch (err) {
+      setDefsError(`Campos não carregados: ${err instanceof Error ? err.message : 'falha de rede'}`);
+    }
+  };
+
   const loadAll = async () => {
     setLoading(true);
     setListError(null);
+    void loadDefs();
     try {
       const [cRes, bRes] = await Promise.all([fetcher('/api/comex/clients'), fetcher('/api/comex/brokers')]);
       const [cJson, bJson] = await Promise.all([readJson(cRes), readJson(bRes)]);
@@ -209,7 +159,14 @@ export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const setC = (key: keyof ClientDraft, value: string) => setClientDraft((d) => ({ ...d, [key]: value }));
+  const setC = (key: string, value: RegistryValue) =>
+    setClientDraft((d) => {
+      if (key !== 'radar_modality') return { ...d, [key]: value };
+      // trocar a modalidade preenche o limite padrão (continua editável)
+      const m = String(value || '') as ComexRadarModality | '';
+      const limit = m ? defaultRadarLimit(m) : null;
+      return { ...d, radar_modality: value, radar_limit_usd: limit == null ? '' : String(limit) };
+    });
 
   const openNewClient = () => {
     setEditingClientId(null);
@@ -235,7 +192,7 @@ export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged,
         : '/api/comex/clients';
       const res = await fetcher(path, {
         method: editingClientId ? 'PUT' : 'POST',
-        body: JSON.stringify(draftToBody(clientDraft)),
+        body: JSON.stringify(draftToBody(clientDraft, clientDefs)),
       });
       const json = await readJson(res);
       if (!json.success) throw new Error(json.error || `HTTP ${res.status}`);
@@ -275,14 +232,7 @@ export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged,
 
   const openEditBroker = (b: ComexBrokerRecord) => {
     setEditingBrokerId(b.id);
-    setBrokerDraft({
-      name: b.name,
-      cpf: b.cpf || '',
-      rfb_registry: b.rfb_registry || '',
-      email: b.email || '',
-      phone: b.phone || '',
-      active: b.active,
-    });
+    setBrokerDraft(toDraft(b));
     setBrokerError(null);
     setBrokerFormOpen(true);
   };
@@ -295,17 +245,9 @@ export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged,
       const path = editingBrokerId
         ? `/api/comex/brokers/${encodeURIComponent(editingBrokerId)}`
         : '/api/comex/brokers';
-      const t = (v: string) => (v.trim() ? v.trim() : null);
       const res = await fetcher(path, {
         method: editingBrokerId ? 'PUT' : 'POST',
-        body: JSON.stringify({
-          name: brokerDraft.name.trim(),
-          cpf: t(brokerDraft.cpf),
-          rfb_registry: t(brokerDraft.rfb_registry),
-          email: t(brokerDraft.email),
-          phone: t(brokerDraft.phone),
-          active: brokerDraft.active,
-        }),
+        body: JSON.stringify(draftToBody(brokerDraft, brokerDefs)),
       });
       const json = await readJson(res);
       if (!json.success) throw new Error(json.error || `HTTP ${res.status}`);
@@ -335,12 +277,18 @@ export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged,
   };
 
   const brokerName = (id: string | null) => (id ? brokers.find((b) => b.id === id)?.name || '—' : '—');
-  const modalityLabel = (m: string | null) => RADAR_MODALITY_OPTIONS.find((o) => o.value === m)?.label || '—';
+  const modalityLabel = (m: string | null) => optionLabel(clientDefs, 'radar_modality', m);
+  const radarNote = declarationRouteNote((String(clientDraft.radar_modality || '') || null) as ComexRadarModality | null);
 
   return (
     <div className="space-y-4">
       {listError ? (
         <div className="p-3 rounded-xl border border-rose-200 bg-rose-50 text-rose-800 text-xs">{listError}</div>
+      ) : null}
+      {defsError ? (
+        <div className="p-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 text-xs">
+          {defsError} — os formulários de cadastro ficam indisponíveis até clicar em Atualizar.
+        </div>
       ) : null}
 
       {/* Clientes */}
@@ -406,7 +354,7 @@ export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged,
                         </div>
                       ) : null}
                       <div className="text-[10px] text-slate-400">
-                        {c.radar_status || '—'}
+                        {optionLabel(clientDefs, 'radar_status', c.radar_status)}
                         {c.radar_operations ? ` · ${c.radar_operations}` : ''}
                       </div>
                     </td>
@@ -418,7 +366,7 @@ export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged,
                       )}
                     </td>
                     <td className="py-3 px-4">
-                      <div>{c.rep_status}</div>
+                      <div>{optionLabel(clientDefs, 'rep_status', c.rep_status)}</div>
                       <div className="text-[10px] text-slate-400">
                         {c.rep_certificate || '—'}
                         {c.rep_role_type ? ` · ${c.rep_role_type}` : ''}
@@ -547,210 +495,21 @@ export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged,
               </button>
             </div>
             <form onSubmit={saveClient} className="space-y-4 text-xs">
-              <fieldset className="space-y-3">
-                <legend className="font-bold text-slate-800 text-[11px] uppercase mb-2">Empresa</legend>
-                <div className="grid sm:grid-cols-2 gap-3">
-                  <Field label="CNPJ raiz (8 dígitos)" required>
-                    <input
-                      required
-                      value={clientDraft.cnpj_root}
-                      onChange={(e) => setC('cnpj_root', e.target.value)}
-                      placeholder="60.450.605"
-                      className={inputCls}
-                    />
-                  </Field>
-                  <Field label="CNPJ completo (opcional)">
-                    <input
-                      value={clientDraft.cnpj}
-                      onChange={(e) => setC('cnpj', e.target.value)}
-                      placeholder="14 dígitos"
-                      className={inputCls}
-                    />
-                  </Field>
-                  <Field label="Razão social" required>
-                    <input
-                      required
-                      value={clientDraft.legal_name}
-                      onChange={(e) => setC('legal_name', e.target.value)}
-                      className={inputCls}
-                    />
-                  </Field>
-                  <Field label="Nome fantasia">
-                    <input
-                      value={clientDraft.trade_name}
-                      onChange={(e) => setC('trade_name', e.target.value)}
-                      className={inputCls}
-                    />
-                  </Field>
-                </div>
-              </fieldset>
-
-              <fieldset className="space-y-3 border-t pt-3">
-                <legend className="font-bold text-slate-800 text-[11px] uppercase mb-2">Radar</legend>
-                <div className="grid sm:grid-cols-3 gap-3">
-                  <Field label="Situação">
-                    <select
-                      value={clientDraft.radar_status}
-                      onChange={(e) => setC('radar_status', e.target.value)}
-                      className={inputCls}
-                    >
-                      <option value="">—</option>
-                      {RADAR_STATUS_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Modalidade">
-                    <select
-                      value={clientDraft.radar_modality}
-                      onChange={(e) => {
-                        const m = e.target.value as ComexRadarModality | '';
-                        const limit = m ? defaultRadarLimit(m) : null;
-                        setClientDraft((d) => ({
-                          ...d,
-                          radar_modality: m,
-                          radar_limit_usd: limit == null ? '' : String(limit),
-                        }));
-                      }}
-                      className={inputCls}
-                    >
-                      <option value="">—</option>
-                      {RADAR_MODALITY_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                    {declarationRouteNote((clientDraft.radar_modality || null) as ComexRadarModality | null) ? (
-                      <p className="mt-1 text-[11px] text-amber-700">
-                        {declarationRouteNote((clientDraft.radar_modality || null) as ComexRadarModality | null)}
-                      </p>
-                    ) : null}
-                  </Field>
-                  <Field label="Limite (US$, 6 meses)">
-                    <input
-                      type="number"
-                      min={0}
-                      value={clientDraft.radar_limit_usd}
-                      onChange={(e) => setC('radar_limit_usd', e.target.value)}
-                      placeholder="sem limite"
-                      className={inputCls}
-                    />
-                  </Field>
-                  <Field label="Operações">
-                    <input
-                      value={clientDraft.radar_operations}
-                      onChange={(e) => setC('radar_operations', e.target.value)}
-                      placeholder="IMPORTADOR/EXPORTADOR"
-                      className={inputCls}
-                    />
-                  </Field>
-                  <Field label="Fundamento legal">
-                    <input
-                      value={clientDraft.radar_legal_basis}
-                      onChange={(e) => setC('radar_legal_basis', e.target.value)}
-                      placeholder="IN RFB 1.984/2020"
-                      className={inputCls}
-                    />
-                  </Field>
-                  <Field label="Conferido no Portal em">
-                    <input
-                      type="date"
-                      value={clientDraft.radar_checked_at}
-                      onChange={(e) => setC('radar_checked_at', e.target.value)}
-                      className={inputCls}
-                    />
-                  </Field>
-                </div>
-              </fieldset>
-
-              <fieldset className="space-y-3 border-t pt-3">
-                <legend className="font-bold text-slate-800 text-[11px] uppercase mb-2">Representação</legend>
-                <div className="grid sm:grid-cols-3 gap-3">
-                  <Field label="Status">
-                    <select
-                      value={clientDraft.rep_status}
-                      onChange={(e) => setC('rep_status', e.target.value)}
-                      className={inputCls}
-                    >
-                      {REP_STATUS_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Certificado que nos representa">
-                    <input
-                      list="comex-rep-certificate-options"
-                      value={clientDraft.rep_certificate}
-                      onChange={(e) => setC('rep_certificate', e.target.value)}
-                      placeholder="e-CPF Marcelo"
-                      className={inputCls}
-                    />
-                    <datalist id="comex-rep-certificate-options">
-                      {REP_CERTIFICATE_SUGGESTIONS.map((s) => (
-                        <option key={s} value={s} />
-                      ))}
-                    </datalist>
-                  </Field>
-                  <Field label="Role-Type no Portal" hint="a validar">
-                    <input
-                      value={clientDraft.rep_role_type}
-                      onChange={(e) => setC('rep_role_type', e.target.value)}
-                      placeholder="IMPEXP"
-                      className={inputCls}
-                    />
-                  </Field>
-                  <Field label="Válida de">
-                    <input
-                      type="date"
-                      value={clientDraft.rep_valid_from}
-                      onChange={(e) => setC('rep_valid_from', e.target.value)}
-                      className={inputCls}
-                    />
-                  </Field>
-                  <Field label="Válida até">
-                    <input
-                      type="date"
-                      value={clientDraft.rep_valid_to}
-                      onChange={(e) => setC('rep_valid_to', e.target.value)}
-                      className={inputCls}
-                    />
-                  </Field>
-                </div>
-              </fieldset>
-
-              <fieldset className="space-y-3 border-t pt-3">
-                <legend className="font-bold text-slate-800 text-[11px] uppercase mb-2">Despachante</legend>
-                <div className="grid sm:grid-cols-2 gap-3">
-                  <Field label="Despachante responsável">
-                    <select
-                      value={clientDraft.broker_id}
-                      onChange={(e) => setC('broker_id', e.target.value)}
-                      className={inputCls}
-                    >
-                      <option value="">— nenhum —</option>
-                      {brokers.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.name}
-                          {b.active ? '' : ' (inativo)'}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Observações">
-                    <textarea
-                      rows={2}
-                      value={clientDraft.notes}
-                      onChange={(e) => setC('notes', e.target.value)}
-                      className={inputCls}
-                    />
-                  </Field>
-                </div>
-              </fieldset>
+              {clientDefs.length === 0 ? (
+                <p className="text-slate-500">Campos do cadastro não carregados — clique em Atualizar.</p>
+              ) : (
+                <RegistryMetaForm
+                  fields={clientDefs}
+                  values={clientDraft}
+                  onChange={setC}
+                  brokers={brokers}
+                  renderAfter={(key) =>
+                    key === 'radar_modality' && radarNote ? (
+                      <p className="mt-1 text-[11px] text-amber-700">{radarNote}</p>
+                    ) : null
+                  }
+                />
+              )}
 
               {clientError ? (
                 <div className="p-2.5 rounded-lg border border-rose-200 bg-rose-50 text-rose-800">{clientError}</div>
@@ -779,7 +538,7 @@ export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged,
       {/* Modal despachante */}
       {brokerFormOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border space-y-4 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b pb-3">
               <h3 className="font-bold text-base flex items-center gap-2">
                 <UserCheck className="w-5 h-5 text-teal-600" />
@@ -790,55 +549,18 @@ export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged,
               </button>
             </div>
             <form onSubmit={saveBroker} className="space-y-3 text-xs">
-              <Field label="Nome" required>
-                <input
-                  required
-                  value={brokerDraft.name}
-                  onChange={(e) => setBrokerDraft((d) => ({ ...d, name: e.target.value }))}
-                  className={inputCls}
+              {brokerDefs.length === 0 ? (
+                <p className="text-slate-500">Campos do cadastro não carregados — clique em Atualizar.</p>
+              ) : (
+                <RegistryMetaForm
+                  fields={brokerDefs}
+                  values={brokerDraft}
+                  onChange={(key, value) => setBrokerDraft((d) => ({ ...d, [key]: value }))}
                 />
-              </Field>
-              <div className="grid sm:grid-cols-2 gap-3">
-                <Field label="CPF">
-                  <input
-                    value={brokerDraft.cpf}
-                    onChange={(e) => setBrokerDraft((d) => ({ ...d, cpf: e.target.value }))}
-                    className={inputCls}
-                  />
-                </Field>
-                <Field label="Registro RFB">
-                  <input
-                    value={brokerDraft.rfb_registry}
-                    onChange={(e) => setBrokerDraft((d) => ({ ...d, rfb_registry: e.target.value }))}
-                    className={inputCls}
-                  />
-                </Field>
-                <Field label="E-mail">
-                  <input
-                    type="email"
-                    value={brokerDraft.email}
-                    onChange={(e) => setBrokerDraft((d) => ({ ...d, email: e.target.value }))}
-                    className={inputCls}
-                  />
-                </Field>
-                <Field label="Telefone">
-                  <input
-                    value={brokerDraft.phone}
-                    onChange={(e) => setBrokerDraft((d) => ({ ...d, phone: e.target.value }))}
-                    className={inputCls}
-                  />
-                </Field>
-                <Field label="Certificado">
-                  <input readOnly value="pendente" className={`${inputCls} text-slate-500 cursor-not-allowed`} />
-                </Field>
-                <label className="flex items-center gap-2 mt-5 font-semibold text-slate-600">
-                  <input
-                    type="checkbox"
-                    checked={brokerDraft.active}
-                    onChange={(e) => setBrokerDraft((d) => ({ ...d, active: e.target.checked }))}
-                  />
-                  Ativo
-                </label>
+              )}
+              <div>
+                <label className={labelCls}>Certificado</label>
+                <input readOnly value="pendente" className={`${inputCls} text-slate-500 cursor-not-allowed`} />
               </div>
               {brokerError ? (
                 <div className="p-2.5 rounded-lg border border-rose-200 bg-rose-50 text-rose-800">{brokerError}</div>
