@@ -836,7 +836,7 @@ export const M18Comex: React.FC = () => {
             }}
           />
           {showFieldDefs ? (
-            <ComexFieldDefsPanel fields={fieldDefs} onReload={loadFieldDefs} />
+            <ComexFieldDefsPanel fields={fieldDefs} onReload={loadFieldDefs} fetcher={cfetch} />
           ) : null}
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
