@@ -34,7 +34,7 @@
     "INTRANET_EMAIL_LIVE": "false",
     "RESEND_FROM": "HUB-FITNESS Compras <compras@hubfitness3pl.com.br>",
     "PUCOMEX_ENV": "validacao",
-    "PUCOMEX_ROLE_TYPE": "DEPOSIT",
+    "PUCOMEX_ROLE_TYPE": "OPERPORT",
     "PUCOMEX_LIVE": "true",
     "PUCOMEX_CNPJ_LABEL": "VECTRA HUB LTDA:62.188.748/0001-17",
     "PUCOMEX_USE_VECTRA_HUB_CERT": "false"

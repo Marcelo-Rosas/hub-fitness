@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { FileUp, CheckCircle2, AlertTriangle, Sparkles } from 'lucide-react';
 import type { ComexProcessRecord } from '../types/comex';
+import { comexFetch } from './modules/comexOperatorToken';
 
 interface PdfDocumentIngestPanelProps {
   onPopulated: (process: ComexProcessRecord) => void;
@@ -25,7 +26,7 @@ export const PdfDocumentIngestPanel: React.FC<PdfDocumentIngestPanelProps> = ({ 
     const lines: string[] = [];
     try {
       for (const file of pdfs) {
-        const res = await fetch(
+        const res = await comexFetch(
           `/api/comex/documents/ingest?fileName=${encodeURIComponent(file.name)}&apply=empty`,
           {
             method: 'POST',

@@ -23,14 +23,20 @@ import {
   Paperclip,
   FolderOpen,
   Settings2,
+  Users,
+  Link2,
 } from 'lucide-react';
 import { ModuleHeader } from '../ModuleHeader';
 import type {
+  ComexClientRecord,
   ComexFieldDef,
   ComexProcessRecord,
   PucomexAuthSession,
   PucomexPortalStatus,
+  ComexGuardStatus,
 } from '../../types/comex';
+import { comexFetch, getComexOperatorToken, isComexTokenRejection, openComexDocument } from './comexOperatorToken';
+import { ComexOperatorTokenPanel } from './ComexOperatorTokenPanel';
 import { COMEX_PORTS_DATA, PORTO_TABLE_METADATA } from '../../data/comexPortsData';
 import { COMEX_ATIT_CITIES_DATA, ATIT_CITY_TABLE_METADATA } from '../../data/comexAtitCitiesData';
 import { INITIAL_PUCOMEX_AUTH } from '../../data/comexSeed';
@@ -45,6 +51,10 @@ import { SearchableSelect } from '../ui/SearchableSelect';
 import { mergeCatalog, COMEX_NCM_CATALOG } from '../../data/comexCatalogs';
 import { PdfDocumentIngestPanel } from '../PdfDocumentIngestPanel';
 import { Comex4plPanel } from './Comex4plPanel';
+import { ComexClientsPanel } from './ComexClientsPanel';
+import { RadarUsageBadge } from './RadarUsageBadge';
+import { declarationRouteNote } from '../../core/comex/comexRegistry';
+import type { RadarUsage } from '../../core/comex/radarUsage';
 
 function payloadText(proc: ComexProcessRecord, key: string): string {
   const value = proc.payload[key];
@@ -76,6 +86,7 @@ const COUNTRY_NAME_MAP: Record<string, string> = {
 
 type SubTab =
   | 'processes'
+  | 'clients'
   | 'ports_table'
   | 'atit_cities_table'
   | 'quick_consult'
@@ -128,23 +139,39 @@ export const M18Comex: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProcess, setEditingProcess] = useState<ComexProcessRecord | null>(null);
   const [formPayload, setFormPayload] = useState<Record<string, unknown>>({});
+  const [clients, setClients] = useState<ComexClientRecord[]>([]);
+  const [formClienteId, setFormClienteId] = useState('');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveRadar, setSaveRadar] = useState<RadarUsage | null>(null);
   const [extractBusy, setExtractBusy] = useState(false);
   const [extractJson, setExtractJson] = useState<Record<string, unknown> | null>(null);
   const [extractMsg, setExtractMsg] = useState<string | null>(null);
 
   const [authLoading, setAuthLoading] = useState(false);
   const [authSuccessMsg, setAuthSuccessMsg] = useState<string | null>(null);
+  const [guard, setGuard] = useState<ComexGuardStatus | null>(null);
+  const [tokenRejected, setTokenRejected] = useState(false);
+  const [, setTokenVersion] = useState(0);
+  const needsToken = tokenRejected || !getComexOperatorToken();
+
+  /** comexFetch + detecção de recusa do gateway por token (volta ao painel do token). */
+  const cfetch = async (path: string, init?: RequestInit) => {
+    const res = await comexFetch(path, init);
+    if (await isComexTokenRejection(res)) setTokenRejected(true);
+    return res;
+  };
 
   const refreshPortalStatus = async () => {
     try {
-      const res = await fetch('/api/comex/pucomex/status');
+      const res = await comexFetch('/api/comex/pucomex/status');
       const json = await res.json();
       if (json.success) {
         setPortalStatus(json.status);
+        if (json.guard) setGuard(json.guard);
         if (json.session) {
           setPucomexAuth({
             cnpjeCPF: json.session.cnpjeCPF || 'Certificado ICP-Brasil',
-            role: json.session.roleType || json.session.role || 'DEPOSIT',
+            role: json.session.roleType || json.session.role || 'OPERPORT',
             environment: json.status?.environment || 'validacao',
             tokenPreview: json.session.tokenPreview || '—',
             csrfExpiresAt: json.session.csrfExpiresAt,
@@ -160,23 +187,30 @@ export const M18Comex: React.FC = () => {
   };
 
   const loadFieldDefs = async () => {
-    const res = await fetch('/api/comex/field-defs?entity=process');
+    const res = await cfetch('/api/comex/field-defs?entity=process');
     const json = await res.json();
     if (json.success && Array.isArray(json.data)) setFieldDefs(json.data);
   };
 
   const loadProcesses = async () => {
-    const res = await fetch('/api/comex/processes');
+    const res = await cfetch('/api/comex/processes');
     const json = await res.json();
     if (json.success && Array.isArray(json.data)) setProcesses(json.data);
     if (json.driver) setStoreDriver(json.driver);
+  };
+
+  const loadClients = async () => {
+    const res = await cfetch('/api/comex/clients');
+    const json = await res.json();
+    if (json.success && Array.isArray(json.data)) setClients(json.data);
   };
 
   React.useEffect(() => {
     void refreshPortalStatus();
     void loadFieldDefs().catch(() => undefined);
     void loadProcesses().catch(() => undefined);
-    void fetch('/api/comex/pucomex/catalog')
+    void loadClients().catch(() => undefined);
+    void comexFetch('/api/comex/pucomex/catalog')
       .then((r) => r.json())
       .then((json) => {
         if (json.success && Array.isArray(json.endpoints)) setEndpointCatalog(json.endpoints);
@@ -192,6 +226,7 @@ export const M18Comex: React.FC = () => {
     () => fieldDefs.filter((f) => f.ui_form !== false).sort((a, b) => a.sort_order - b.sort_order),
     [fieldDefs],
   );
+  const clientsById = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients]);
   const fobKey = fieldDefs.find((f) => f.kpi === 'fob')?.field_key;
   const cifKey = fieldDefs.find((f) => f.kpi === 'cif')?.field_key;
   const typeKey = fieldDefs.find((f) => f.field_key === 'type')?.field_key || 'type';
@@ -246,6 +281,9 @@ export const M18Comex: React.FC = () => {
   const handleOpenNewModal = () => {
     setEditingProcess(null);
     setFormPayload({ type: 'importacao' });
+    setFormClienteId('');
+    setSaveError(null);
+    setSaveRadar(null);
     setExtractJson(null);
     setExtractMsg(null);
     setIsModalOpen(true);
@@ -254,6 +292,9 @@ export const M18Comex: React.FC = () => {
   const handleOpenEditModal = (proc: ComexProcessRecord) => {
     setEditingProcess(proc);
     setFormPayload({ ...proc.payload });
+    setFormClienteId(proc.cliente_id || '');
+    setSaveError(null);
+    setSaveRadar(null);
     setExtractJson(null);
     setExtractMsg(null);
     setIsModalOpen(true);
@@ -264,9 +305,8 @@ export const M18Comex: React.FC = () => {
     setExtractBusy(true);
     setExtractMsg(null);
     try {
-      const res = await fetch(`/api/comex/processes/${editingProcess.id}/extract`, {
+      const res = await cfetch(`/api/comex/processes/${editingProcess.id}/extract`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apply: mode }),
       });
       const json = await res.json();
@@ -302,24 +342,42 @@ export const M18Comex: React.FC = () => {
     e.preventDefault();
     const missing = formFields.filter((f) => f.required && (formPayload[f.field_key] == null || formPayload[f.field_key] === ''));
     if (missing.length) return;
-    if (editingProcess) {
-      const res = await fetch(`/api/comex/processes/${editingProcess.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payload: formPayload, code: editingProcess.code }),
-      });
-      const json = await res.json();
-      if (json.success && json.data) {
-        setProcesses((prev) => prev.map((p) => (p.id === json.data.id ? json.data : p)));
-      }
-    } else {
-      const res = await fetch('/api/comex/processes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payload: formPayload }),
-      });
-      const json = await res.json();
-      if (json.success && json.data) setProcesses((prev) => [json.data, ...prev]);
+    setSaveError(null);
+    setSaveRadar(null);
+    if (!formClienteId) {
+      setSaveError('Selecione o cliente importador');
+      return;
+    }
+    let json: { success?: boolean; error?: string; data?: ComexProcessRecord; radar?: RadarUsage };
+    try {
+      const res = editingProcess
+        ? await cfetch(`/api/comex/processes/${editingProcess.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ payload: formPayload, code: editingProcess.code, cliente_id: formClienteId }),
+          })
+        : await cfetch('/api/comex/processes', {
+            method: 'POST',
+            body: JSON.stringify({ cliente_id: formClienteId, payload: formPayload }),
+          });
+      json = await res.json().catch(() => ({ success: false, error: `HTTP ${res.status}` }));
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : 'Falha ao salvar processo');
+      return;
+    }
+    const saved = json.data;
+    if (!json.success || !saved) {
+      setSaveError(json.error || 'Falha ao salvar processo');
+      return;
+    }
+    setProcesses((prev) =>
+      prev.some((p) => p.id === saved.id) ? prev.map((p) => (p.id === saved.id ? saved : p)) : [saved, ...prev],
+    );
+    // Aviso do Radar (não bloqueia): mostra no modal antes de fechar. Um novo "Salvar" vira edição.
+    if (json.radar && (json.radar.level === 'atencao' || json.radar.level === 'estouro')) {
+      setEditingProcess(saved);
+      setFormPayload({ ...saved.payload });
+      setSaveRadar(json.radar);
+      return;
     }
     setIsModalOpen(false);
   };
@@ -327,7 +385,7 @@ export const M18Comex: React.FC = () => {
   const handleDeleteProcess = async (proc: ComexProcessRecord) => {
     const label = payloadText(proc, 'client_name');
     if (!window.confirm(`Excluir processo ${proc.code}${label !== '—' ? ` (${label})` : ''}?`)) return;
-    await fetch(`/api/comex/processes/${proc.id}`, { method: 'DELETE' });
+    await cfetch(`/api/comex/processes/${proc.id}`, { method: 'DELETE' });
     setProcesses((prev) => prev.filter((p) => p.id !== proc.id));
   };
 
@@ -335,9 +393,8 @@ export const M18Comex: React.FC = () => {
     setIndexBusy(true);
     setIndexMsg(null);
     try {
-      const res = await fetch('/api/comex/documents/index', {
+      const res = await cfetch('/api/comex/documents/index', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ extract: true }),
       });
       const json = await res.json();
@@ -368,7 +425,9 @@ export const M18Comex: React.FC = () => {
     setConsultLoading(true);
     setConsultError(null);
     try {
-      const res = await fetch(`/api/comex/processes/${proc.id}/consult`, { method: 'POST' });
+      const res = await cfetch(`/api/comex/processes/${proc.id}/consult`, {
+        method: 'POST',
+      });
       const json = await res.json();
       setConsultResult(json);
       setConsultMode(json.mode || null);
@@ -386,19 +445,18 @@ export const M18Comex: React.FC = () => {
     setAuthSuccessMsg(null);
     setAuthError(null);
     try {
-      const res = await fetch('/api/comex/pucomex/authenticate', {
+      const res = await cfetch('/api/comex/pucomex/authenticate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           force: false,
-          roleType: portalStatus?.roleType || 'DEPOSIT',
+          roleType: portalStatus?.roleType || 'OPERPORT',
         }),
       });
       const data = await res.json();
       if (data.session) {
         setPucomexAuth({
           cnpjeCPF: data.session.cnpjeCPF || 'Certificado ICP-Brasil',
-          role: data.session.roleType || data.session.role || 'DEPOSIT',
+          role: data.session.roleType || data.session.role || 'OPERPORT',
           environment: data.portalStatus?.environment || data.mode,
           tokenPreview: data.session.tokenPreview || '—',
           csrfExpiresAt: data.session.csrfExpiresAt,
@@ -443,9 +501,8 @@ export const M18Comex: React.FC = () => {
     }
 
     try {
-      const res = await fetch(endpoint, {
+      const res = await cfetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(bodyData),
       });
       const json = await res.json();
@@ -561,7 +618,7 @@ export const M18Comex: React.FC = () => {
                 <p className="text-xs text-slate-300">
                   Auth oficial:{' '}
                   <span className="font-mono text-teal-300">POST /portal/api/autenticar</span> · Role-Type{' '}
-                  <span className="font-mono">{portalStatus?.roleType || 'DEPOSIT'}</span>
+                  <span className="font-mono">{portalStatus?.roleType || 'OPERPORT'}</span>
                   {portalStatus?.baseUrl ? (
                     <>
                       {' '}
@@ -587,8 +644,8 @@ export const M18Comex: React.FC = () => {
                   <div className="text-[10px] text-slate-400">ROLE-TYPE</div>
                   <div className="font-semibold text-slate-200">
                     {portalStatus?.roleType || pucomexAuth.role} ·{' '}
-                    {PUCOMEX_ROLE_TYPES.find((r) => r.code === (portalStatus?.roleType || 'DEPOSIT'))?.label ||
-                      'Depositário'}
+                    {PUCOMEX_ROLE_TYPES.find((r) => r.code === (portalStatus?.roleType || 'OPERPORT'))?.label ||
+                      'Operador Portuário'}
                   </div>
                 </div>
               </div>
@@ -648,7 +705,30 @@ export const M18Comex: React.FC = () => {
             {authError}
           </div>
         )}
+        {portalStatus?.certError && (
+          <div className="mt-4 p-2.5 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-100 text-xs flex items-start gap-2">
+            <Key className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>
+              <span className="font-bold">Certificado não abre no servidor.</span> {portalStatus.certError}
+            </span>
+          </div>
+        )}
       </div>
+
+      {needsToken ? (
+        <ComexOperatorTokenPanel
+          configuredOnServer={guard?.operatorTokenConfigured ?? false}
+          onSaved={() => {
+            setTokenRejected(false);
+            setTokenVersion((v) => v + 1);
+            void loadFieldDefs().catch(() => undefined);
+            void loadProcesses().catch(() => undefined);
+            void loadClients().catch(() => undefined);
+            void refreshPortalStatus();
+          }}
+        />
+      ) : (
+      <>
 
       {/* Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -695,6 +775,7 @@ export const M18Comex: React.FC = () => {
       <div className="border-b border-slate-200 flex items-center justify-between gap-4 overflow-x-auto">
         <div className="flex items-center gap-0.5">
           {tabBtn('processes', `Processos (${processes.length})`, <Layers className="w-4 h-4" />)}
+          {tabBtn('clients', `Clientes (${clients.length})`, <Users className="w-4 h-4" />)}
           {tabBtn('ports_table', `Portos (${COMEX_PORTS_DATA.length})`, <Globe className="w-4 h-4 text-teal-600" />, 'teal')}
           {tabBtn('atit_cities_table', `ATIT (${COMEX_ATIT_CITIES_DATA.length})`, <Building2 className="w-4 h-4 text-cyan-600" />, 'cyan')}
           {tabBtn('quick_consult', 'Consulta PUCOMEX', <Search className="w-4 h-4" />)}
@@ -779,6 +860,35 @@ export const M18Comex: React.FC = () => {
                       </td>
                       {listFields.map((f) => {
                         const raw = payloadText(proc, f.field_key);
+                        if (f.field_key === 'client_name') {
+                          const linked = proc.cliente_id ? clientsById.get(proc.cliente_id) : undefined;
+                          if (proc.cliente_id) {
+                            return (
+                              <td key={f.id} className="py-3 px-4 font-semibold text-slate-800">
+                                {linked?.legal_name || raw}
+                              </td>
+                            );
+                          }
+                          return (
+                            <td key={f.id} className="py-3 px-4">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[10px] uppercase px-2 py-0.5 rounded-full font-semibold bg-slate-100 text-slate-500 border border-slate-200">
+                                  sem cliente
+                                </span>
+                                <button
+                                  type="button"
+                                  title="Vincular cliente importador"
+                                  onClick={() => handleOpenEditModal(proc)}
+                                  className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 cursor-pointer"
+                                >
+                                  <Link2 className="w-3 h-3" />
+                                  Vincular
+                                </button>
+                              </div>
+                              {raw !== '—' ? <div className="text-[10px] text-slate-400 mt-0.5">{raw}</div> : null}
+                            </td>
+                          );
+                        }
                         if (f.field_key === typeKey) {
                           return (
                             <td key={f.id} className="py-3 px-4">
@@ -865,16 +975,19 @@ export const M18Comex: React.FC = () => {
                             <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
                               {docs.map((doc) => (
                                 <li key={doc.id}>
-                                  <a
-                                    href={`/api/comex/documents/${doc.id}/file`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="flex items-center gap-2 text-[11px] px-2 py-1.5 rounded-lg border bg-white hover:border-teal-300"
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      void openComexDocument(doc.id).catch((err: unknown) =>
+                                        window.alert(err instanceof Error ? err.message : 'Falha ao abrir documento'),
+                                      );
+                                    }}
+                                    className="w-full text-left flex items-center gap-2 text-[11px] px-2 py-1.5 rounded-lg border bg-white hover:border-teal-300 cursor-pointer"
                                   >
                                     <FileText className="w-3.5 h-3.5 text-teal-700 shrink-0" />
                                     <span className="uppercase font-bold text-slate-500">{doc.doc_type}</span>
                                     <span className="truncate">{doc.file_name}</span>
-                                  </a>
+                                  </button>
                                 </li>
                               ))}
                             </ul>
@@ -1389,6 +1502,10 @@ export const M18Comex: React.FC = () => {
       )}
 
       {/* API Docs */}
+      {activeSubTab === 'clients' && (
+        <ComexClientsPanel fetcher={cfetch} onChanged={() => void loadClients().catch(() => undefined)} />
+      )}
+
       {activeSubTab === 'comex_4pl' && <Comex4plPanel />}
 
       {activeSubTab === 'api_docs' && (
@@ -1551,6 +1668,37 @@ export const M18Comex: React.FC = () => {
               </div>
             )}
             <form onSubmit={handleSaveProcess} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-600 mb-1">
+                  Cliente importador<span className="text-rose-500"> *</span>
+                </label>
+                <select
+                  required
+                  value={formClienteId}
+                  onChange={(e) => {
+                    setFormClienteId(e.target.value);
+                    setSaveRadar(null);
+                  }}
+                  className="w-full px-3 py-2 bg-slate-50 border rounded-lg"
+                >
+                  <option value="">Selecione o cliente…</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.legal_name} · {c.cnpj_root}
+                    </option>
+                  ))}
+                </select>
+                {clients.length === 0 ? (
+                  <p className="mt-1 text-[11px] text-amber-700">
+                    Nenhum cliente cadastrado — cadastre na aba Clientes.
+                  </p>
+                ) : null}
+                {declarationRouteNote(clientsById.get(formClienteId)?.radar_modality) ? (
+                  <p className="mt-1 text-[11px] text-amber-700">
+                    {declarationRouteNote(clientsById.get(formClienteId)?.radar_modality)}
+                  </p>
+                ) : null}
+              </div>
               <ComexMetaForm
                 fields={formFields}
                 payload={formPayload}
@@ -1565,24 +1713,49 @@ export const M18Comex: React.FC = () => {
                   </pre>
                 </details>
               ) : null}
+              {saveError ? (
+                <div className="p-2.5 rounded-lg border border-rose-200 bg-rose-50 text-rose-800">{saveError}</div>
+              ) : null}
+              {saveRadar ? (
+                <div className="space-y-1">
+                  <p className="font-semibold text-slate-700">
+                    Processo salvo. Aviso do limite Radar do cliente (não bloqueia):
+                  </p>
+                  <RadarUsageBadge usage={saveRadar} />
+                </div>
+              ) : null}
               <div className="flex justify-end gap-2 pt-2 border-t">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="py-2 px-4 rounded-lg bg-slate-100 text-slate-700 font-semibold cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="py-2 px-5 rounded-lg bg-teal-600 text-white font-bold cursor-pointer"
-                >
-                  {editingProcess ? 'Salvar' : 'Cadastrar'}
-                </button>
+                {saveRadar ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="py-2 px-5 rounded-lg bg-teal-600 text-white font-bold cursor-pointer"
+                  >
+                    Fechar
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsModalOpen(false)}
+                      className="py-2 px-4 rounded-lg bg-slate-100 text-slate-700 font-semibold cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="py-2 px-5 rounded-lg bg-teal-600 text-white font-bold cursor-pointer"
+                    >
+                      {editingProcess ? 'Salvar' : 'Cadastrar'}
+                    </button>
+                  </>
+                )}
               </div>
             </form>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

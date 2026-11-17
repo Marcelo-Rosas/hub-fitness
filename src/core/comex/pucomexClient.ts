@@ -7,6 +7,7 @@
 
 import fs from 'fs';
 import https from 'https';
+import tls from 'tls';
 import path from 'path';
 import { spawn } from 'child_process';
 import { URL } from 'url';
@@ -45,6 +46,8 @@ export interface PucomexClientStatus {
   certPath: string | null;
   certThumbprint: string | null;
   certSource: 'pfx' | 'windows-store' | null;
+  /** Erro ao abrir o PFX com a senha (ex.: "mac verify failure"); null = ok ou não-PFX */
+  certError: string | null;
   liveModeEnabled: boolean;
   environment: PucomexEnvironmentId;
   baseUrl: string;
@@ -82,9 +85,54 @@ function parseBodyJson(bodyText: string): unknown {
   }
 }
 
+/** Traduz erros do OpenSSL ao abrir PFX para algo acionável. */
+export function explainPfxError(message: string): string {
+  if (/mac verify failure/i.test(message)) {
+    return `PFX não abre com PUCOMEX_CERT_PASSWORD (mac verify failure): senha errada ou arquivo .pfx corrompido (base64 remontado com erro). ${message}`;
+  }
+  if (/unsupported/i.test(message)) {
+    return `PFX com algoritmo legado (RC2/3DES) não suportado pelo OpenSSL 3 — reexporte o certificado com AES-256. ${message}`;
+  }
+  return `PFX inválido: ${message}`;
+}
+
 export class PucomexClient {
   private session: PucomexSessionTokens | null = null;
   private lastAuthAttemptMs = 0;
+  private pfxAgent: https.Agent | null = null;
+  private pfxAgentKey = '';
+  private certCheck: { key: string; error: string | null } | null = null;
+  private inflightAuth: Promise<Awaited<ReturnType<PucomexClient['authenticate']>>> | null = null;
+
+  /** Senha sem espaço/CRLF acidental do secret. */
+  private getCertPassword(): string {
+    return (process.env.PUCOMEX_CERT_PASSWORD ?? '').trim();
+  }
+
+  /**
+   * Abre o PFX com a senha uma vez (cache por path+mtime+senha) e devolve o erro,
+   * se houver. Mostra o problema no /status em vez de falhar só no handshake.
+   */
+  getCertError(): string | null {
+    if (this.getCertSource() !== 'pfx') return null;
+    const certPath = this.getCertPath()!;
+    let key: string;
+    try {
+      const st = fs.statSync(certPath);
+      key = `${certPath}|${st.mtimeMs}|${st.size}|${this.getCertPassword()}`;
+    } catch (err) {
+      return `PFX ilegível: ${err instanceof Error ? err.message : String(err)}`;
+    }
+    if (this.certCheck?.key === key) return this.certCheck.error;
+    let error: string | null = null;
+    try {
+      tls.createSecureContext({ pfx: fs.readFileSync(certPath), passphrase: this.getCertPassword() });
+    } catch (err) {
+      error = explainPfxError(err instanceof Error ? err.message : String(err));
+    }
+    this.certCheck = { key, error };
+    return error;
+  }
 
   getEnvironmentId(): PucomexEnvironmentId {
     const raw = (process.env.PUCOMEX_ENV || 'validacao').toLowerCase();
@@ -144,6 +192,7 @@ export class PucomexClient {
       certPath: this.getCertPath(),
       certThumbprint: this.getCertThumbprint(),
       certSource: source,
+      certError: this.getCertError(),
       liveModeEnabled: this.isLiveModeEnabled(),
       environment: env,
       baseUrl: this.getBaseUrl(),
@@ -179,14 +228,20 @@ export class PucomexClient {
 
   private createPfxAgent(): https.Agent | undefined {
     if (this.getCertSource() !== 'pfx') return undefined;
-    const certPath = this.getCertPath()!;
-    const passphrase = process.env.PUCOMEX_CERT_PASSWORD || '';
-    return new https.Agent({
-      pfx: fs.readFileSync(certPath),
-      passphrase,
+    const certError = this.getCertError();
+    if (certError) throw new Error(certError);
+    // getCertError() acabou de validar e cachear a chave path|mtime|size|senha.
+    const key = this.certCheck!.key;
+    if (this.pfxAgent && this.pfxAgentKey === key) return this.pfxAgent;
+    this.pfxAgent?.destroy();
+    this.pfxAgent = new https.Agent({
+      pfx: fs.readFileSync(this.getCertPath()!),
+      passphrase: this.getCertPassword(),
       keepAlive: true,
       rejectUnauthorized: process.env.PUCOMEX_TLS_INSECURE !== 'true',
     });
+    this.pfxAgentKey = key;
+    return this.pfxAgent;
   }
 
   private requestViaWindowsStore(
@@ -391,6 +446,12 @@ export class PucomexClient {
       };
     }
 
+    const certError = this.getCertError();
+    if (certError) {
+      // Não gasta tentativa no Portal: o PFX nem abre localmente.
+      return { success: false, session: null, mode: 'live', error: certError, code: 'PUCOMEX_CERT_INVALID' };
+    }
+
     const now = Date.now();
     if (
       !force &&
@@ -400,7 +461,11 @@ export class PucomexClient {
       return { success: true, session: this.getSessionPublic(), mode: 'live' };
     }
 
-    if (!force && now - this.lastAuthAttemptMs < PUCOMEX_MIN_AUTH_INTERVAL_MS) {
+    // Requisições simultâneas (ex.: vários 401) compartilham uma única chamada a autenticar.
+    if (this.inflightAuth) return this.inflightAuth;
+
+    // Política do Portal: mínimo 60s entre autenticar() — vale também para force.
+    if (now - this.lastAuthAttemptMs < PUCOMEX_MIN_AUTH_INTERVAL_MS) {
       return {
         success: false,
         session: this.getSessionPublic(),
@@ -411,7 +476,21 @@ export class PucomexClient {
     }
 
     this.lastAuthAttemptMs = now;
+    this.inflightAuth = this.doAuthenticate(role);
+    try {
+      return await this.inflightAuth;
+    } finally {
+      this.inflightAuth = null;
+    }
+  }
 
+  private async doAuthenticate(role: PucomexRoleType): Promise<{
+    success: boolean;
+    session: ReturnType<PucomexClient['getSessionPublic']>;
+    mode: 'live' | 'demo';
+    error?: string;
+    code?: string;
+  }> {
     try {
       const res = await this.requestRaw('POST', '/portal/api/autenticar', {
         headers: { 'Role-Type': role },

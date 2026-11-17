@@ -3,12 +3,17 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import type {
+  ComexBrokerInput,
+  ComexBrokerRecord,
+  ComexClientInput,
+  ComexClientRecord,
   ComexDocumentRecord,
   ComexFieldDef,
   ComexFieldDefInput,
   ComexProcessRecord,
 } from '../../types/comex';
 import { DEFAULT_COMEX_FIELD_DEFS } from './fieldDefsSeed';
+import { normalizeClientInput, slugify } from './comexRegistry';
 
 const SQLITE_SCHEMA = `
 CREATE TABLE IF NOT EXISTS comex_field_defs (
@@ -28,10 +33,46 @@ CREATE TABLE IF NOT EXISTS comex_field_defs (
   created_at TEXT NOT NULL,
   UNIQUE (entity, field_key)
 );
+CREATE TABLE IF NOT EXISTS comex_brokers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  cpf TEXT,
+  rfb_registry TEXT,
+  email TEXT,
+  phone TEXT,
+  certificate_status TEXT NOT NULL DEFAULT 'pendente',
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS comex_clients (
+  id TEXT PRIMARY KEY,
+  cnpj_root TEXT NOT NULL UNIQUE,
+  cnpj TEXT,
+  legal_name TEXT NOT NULL,
+  trade_name TEXT,
+  slug TEXT NOT NULL UNIQUE,
+  radar_status TEXT,
+  radar_modality TEXT CHECK (radar_modality IS NULL OR radar_modality IN ('expressa','limitada_50k','limitada_150k','ilimitada')),
+  radar_limit_usd REAL,
+  radar_operations TEXT,
+  radar_legal_basis TEXT,
+  radar_checked_at TEXT,
+  rep_status TEXT NOT NULL DEFAULT 'pendente' CHECK (rep_status IN ('pendente','ativa','vencida','revogada')),
+  rep_certificate TEXT,
+  rep_role_type TEXT,
+  rep_valid_from TEXT,
+  rep_valid_to TEXT,
+  broker_id TEXT REFERENCES comex_brokers(id) ON DELETE RESTRICT,
+  notes TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS comex_processes (
   id TEXT PRIMARY KEY,
   code TEXT NOT NULL UNIQUE,
   client_slug TEXT,
+  cliente_id TEXT REFERENCES comex_clients(id) ON DELETE RESTRICT,
   payload TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -50,6 +91,20 @@ CREATE TABLE IF NOT EXISTS comex_documents (
 CREATE INDEX IF NOT EXISTS comex_documents_process_idx ON comex_documents (process_id);
 `;
 
+export interface ComexProcessCreateInput {
+  code?: string;
+  client_slug?: string | null;
+  cliente_id?: string | null;
+  payload?: Record<string, unknown>;
+}
+
+export interface ComexProcessPatch {
+  code?: string;
+  client_slug?: string | null;
+  cliente_id?: string | null;
+  payload?: Record<string, unknown>;
+}
+
 export interface ComexStore {
   driver: 'sqlite' | 'postgres';
   ensureReady(): Promise<void>;
@@ -58,16 +113,16 @@ export interface ComexStore {
   deleteFieldDef(id: string): Promise<boolean>;
   listProcesses(): Promise<ComexProcessRecord[]>;
   getProcess(id: string): Promise<ComexProcessRecord | null>;
-  createProcess(input: {
-    code?: string;
-    client_slug?: string | null;
-    payload?: Record<string, unknown>;
-  }): Promise<ComexProcessRecord>;
-  updateProcess(
-    id: string,
-    patch: { code?: string; client_slug?: string | null; payload?: Record<string, unknown> },
-  ): Promise<ComexProcessRecord | null>;
+  createProcess(input: ComexProcessCreateInput): Promise<ComexProcessRecord>;
+  updateProcess(id: string, patch: ComexProcessPatch): Promise<ComexProcessRecord | null>;
   deleteProcess(id: string): Promise<boolean>;
+  listClients(): Promise<ComexClientRecord[]>;
+  getClient(id: string): Promise<ComexClientRecord | null>;
+  upsertClient(input: ComexClientInput): Promise<ComexClientRecord>;
+  deleteClient(id: string): Promise<'ok' | 'not_found' | 'has_processes'>;
+  listBrokers(): Promise<ComexBrokerRecord[]>;
+  upsertBroker(input: ComexBrokerInput): Promise<ComexBrokerRecord>;
+  deleteBroker(id: string): Promise<'ok' | 'not_found' | 'in_use'>;
   listDocuments(processId?: string | null): Promise<ComexDocumentRecord[]>;
   getDocument(id: string): Promise<ComexDocumentRecord | null>;
   upsertDocument(input: {
@@ -124,11 +179,101 @@ function hydrateProcess(row: Record<string, unknown>, docs: ComexDocumentRecord[
     id: String(row.id),
     code: String(row.code),
     client_slug: row.client_slug ? String(row.client_slug) : null,
+    cliente_id: row.cliente_id ? String(row.cliente_id) : null,
     payload: parseJson(row.payload, {}),
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
     documents: docs,
   };
+}
+
+/** date/timestamptz do pg chega como Date; sqlite como texto. */
+function dateStr(v: unknown): string | null {
+  if (v === null || v === undefined || v === '') return null;
+  if (v instanceof Date) {
+    const m = String(v.getMonth() + 1).padStart(2, '0');
+    const d = String(v.getDate()).padStart(2, '0');
+    return `${v.getFullYear()}-${m}-${d}`;
+  }
+  return String(v);
+}
+
+function tsStr(v: unknown): string {
+  return v instanceof Date ? v.toISOString() : String(v);
+}
+
+function strOrNull(v: unknown): string | null {
+  return v === null || v === undefined || v === '' ? null : String(v);
+}
+
+function hydrateClient(row: Record<string, unknown>): ComexClientRecord {
+  return {
+    id: String(row.id),
+    cnpj_root: String(row.cnpj_root),
+    cnpj: strOrNull(row.cnpj),
+    legal_name: String(row.legal_name),
+    trade_name: strOrNull(row.trade_name),
+    slug: String(row.slug),
+    radar_status: strOrNull(row.radar_status),
+    radar_modality: strOrNull(row.radar_modality) as ComexClientRecord['radar_modality'],
+    radar_limit_usd: row.radar_limit_usd == null ? null : Number(row.radar_limit_usd),
+    radar_operations: strOrNull(row.radar_operations),
+    radar_legal_basis: strOrNull(row.radar_legal_basis),
+    radar_checked_at: dateStr(row.radar_checked_at),
+    rep_status: (strOrNull(row.rep_status) || 'pendente') as ComexClientRecord['rep_status'],
+    rep_certificate: strOrNull(row.rep_certificate),
+    rep_role_type: strOrNull(row.rep_role_type),
+    rep_valid_from: dateStr(row.rep_valid_from),
+    rep_valid_to: dateStr(row.rep_valid_to),
+    broker_id: strOrNull(row.broker_id),
+    notes: strOrNull(row.notes),
+    created_at: tsStr(row.created_at),
+    updated_at: tsStr(row.updated_at),
+  };
+}
+
+function hydrateBroker(row: Record<string, unknown>): ComexBrokerRecord {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    cpf: strOrNull(row.cpf),
+    rfb_registry: strOrNull(row.rfb_registry),
+    email: strOrNull(row.email),
+    phone: strOrNull(row.phone),
+    certificate_status: 'pendente',
+    active: asBool(row.active),
+    created_at: tsStr(row.created_at),
+    updated_at: tsStr(row.updated_at),
+  };
+}
+
+function uniqueSlug(base: string, taken: Set<string>): string {
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base}-${n}`)) n += 1;
+  return `${base}-${n}`;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function clientNotFound(): Error {
+  return new Error('Cliente não encontrado para o cliente_id informado');
+}
+
+function cnpjDuplicated(): Error {
+  return new Error('CNPJ raiz já cadastrado para outro cliente');
+}
+
+function brokerNotFound(): Error {
+  return new Error('Despachante não encontrado para o broker_id informado');
+}
+
+/** Resolve slug/nome do cliente para copiar no processo. */
+function applyClient(
+  client: ComexClientRecord,
+  payload: Record<string, unknown>,
+): { slug: string; payload: Record<string, unknown> } {
+  return { slug: client.slug, payload: { ...payload, client_name: client.legal_name } };
 }
 
 function hydrateDocument(row: Record<string, unknown>): ComexDocumentRecord {
@@ -171,6 +316,11 @@ export class SqliteComexStore implements ComexStore {
 
   async ensureReady(): Promise<void> {
     this.db.exec(SQLITE_SCHEMA);
+    const cols = this.db.prepare('PRAGMA table_info(comex_processes)').all() as { name: string }[];
+    if (!cols.some((c) => c.name === 'cliente_id')) {
+      this.db.exec('ALTER TABLE comex_processes ADD COLUMN cliente_id TEXT REFERENCES comex_clients(id)');
+    }
+    this.db.exec('CREATE INDEX IF NOT EXISTS comex_processes_cliente_idx ON comex_processes (cliente_id)');
     for (const def of DEFAULT_COMEX_FIELD_DEFS) {
       await this.upsertFieldDef(def);
     }
@@ -270,38 +420,179 @@ export class SqliteComexStore implements ComexStore {
     return hydrateProcess(row, docs);
   }
 
-  async createProcess(input: {
-    code?: string;
-    client_slug?: string | null;
-    payload?: Record<string, unknown>;
-  }): Promise<ComexProcessRecord> {
+  async createProcess(input: ComexProcessCreateInput): Promise<ComexProcessRecord> {
     const existing = this.db.prepare('SELECT code FROM comex_processes').all() as { code: string }[];
     const id = randomUUID();
     const ts = nowIso();
     const code = input.code || nextProcessCode(existing);
+    let client_slug = input.client_slug ?? process.env.COMEX_CLIENT_SLUG ?? null;
+    let payload = input.payload || {};
+    const cliente_id = input.cliente_id ?? null;
+    if (cliente_id) {
+      const client = await this.getClient(cliente_id);
+      if (!client) throw clientNotFound();
+      const applied = applyClient(client, payload);
+      client_slug = applied.slug;
+      payload = applied.payload;
+    }
     this.db
       .prepare(
-        'INSERT INTO comex_processes (id, code, client_slug, payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO comex_processes (id, code, client_slug, cliente_id, payload, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
-      .run(id, code, input.client_slug ?? process.env.COMEX_CLIENT_SLUG ?? null, JSON.stringify(input.payload || {}), ts, ts);
+      .run(id, code, client_slug, cliente_id, JSON.stringify(payload), ts, ts);
     return (await this.getProcess(id))!;
   }
 
-  async updateProcess(
-    id: string,
-    patch: { code?: string; client_slug?: string | null; payload?: Record<string, unknown> },
-  ): Promise<ComexProcessRecord | null> {
+  async updateProcess(id: string, patch: ComexProcessPatch): Promise<ComexProcessRecord | null> {
     const current = await this.getProcess(id);
     if (!current) return null;
     const code = patch.code ?? current.code;
-    const client_slug = patch.client_slug === undefined ? current.client_slug : patch.client_slug;
-    const payload = patch.payload ?? current.payload;
+    let client_slug = patch.client_slug === undefined ? current.client_slug : patch.client_slug;
+    let payload = patch.payload ?? current.payload;
+    let cliente_id = current.cliente_id;
+    if (patch.cliente_id !== undefined) {
+      cliente_id = patch.cliente_id;
+      if (cliente_id) {
+        const client = await this.getClient(cliente_id);
+        if (!client) throw clientNotFound();
+        const applied = applyClient(client, payload);
+        client_slug = applied.slug;
+        payload = applied.payload;
+      }
+    }
     this.db
       .prepare(
-        'UPDATE comex_processes SET code = ?, client_slug = ?, payload = ?, updated_at = ? WHERE id = ?',
+        'UPDATE comex_processes SET code = ?, client_slug = ?, cliente_id = ?, payload = ?, updated_at = ? WHERE id = ?',
       )
-      .run(code, client_slug, JSON.stringify(payload), nowIso(), id);
+      .run(code, client_slug, cliente_id, JSON.stringify(payload), nowIso(), id);
     return this.getProcess(id);
+  }
+
+  async listClients(): Promise<ComexClientRecord[]> {
+    const rows = this.db.prepare('SELECT * FROM comex_clients ORDER BY legal_name').all() as Record<string, unknown>[];
+    return rows.map(hydrateClient);
+  }
+
+  async getClient(id: string): Promise<ComexClientRecord | null> {
+    const row = this.db.prepare('SELECT * FROM comex_clients WHERE id = ?').get(id) as
+      | Record<string, unknown>
+      | undefined;
+    return row ? hydrateClient(row) : null;
+  }
+
+  async upsertClient(raw: ComexClientInput): Promise<ComexClientRecord> {
+    const input = normalizeClientInput(raw);
+    const existing = input.id ? await this.getClient(input.id) : null;
+    const dupe = this.db
+      .prepare('SELECT id FROM comex_clients WHERE cnpj_root = ? AND id <> ?')
+      .get(input.cnpj_root, existing?.id ?? '') as { id: string } | undefined;
+    if (dupe) throw cnpjDuplicated();
+    if (input.broker_id && !this.db.prepare('SELECT 1 FROM comex_brokers WHERE id = ?').get(input.broker_id)) {
+      throw brokerNotFound();
+    }
+    const ts = nowIso();
+    const id = existing?.id ?? input.id ?? randomUUID();
+    let slug = existing?.slug;
+    if (!slug) {
+      const taken = new Set(
+        (this.db.prepare('SELECT slug FROM comex_clients').all() as { slug: string }[]).map((r) => r.slug),
+      );
+      slug = uniqueSlug(slugify(input.legal_name), taken);
+    }
+    this.db
+      .prepare(
+        `INSERT INTO comex_clients
+          (id, cnpj_root, cnpj, legal_name, trade_name, slug, radar_status, radar_modality, radar_limit_usd,
+           radar_operations, radar_legal_basis, radar_checked_at, rep_status, rep_certificate, rep_role_type,
+           rep_valid_from, rep_valid_to, broker_id, notes, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(id) DO UPDATE SET
+          cnpj_root=excluded.cnpj_root, cnpj=excluded.cnpj, legal_name=excluded.legal_name,
+          trade_name=excluded.trade_name, radar_status=excluded.radar_status,
+          radar_modality=excluded.radar_modality, radar_limit_usd=excluded.radar_limit_usd,
+          radar_operations=excluded.radar_operations, radar_legal_basis=excluded.radar_legal_basis,
+          radar_checked_at=excluded.radar_checked_at, rep_status=excluded.rep_status,
+          rep_certificate=excluded.rep_certificate, rep_role_type=excluded.rep_role_type,
+          rep_valid_from=excluded.rep_valid_from, rep_valid_to=excluded.rep_valid_to,
+          broker_id=excluded.broker_id, notes=excluded.notes, updated_at=excluded.updated_at`,
+      )
+      .run(
+        id,
+        input.cnpj_root,
+        input.cnpj,
+        input.legal_name,
+        input.trade_name,
+        slug,
+        input.radar_status,
+        input.radar_modality,
+        input.radar_limit_usd,
+        input.radar_operations,
+        input.radar_legal_basis,
+        input.radar_checked_at,
+        input.rep_status,
+        input.rep_certificate,
+        input.rep_role_type,
+        input.rep_valid_from,
+        input.rep_valid_to,
+        input.broker_id,
+        input.notes,
+        existing?.created_at ?? ts,
+        ts,
+      );
+    return (await this.getClient(id))!;
+  }
+
+  async deleteClient(id: string): Promise<'ok' | 'not_found' | 'has_processes'> {
+    if (!(await this.getClient(id))) return 'not_found';
+    const used = this.db.prepare('SELECT 1 FROM comex_processes WHERE cliente_id = ? LIMIT 1').get(id);
+    if (used) return 'has_processes';
+    this.db.prepare('DELETE FROM comex_clients WHERE id = ?').run(id);
+    return 'ok';
+  }
+
+  async listBrokers(): Promise<ComexBrokerRecord[]> {
+    const rows = this.db.prepare('SELECT * FROM comex_brokers ORDER BY name').all() as Record<string, unknown>[];
+    return rows.map(hydrateBroker);
+  }
+
+  async upsertBroker(input: ComexBrokerInput): Promise<ComexBrokerRecord> {
+    const name = String(input.name ?? '').trim();
+    if (!name) throw new Error('Nome do despachante é obrigatório');
+    const existing = input.id
+      ? (this.db.prepare('SELECT * FROM comex_brokers WHERE id = ?').get(input.id) as
+          | Record<string, unknown>
+          | undefined)
+      : undefined;
+    const id = String(existing?.id ?? input.id ?? randomUUID());
+    const ts = nowIso();
+    this.db
+      .prepare(
+        `INSERT INTO comex_brokers (id, name, cpf, rfb_registry, email, phone, certificate_status, active, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,'pendente',?,?,?)
+         ON CONFLICT(id) DO UPDATE SET
+          name=excluded.name, cpf=excluded.cpf, rfb_registry=excluded.rfb_registry, email=excluded.email,
+          phone=excluded.phone, active=excluded.active, updated_at=excluded.updated_at`,
+      )
+      .run(
+        id,
+        name,
+        input.cpf ?? null,
+        input.rfb_registry ?? null,
+        input.email ?? null,
+        input.phone ?? null,
+        input.active === false ? 0 : 1,
+        String(existing?.created_at ?? ts),
+        ts,
+      );
+    const row = this.db.prepare('SELECT * FROM comex_brokers WHERE id = ?').get(id) as Record<string, unknown>;
+    return hydrateBroker(row);
+  }
+
+  async deleteBroker(id: string): Promise<'ok' | 'not_found' | 'in_use'> {
+    if (!this.db.prepare('SELECT 1 FROM comex_brokers WHERE id = ?').get(id)) return 'not_found';
+    if (this.db.prepare('SELECT 1 FROM comex_clients WHERE broker_id = ? LIMIT 1').get(id)) return 'in_use';
+    this.db.prepare('DELETE FROM comex_brokers WHERE id = ?').run(id);
+    return 'ok';
   }
 
   async deleteProcess(id: string): Promise<boolean> {
@@ -400,6 +691,10 @@ export class PgComexStore implements ComexStore {
   async ensureReady(): Promise<void> {
     const db = await this.db();
     await db.query('SELECT 1 FROM comex_field_defs LIMIT 1');
+    // migration 20261116120000: sem ela create/update de processo quebram — falha explícita
+    await db.query('SELECT cliente_id FROM comex_processes LIMIT 1');
+    await db.query('SELECT 1 FROM comex_clients LIMIT 1');
+    await db.query('SELECT 1 FROM comex_brokers LIMIT 1');
     for (const def of DEFAULT_COMEX_FIELD_DEFS) {
       await this.upsertFieldDef(def);
     }
@@ -475,41 +770,169 @@ export class PgComexStore implements ComexStore {
     return hydrateProcess(rows[0], docs);
   }
 
-  async createProcess(input: {
-    code?: string;
-    client_slug?: string | null;
-    payload?: Record<string, unknown>;
-  }): Promise<ComexProcessRecord> {
+  async createProcess(input: ComexProcessCreateInput): Promise<ComexProcessRecord> {
     const db = await this.db();
     const existing = await db.query('SELECT code FROM comex_processes');
     const code = input.code || nextProcessCode(existing.rows as { code: string }[]);
+    let client_slug = input.client_slug ?? process.env.COMEX_CLIENT_SLUG ?? null;
+    let payload = input.payload || {};
+    const cliente_id = input.cliente_id ?? null;
+    if (cliente_id) {
+      const client = await this.getClient(cliente_id);
+      if (!client) throw clientNotFound();
+      const applied = applyClient(client, payload);
+      client_slug = applied.slug;
+      payload = applied.payload;
+    }
     const { rows } = await db.query(
-      `INSERT INTO comex_processes (code, client_slug, payload)
-       VALUES ($1,$2,$3::jsonb) RETURNING *`,
-      [code, input.client_slug ?? process.env.COMEX_CLIENT_SLUG ?? null, JSON.stringify(input.payload || {})],
+      `INSERT INTO comex_processes (code, client_slug, cliente_id, payload)
+       VALUES ($1,$2,$3,$4::jsonb) RETURNING *`,
+      [code, client_slug, cliente_id, JSON.stringify(payload)],
     );
     return hydrateProcess(rows[0], []);
   }
 
-  async updateProcess(
-    id: string,
-    patch: { code?: string; client_slug?: string | null; payload?: Record<string, unknown> },
-  ): Promise<ComexProcessRecord | null> {
+  async updateProcess(id: string, patch: ComexProcessPatch): Promise<ComexProcessRecord | null> {
     const current = await this.getProcess(id);
     if (!current) return null;
     const db = await this.db();
+    let client_slug = patch.client_slug === undefined ? current.client_slug : patch.client_slug;
+    let payload = patch.payload ?? current.payload;
+    let cliente_id = current.cliente_id;
+    if (patch.cliente_id !== undefined) {
+      cliente_id = patch.cliente_id;
+      if (cliente_id) {
+        const client = await this.getClient(cliente_id);
+        if (!client) throw clientNotFound();
+        const applied = applyClient(client, payload);
+        client_slug = applied.slug;
+        payload = applied.payload;
+      }
+    }
     const { rows } = await db.query(
       `UPDATE comex_processes
-       SET code = $2, client_slug = $3, payload = $4::jsonb
+       SET code = $2, client_slug = $3, cliente_id = $4, payload = $5::jsonb
        WHERE id = $1 RETURNING *`,
-      [
-        id,
-        patch.code ?? current.code,
-        patch.client_slug === undefined ? current.client_slug : patch.client_slug,
-        JSON.stringify(patch.payload ?? current.payload),
-      ],
+      [id, patch.code ?? current.code, client_slug, cliente_id, JSON.stringify(payload)],
     );
     return rows[0] ? hydrateProcess(rows[0], current.documents || []) : null;
+  }
+
+  async listClients(): Promise<ComexClientRecord[]> {
+    const db = await this.db();
+    const { rows } = await db.query('SELECT * FROM comex_clients ORDER BY legal_name');
+    return rows.map(hydrateClient);
+  }
+
+  async getClient(id: string): Promise<ComexClientRecord | null> {
+    if (!UUID_RE.test(id)) return null;
+    const db = await this.db();
+    const { rows } = await db.query('SELECT * FROM comex_clients WHERE id = $1', [id]);
+    return rows[0] ? hydrateClient(rows[0]) : null;
+  }
+
+  async upsertClient(raw: ComexClientInput): Promise<ComexClientRecord> {
+    const input = normalizeClientInput(raw);
+    const db = await this.db();
+    const existing = input.id ? await this.getClient(input.id) : null;
+    const dupe = await db.query('SELECT id FROM comex_clients WHERE cnpj_root = $1 AND id::text <> $2', [
+      input.cnpj_root,
+      existing?.id ?? '',
+    ]);
+    if (dupe.rows.length) throw cnpjDuplicated();
+    if (input.broker_id) {
+      const b = UUID_RE.test(input.broker_id)
+        ? await db.query('SELECT 1 FROM comex_brokers WHERE id = $1', [input.broker_id])
+        : { rows: [] };
+      if (!b.rows.length) throw brokerNotFound();
+    }
+    let slug = existing?.slug;
+    if (!slug) {
+      const all = await db.query('SELECT slug FROM comex_clients');
+      slug = uniqueSlug(slugify(input.legal_name), new Set(all.rows.map((r) => String(r.slug))));
+    }
+    const { rows } = await db.query(
+      `INSERT INTO comex_clients
+        (id, cnpj_root, cnpj, legal_name, trade_name, slug, radar_status, radar_modality, radar_limit_usd,
+         radar_operations, radar_legal_basis, radar_checked_at, rep_status, rep_certificate, rep_role_type,
+         rep_valid_from, rep_valid_to, broker_id, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+       ON CONFLICT (id) DO UPDATE SET
+        cnpj_root=EXCLUDED.cnpj_root, cnpj=EXCLUDED.cnpj, legal_name=EXCLUDED.legal_name,
+        trade_name=EXCLUDED.trade_name, radar_status=EXCLUDED.radar_status,
+        radar_modality=EXCLUDED.radar_modality, radar_limit_usd=EXCLUDED.radar_limit_usd,
+        radar_operations=EXCLUDED.radar_operations, radar_legal_basis=EXCLUDED.radar_legal_basis,
+        radar_checked_at=EXCLUDED.radar_checked_at, rep_status=EXCLUDED.rep_status,
+        rep_certificate=EXCLUDED.rep_certificate, rep_role_type=EXCLUDED.rep_role_type,
+        rep_valid_from=EXCLUDED.rep_valid_from, rep_valid_to=EXCLUDED.rep_valid_to,
+        broker_id=EXCLUDED.broker_id, notes=EXCLUDED.notes
+       RETURNING *`,
+      [
+        existing?.id ?? randomUUID(),
+        input.cnpj_root,
+        input.cnpj,
+        input.legal_name,
+        input.trade_name,
+        slug,
+        input.radar_status,
+        input.radar_modality,
+        input.radar_limit_usd,
+        input.radar_operations,
+        input.radar_legal_basis,
+        input.radar_checked_at,
+        input.rep_status,
+        input.rep_certificate,
+        input.rep_role_type,
+        input.rep_valid_from,
+        input.rep_valid_to,
+        input.broker_id,
+        input.notes,
+      ],
+    );
+    return hydrateClient(rows[0]);
+  }
+
+  async deleteClient(id: string): Promise<'ok' | 'not_found' | 'has_processes'> {
+    if (!(await this.getClient(id))) return 'not_found';
+    const db = await this.db();
+    const used = await db.query('SELECT 1 FROM comex_processes WHERE cliente_id = $1 LIMIT 1', [id]);
+    if (used.rows.length) return 'has_processes';
+    await db.query('DELETE FROM comex_clients WHERE id = $1', [id]);
+    return 'ok';
+  }
+
+  async listBrokers(): Promise<ComexBrokerRecord[]> {
+    const db = await this.db();
+    const { rows } = await db.query('SELECT * FROM comex_brokers ORDER BY name');
+    return rows.map(hydrateBroker);
+  }
+
+  async upsertBroker(input: ComexBrokerInput): Promise<ComexBrokerRecord> {
+    const name = String(input.name ?? '').trim();
+    if (!name) throw new Error('Nome do despachante é obrigatório');
+    const db = await this.db();
+    const id = input.id && UUID_RE.test(input.id) ? input.id : randomUUID();
+    const { rows } = await db.query(
+      `INSERT INTO comex_brokers (id, name, cpf, rfb_registry, email, phone, active)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (id) DO UPDATE SET
+        name=EXCLUDED.name, cpf=EXCLUDED.cpf, rfb_registry=EXCLUDED.rfb_registry,
+        email=EXCLUDED.email, phone=EXCLUDED.phone, active=EXCLUDED.active
+       RETURNING *`,
+      [id, name, input.cpf ?? null, input.rfb_registry ?? null, input.email ?? null, input.phone ?? null, input.active !== false],
+    );
+    return hydrateBroker(rows[0]);
+  }
+
+  async deleteBroker(id: string): Promise<'ok' | 'not_found' | 'in_use'> {
+    if (!UUID_RE.test(id)) return 'not_found';
+    const db = await this.db();
+    const found = await db.query('SELECT 1 FROM comex_brokers WHERE id = $1', [id]);
+    if (!found.rows.length) return 'not_found';
+    const used = await db.query('SELECT 1 FROM comex_clients WHERE broker_id = $1 LIMIT 1', [id]);
+    if (used.rows.length) return 'in_use';
+    await db.query('DELETE FROM comex_brokers WHERE id = $1', [id]);
+    return 'ok';
   }
 
   async deleteProcess(id: string): Promise<boolean> {
@@ -598,7 +1021,7 @@ export async function createComexStore(): Promise<ComexStore> {
       return pgStore;
     } catch (err) {
       console.warn(
-        '[comex] Postgres indisponível — sqlite local. Aplique supabase/client/migrations/20260814120000_comex_metadata.sql',
+        '[comex] Postgres indisponível — sqlite local. Aplique supabase/client/migrations/20260814120000_comex_metadata.sql e 20261116120000_comex_clients_brokers.sql',
         err instanceof Error ? err.message : err,
       );
     }

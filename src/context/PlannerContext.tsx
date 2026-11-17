@@ -432,14 +432,13 @@ export const PlannerProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Fator R = contrato D_TRAILING12 (single-source via contracts.ts).
   // Não reage ao Mix preview (mixScale=1); após commitMixPreview ledgerBaseItems muda.
-  const fatorR = useMemo(
-    () =>
-      fatorRComposed(
-        defaultContractCtx(ledgerBaseItems, hubParams, activeDrivers, 1),
-        24,
-      ),
-    [ledgerBaseItems, hubParams, activeDrivers],
-  );
+  // Fonte única: Fator R do motor do DRE (LC 123: folha e RBT12 dos 12 meses ANTERIORES ao
+  // período de apuração). Fallback no contrato composto só se o DRE não trouxer `simples`.
+  const fatorR = useMemo(() => {
+    const ultimo = dreMonths.at(-1)?.simples;
+    if (ultimo) return Number((ultimo.fatorR * 100).toFixed(2));
+    return fatorRComposed(defaultContractCtx(ledgerBaseItems, hubParams, activeDrivers, 1), 24);
+  }, [dreMonths, ledgerBaseItems, hubParams, activeDrivers]);
 
   const activeScenario = useMemo(() => {
     const kpis = deriveScenarioKpis(dreMonths, hubParams);

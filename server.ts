@@ -7,6 +7,7 @@ import { buildSystemPrompt } from "./src/core/advisor/prompt";
 import { buildAdvisorContext } from "./src/core/advisor/context";
 import { bootstrapComexStore, registerPucomexRoutes } from "./src/core/comex/registerPucomexRoutes";
 import { pucomexClient } from "./src/core/comex/pucomexClient";
+import { fetchPortalNcmIfAuthorized } from "./src/core/comex/comexAiNcm";
 import { registerIntranetRoutes } from "./src/core/intranet/registerIntranetRoutes";
 import { registerApproveRoutes } from "./src/core/intranet/registerApproveRoutes";
 import { registerOperatorRoutes } from "./src/core/operator/registerOperatorRoutes";
@@ -274,13 +275,8 @@ app.post("/api/gemini/comex-ai", async (req, res) => {
   } = req.body ?? {};
 
   // Enriquece com consulta NCM no Portal quando sessão/live disponível
-  let portalNcm: unknown = null;
-  try {
-    const ncmRes = await pucomexClient.consultNcm(String(ncmCode));
-    portalNcm = ncmRes.data;
-  } catch {
-    portalNcm = null;
-  }
+  // Só com x-comex-token válido: evita anônimo gerar tráfego mTLS/autenticar em nome da VECTRA
+  const portalNcm = await fetchPortalNcmIfAuthorized(req, String(ncmCode), pucomexClient);
 
   const hasPortal = portalNcm != null;
   // Sem Portal: não inventar alíquotas como se fossem do Siscomex

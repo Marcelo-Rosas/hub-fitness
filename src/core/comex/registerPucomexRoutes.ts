@@ -14,8 +14,10 @@ import {
   PUCOMEX_ROLE_TYPES,
   TABADU_PRODUCAO,
   TABADU_VALIDACAO,
+  type PucomexRoleType,
 } from './environments';
 import { pucomexClient } from './pucomexClient';
+import { comexGateway, comexGuardStatus } from './comexGuard';
 import {
   consultValueFromProcess,
   getComexStore,
@@ -24,6 +26,9 @@ import {
 import { indexComexDocuments } from './docsIndexer';
 import { extractProcessFromPdfs, mergeExtracted } from './pdfExtract';
 import { ingestPdfBuffer } from './pdfIngest';
+import { comexErrorStatus, registerComexClientRoutes } from './registerComexClientRoutes';
+import { computeRadarUsage, processRadarDate, type RadarUsage } from './radarUsage';
+import type { ComexProcessRecord } from '../../types/comex';
 
 function defaultDocsRoot(): string {
   return process.env.COMEX_DOCS_ROOT || 'D:\\Comex';
@@ -86,12 +91,16 @@ export async function bootstrapComexStore(): Promise<void> {
 }
 
 export function registerPucomexRoutes(app: Express): void {
+  app.use('/api/comex', comexGateway);
+  registerComexClientRoutes(app);
+
   app.get('/api/comex/pucomex/status', async (_req, res) => {
     const store = await storeOf();
     res.json({
       success: true,
       status: pucomexClient.getStatus(),
       session: pucomexClient.getSessionPublic(),
+      guard: comexGuardStatus(),
       environments: PUCOMEX_ENVIRONMENTS,
       roleTypes: PUCOMEX_ROLE_TYPES,
       store: { driver: store.driver, docsRoot: defaultDocsRoot() },
@@ -115,7 +124,15 @@ export function registerPucomexRoutes(app: Express): void {
 
   app.post('/api/comex/pucomex/authenticate', async (req, res) => {
     const force = !!req.body?.force;
-    const roleType = req.body?.roleType;
+    const rawRole = req.body?.roleType;
+    let roleType: PucomexRoleType | undefined;
+    if (rawRole !== undefined && rawRole !== null && rawRole !== '') {
+      const code = String(rawRole).toUpperCase();
+      if (!PUCOMEX_ROLE_TYPES.some((r) => r.code === code)) {
+        return sendError(res, 400, `roleType inválido: ${code}`);
+      }
+      roleType = code as PucomexRoleType;
+    }
     const result = await pucomexClient.authenticate(force, roleType);
     const status = result.success ? 200 : result.code === 'PUCOMEX_AUTH_THROTTLE' ? 429 : 401;
     res.status(result.mode === 'demo' && result.success ? 200 : status).json({
@@ -234,12 +251,27 @@ export function registerPucomexRoutes(app: Express): void {
 
   app.post('/api/comex/pucomex/proxy', async (req, res) => {
     try {
-      const method = String(req.body?.method || 'GET').toUpperCase() as 'GET' | 'POST' | 'PUT' | 'DELETE';
-      const reqPath = String(req.body?.path || '').trim();
-      if (!reqPath.startsWith('/')) {
-        return res.status(400).json({ success: false, error: 'path deve começar com /' });
+      const method = String(req.body?.method || 'GET').toUpperCase();
+      if (!['GET', 'POST', 'PUT', 'DELETE'].includes(method)) {
+        return sendError(res, 400, `method inválido: ${method}`);
       }
-      const result = await pucomexClient.apiRequest(method, reqPath, req.body?.body);
+      // Escrita no Portal (registro/retificação) só com opt-in explícito no servidor.
+      if (method !== 'GET' && process.env.PUCOMEX_PROXY_ALLOW_WRITE !== 'true') {
+        return sendError(
+          res,
+          403,
+          'Proxy PUCOMEX somente leitura (GET). Defina PUCOMEX_PROXY_ALLOW_WRITE=true para liberar escrita.',
+        );
+      }
+      const reqPath = String(req.body?.path || '').trim();
+      if (!reqPath.startsWith('/') || reqPath.startsWith('//') || reqPath.includes('://')) {
+        return sendError(res, 400, 'path deve ser relativo ao Portal e começar com /');
+      }
+      const result = await pucomexClient.apiRequest(
+        method as 'GET' | 'POST' | 'PUT' | 'DELETE',
+        reqPath,
+        req.body?.body,
+      );
       return res.status(result.mode === 'live' && result.status >= 400 ? result.status : 200).json({
         success: result.status < 400 || result.mode === 'demo',
         mode: result.mode,
@@ -291,44 +323,70 @@ export function registerPucomexRoutes(app: Express): void {
     res.json({ success: true, driver: store.driver, data });
   });
 
+  async function radarFor(store: ComexStore, proc: ComexProcessRecord): Promise<RadarUsage | undefined> {
+    if (!proc.cliente_id) return undefined;
+    const client = await store.getClient(proc.cliente_id);
+    if (!client) return undefined;
+    return computeRadarUsage(client, await store.listProcesses(), { refDate: processRadarDate(proc) });
+  }
+
   app.post('/api/comex/processes', async (req: Request, res: Response) => {
-    const store = await storeOf();
-    const payload = (req.body?.payload && typeof req.body.payload === 'object'
-      ? req.body.payload
-      : req.body) as Record<string, unknown>;
-    const data = await store.createProcess({
-      code: req.body?.code,
-      client_slug: req.body?.client_slug,
-      payload,
-    });
-    res.json({ success: true, data });
+    try {
+      const store = await storeOf();
+      const cliente_id = typeof req.body?.cliente_id === 'string' ? req.body.cliente_id.trim() : '';
+      if (!cliente_id) return sendError(res, 400, 'Selecione o cliente importador');
+      const payload = (req.body?.payload && typeof req.body.payload === 'object'
+        ? req.body.payload
+        : req.body) as Record<string, unknown>;
+      const data = await store.createProcess({
+        code: req.body?.code,
+        client_slug: req.body?.client_slug,
+        cliente_id,
+        payload,
+      });
+      res.json({ success: true, data, radar: await radarFor(store, data) });
+    } catch (err) {
+      const { status, message } = comexErrorStatus(err);
+      sendError(res, status, message);
+    }
   });
 
   app.put('/api/comex/processes/:id', async (req, res) => {
-    const store = await storeOf();
-    const body = req.body || {};
-    const payload =
-      body.payload && typeof body.payload === 'object'
-        ? body.payload
-        : (() => {
-            const {
-              id: _id,
-              code: _code,
-              client_slug: _slug,
-              documents: _docs,
-              created_at: _c,
-              updated_at: _u,
-              ...rest
-            } = body;
-            return rest;
-          })();
-    const data = await store.updateProcess(req.params.id, {
-      code: body.code,
-      client_slug: body.client_slug,
-      payload,
-    });
-    if (!data) return sendError(res, 404, 'Processo não encontrado');
-    res.json({ success: true, data });
+    try {
+      const store = await storeOf();
+      const body = req.body || {};
+      const payload =
+        body.payload && typeof body.payload === 'object'
+          ? body.payload
+          : (() => {
+              const {
+                id: _id,
+                code: _code,
+                client_slug: _slug,
+                cliente_id: _cid,
+                documents: _docs,
+                created_at: _c,
+                updated_at: _u,
+                ...rest
+              } = body;
+              return rest;
+            })();
+      const current = await store.getProcess(req.params.id);
+      if (!current) return sendError(res, 404, 'Processo não encontrado');
+      // Sem cliente_id no body: reaplica o cliente já vinculado (mantém client_name/slug coerentes).
+      const cliente_id = body.cliente_id !== undefined ? body.cliente_id : current.cliente_id;
+      const data = await store.updateProcess(req.params.id, {
+        code: body.code,
+        client_slug: body.client_slug,
+        cliente_id: cliente_id || null,
+        payload,
+      });
+      if (!data) return sendError(res, 404, 'Processo não encontrado');
+      res.json({ success: true, data, radar: await radarFor(store, data) });
+    } catch (err) {
+      const { status, message } = comexErrorStatus(err);
+      sendError(res, status, message);
+    }
   });
 
   app.delete('/api/comex/processes/:id', async (req, res) => {
@@ -457,7 +515,8 @@ export function registerPucomexRoutes(app: Express): void {
 
   app.post('/api/comex/documents/index', async (req, res) => {
     const store = await storeOf();
-    const root = String(req.body?.root || defaultDocsRoot());
+    // Raiz fixa do servidor — nunca caminho arbitrário vindo do cliente.
+    const root = defaultDocsRoot();
     const result = await indexComexDocuments(store, root);
     let extracted = 0;
     if (req.body?.extract) {
