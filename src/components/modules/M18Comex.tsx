@@ -524,7 +524,7 @@ export const M18Comex: React.FC = () => {
     setAiError(null);
     setAiResult(null);
     try {
-      const res = await fetch('/api/gemini/comex-ai', {
+      const res = await comexFetch('/api/gemini/comex-ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

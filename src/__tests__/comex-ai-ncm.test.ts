@@ -44,6 +44,14 @@ describe('fetchPortalNcmIfAuthorized', () => {
     expect(out).toEqual({ ncm: 'ok' });
   });
 
+  it('resposta HTTP de erro do Portal (4xx/5xx) vira null, não dado válido', async () => {
+    const consultNcm = vi.fn().mockResolvedValue({ status: 404, data: { message: 'NCM não encontrada' } });
+    const out = await fetchPortalNcmIfAuthorized({ headers: { 'x-comex-token': TOKEN } }, '9506.91.00', {
+      consultNcm,
+    });
+    expect(out).toBeNull();
+  });
+
   it('erro do Portal vira null', async () => {
     const consultNcm = vi.fn().mockRejectedValue(new Error('x'));
     const out = await fetchPortalNcmIfAuthorized({ headers: { 'x-comex-token': TOKEN } }, '1', { consultNcm });
