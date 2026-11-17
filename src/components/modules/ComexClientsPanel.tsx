@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Building2, Edit2, Plus, RefreshCw, Trash2, UserCheck } from 'lucide-react';
+import { Building2, Edit2, FileText, Info, Plus, RefreshCw, Trash2, UserCheck } from 'lucide-react';
 import type {
   ComexBrokerRecord,
   ComexClientRecord,
@@ -75,6 +75,14 @@ async function readJson(res: Response): Promise<{ success?: boolean; error?: str
 
 const inputCls = 'w-full px-3 py-2 bg-slate-50 border rounded-lg text-xs';
 const labelCls = 'block font-semibold text-slate-600 mb-1 text-xs';
+
+/** Selo curto: o cliente importa por DI (Radar Limitado). */
+const DiPill: React.FC = () => (
+  <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 ring-1 ring-inset ring-amber-200">
+    <FileText className="h-3 w-3" />
+    Declaração: DI
+  </span>
+);
 
 export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged, fetcher = comexFetch }) => {
   const [clients, setClients] = useState<ComexClientRecord[]>([]);
@@ -349,9 +357,9 @@ export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged,
                     <td className="py-3 px-4">
                       <div>{modalityLabel(c.radar_modality)}</div>
                       {declarationRouteNote(c.radar_modality) ? (
-                        <div className="text-[10px] font-semibold text-amber-700" title={declarationRouteNote(c.radar_modality) ?? ''}>
-                          ⚠ vai por DI (Radar Limitado)
-                        </div>
+                        <span title={declarationRouteNote(c.radar_modality) ?? ''}>
+                          <DiPill />
+                        </span>
                       ) : null}
                       <div className="text-[10px] text-slate-400">
                         {optionLabel(clientDefs, 'radar_status', c.radar_status)}
@@ -503,9 +511,19 @@ export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged,
                   values={clientDraft}
                   onChange={setC}
                   brokers={brokers}
-                  renderAfter={(key) =>
-                    key === 'radar_modality' && radarNote ? (
-                      <p className="mt-1 text-[11px] text-amber-700">{radarNote}</p>
+                  renderAfter={(key) => (key === 'radar_modality' && radarNote ? <DiPill /> : null)}
+                  renderGroupFooter={(group) =>
+                    group === 'Radar' && radarNote ? (
+                      <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2.5">
+                        <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                        <div className="space-y-0.5">
+                          <p className="text-[12px] font-semibold text-amber-900">Importação deste cliente segue por DI</p>
+                          <p className="text-[11px] leading-relaxed text-amber-800/90">
+                            Radar Limitado não pode registrar DUIMP, conforme o cronograma de desligamento da DI da
+                            Receita. Confirme o caminho com o despachante antes do embarque.
+                          </p>
+                        </div>
+                      </div>
                     ) : null
                   }
                 />
