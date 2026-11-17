@@ -29,7 +29,12 @@ import { extractProcessFromPdfs, mergeExtracted } from './pdfExtract';
 import { ingestPdfBuffer } from './pdfIngest';
 import { comexErrorStatus, registerComexClientRoutes } from './registerComexClientRoutes';
 import { computeRadarUsage, processRadarDate, type RadarUsage } from './radarUsage';
-import { compareProcessToBenchmark, fetchNcmBenchmark, takeBenchmarkSlot } from './comexStatBenchmark';
+import {
+  ComexStatError,
+  compareProcessToBenchmark,
+  fetchNcmBenchmark,
+  takeBenchmarkSlot,
+} from './comexStatBenchmark';
 import {
   buildRequiredDocuments,
   ISO2_TO_SISCOMEX,
@@ -375,7 +380,10 @@ export function registerPucomexRoutes(app: Express): void {
           : null;
       return res.json({ success: true, data: { benchmark, comparison } });
     } catch (err: unknown) {
-      return sendError(res, 502, err instanceof Error ? err.message : String(err));
+      // Rota pública: só mensagens próprias do módulo saem; o resto fica no log do servidor.
+      if (err instanceof ComexStatError) return sendError(res, 502, err.message);
+      console.error('[comex/benchmark] falha inesperada:', err);
+      return sendError(res, 502, 'Falha ao consultar o ComexStat — tente de novo em instantes.');
     }
   });
 

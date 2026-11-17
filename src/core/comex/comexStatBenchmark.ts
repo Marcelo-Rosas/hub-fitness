@@ -71,13 +71,51 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-let updatedCache: { at: number; updated: string; year: string; month: string } | null = null;
+/** Erro conhecido do módulo — mensagem pt-BR segura para devolver ao cliente. */
+export class ComexStatError extends Error {
+  readonly code = 'COMEXSTAT_ERROR';
+  constructor(message: string) {
+    super(message);
+    this.name = 'ComexStatError';
+  }
+}
+
+/** Código numérico ComexStat → nome (fallback quando a API não devolve linhas). */
+const COUNTRY_NAME_BY_CODE: Record<string, string> = { '160': 'China' };
+
+/** Teto do cache: a chave vem de chamadores anônimos (rota pública). */
+export const BENCH_CACHE_MAX = 500;
+
+type UpdatedInfo = { at: number; updated: string; year: string; month: string };
+let updatedCache: UpdatedInfo | null = null;
+let updatedInFlight: Promise<UpdatedInfo> | null = null;
 const benchCache = new Map<string, { at: number; value: NcmBenchmark }>();
+const benchInFlight = new Map<string, Promise<NcmBenchmark>>();
 let rateHits: number[] = [];
 
 export function clearComexStatCache(): void {
   updatedCache = null;
+  updatedInFlight = null;
   benchCache.clear();
+  benchInFlight.clear();
+}
+
+export function benchmarkCacheSize(): number {
+  return benchCache.size;
+}
+
+/** Grava no cache removendo expirados e, no teto, os mais antigos (ordem de inserção do Map). */
+function storeBenchmark(key: string, value: NcmBenchmark, at: number): void {
+  for (const [k, v] of benchCache) {
+    if (at - v.at > CACHE_TTL_MS) benchCache.delete(k);
+  }
+  benchCache.delete(key);
+  while (benchCache.size >= BENCH_CACHE_MAX) {
+    const oldest = benchCache.keys().next().value;
+    if (oldest === undefined) break;
+    benchCache.delete(oldest);
+  }
+  benchCache.set(key, { at, value });
 }
 
 export function resetBenchmarkRateLimit(): void {
@@ -93,15 +131,32 @@ export function takeBenchmarkSlot(now: number = Date.now()): boolean {
 }
 
 async function readJson(res: Response, what: string): Promise<{ data?: unknown; success?: boolean }> {
-  if (!res.ok) throw new Error(`ComexStat respondeu HTTP ${res.status} ao consultar ${what}.`);
+  if (!res.ok) throw new ComexStatError(`ComexStat respondeu HTTP ${res.status} ao consultar ${what}.`);
   let json: { data?: unknown; success?: boolean };
   try {
     json = (await res.json()) as { data?: unknown; success?: boolean };
   } catch {
-    throw new Error(`ComexStat devolveu resposta inválida ao consultar ${what}.`);
+    throw new ComexStatError(`ComexStat devolveu resposta inválida ao consultar ${what}.`);
   }
-  if (!json || json.success === false) throw new Error(`ComexStat recusou a consulta de ${what}.`);
+  if (!json || json.success === false) throw new ComexStatError(`ComexStat recusou a consulta de ${what}.`);
   return json;
+}
+
+async function loadUpdated(doFetch: typeof fetch, now: () => number): Promise<UpdatedInfo> {
+  if (updatedCache && now() - updatedCache.at <= CACHE_TTL_MS) return updatedCache;
+  if (!updatedInFlight) {
+    updatedInFlight = (async () => {
+      const res = await doFetch(`${COMEXSTAT_API}/general/dates/updated`, { headers: { Accept: 'application/json' } });
+      const json = await readJson(res, 'a data de atualização');
+      const d = (json.data || {}) as { updated?: string; year?: string; monthNumber?: string };
+      if (!d.year || !d.monthNumber) throw new ComexStatError('ComexStat não informou o último mês fechado.');
+      updatedCache = { at: now(), updated: String(d.updated || ''), year: String(d.year), month: String(d.monthNumber) };
+      return updatedCache;
+    })().finally(() => {
+      updatedInFlight = null;
+    });
+  }
+  return updatedInFlight;
 }
 
 export async function fetchNcmBenchmark(opts: {
@@ -115,18 +170,33 @@ export async function fetchNcmBenchmark(opts: {
   const ncm = opts.ncm.replace(/\D/g, '');
   const countryCode = opts.countryCode && /^\d+$/.test(opts.countryCode) ? opts.countryCode : null;
 
-  if (!updatedCache || now() - updatedCache.at > CACHE_TTL_MS) {
-    const res = await doFetch(`${COMEXSTAT_API}/general/dates/updated`, { headers: { Accept: 'application/json' } });
-    const json = await readJson(res, 'a data de atualização');
-    const d = (json.data || {}) as { updated?: string; year?: string; monthNumber?: string };
-    if (!d.year || !d.monthNumber) throw new Error('ComexStat não informou o último mês fechado.');
-    updatedCache = { at: now(), updated: String(d.updated || ''), year: String(d.year), month: String(d.monthNumber) };
-  }
-  const period = benchmarkWindow(updatedCache.year, updatedCache.month);
+  const updated = await loadUpdated(doFetch, now);
+  const period = benchmarkWindow(updated.year, updated.month);
   const key = `${ncm}|${countryCode ?? '*'}|${period.to}`;
   const hit = benchCache.get(key);
   if (hit && now() - hit.at <= CACHE_TTL_MS) return hit.value;
 
+  // Chamadas simultâneas iguais compartilham a mesma consulta.
+  const pending = benchInFlight.get(key);
+  if (pending) return pending;
+  const p = loadBenchmark({ ncm, countryCode, period, updatedAt: updated.updated, doFetch })
+    .then((value) => {
+      storeBenchmark(key, value, now());
+      return value;
+    })
+    .finally(() => benchInFlight.delete(key));
+  benchInFlight.set(key, p);
+  return p;
+}
+
+async function loadBenchmark(args: {
+  ncm: string;
+  countryCode: string | null;
+  period: { from: string; to: string };
+  updatedAt: string;
+  doFetch: typeof fetch;
+}): Promise<NcmBenchmark> {
+  const { ncm, countryCode, period, updatedAt, doFetch } = args;
   const filters: Array<{ filter: string; values: unknown[] }> = [{ filter: 'ncm', values: [ncm] }];
   if (countryCode) filters.push({ filter: 'country', values: [Number(countryCode)] });
   const list: Array<Record<string, unknown>> = [];
@@ -158,9 +228,13 @@ export async function fetchNcmBenchmark(opts: {
     freightUsd += num(row.metricFreight);
     cifUsd += num(row.metricCIF);
   }
-  const countryName = countryCode ? (list.find((r) => typeof r.country === 'string')?.country as string) ?? null : null;
+  const countryName = countryCode
+    ? ((list.find((r) => typeof r.country === 'string')?.country as string | undefined) ??
+      COUNTRY_NAME_BY_CODE[countryCode] ??
+      null)
+    : null;
 
-  const value: NcmBenchmark = {
+  return {
     ncm,
     countryCode,
     countryName,
@@ -171,11 +245,9 @@ export async function fetchNcmBenchmark(opts: {
     cifUsd,
     usdPerKg: kg > 0 ? fobUsd / kg : null,
     freightPctFob: fobUsd > 0 ? freightUsd / fobUsd : null,
-    updatedAt: updatedCache.updated,
+    updatedAt,
     allCountries: !countryCode,
   };
-  benchCache.set(key, { at: now(), value });
-  return value;
 }
 
 const pct = (n: number) => `${(n * 100).toFixed(0)}%`;

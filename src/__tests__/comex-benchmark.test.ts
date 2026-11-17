@@ -2,8 +2,11 @@ import type { AddressInfo } from 'node:net';
 import express from 'express';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  BENCH_CACHE_MAX,
+  benchmarkCacheSize,
   benchmarkWindow,
   clearComexStatCache,
+  ComexStatError,
   compareProcessToBenchmark,
   COMEXSTAT_API,
   fetchNcmBenchmark,
@@ -139,6 +142,48 @@ describe('fetchNcmBenchmark', () => {
     t += 24 * 3600 * 1000 + 1;
     await fetchNcmBenchmark({ ncm: '95069100', countryCode: '160', fetchImpl: f.impl, now });
     expect(f.bodies).toHaveLength(4);
+  });
+
+  it('cache limitado: remove expirados e respeita o teto (mais antigo sai)', async () => {
+    const f = fakeComexStat({ data: { list: [] }, success: true });
+    let t = 1_000_000;
+    const now = () => t;
+    // Entrada que vai expirar.
+    await fetchNcmBenchmark({ ncm: '00000000', countryCode: null, fetchImpl: f.impl, now });
+    t += 24 * 3600 * 1000 + 1;
+    for (let i = 1; i <= BENCH_CACHE_MAX + 10; i += 1) {
+      await fetchNcmBenchmark({ ncm: String(i).padStart(8, '0'), countryCode: null, fetchImpl: f.impl, now });
+    }
+    expect(benchmarkCacheSize()).toBe(BENCH_CACHE_MAX);
+    const before = f.bodies.length;
+    // A mais antiga (00000001) foi despejada → vai de novo à API; a mais nova vem do cache.
+    await fetchNcmBenchmark({ ncm: String(BENCH_CACHE_MAX + 10).padStart(8, '0'), countryCode: null, fetchImpl: f.impl, now });
+    expect(f.bodies.length).toBe(before);
+    await fetchNcmBenchmark({ ncm: '00000001', countryCode: null, fetchImpl: f.impl, now });
+    expect(f.bodies.length).toBeGreaterThan(before);
+  });
+
+  it('chamadas simultâneas iguais compartilham a mesma consulta', async () => {
+    const f = fakeComexStat();
+    const [a, b] = await Promise.all([
+      fetchNcmBenchmark({ ncm: '95069100', countryCode: '160', fetchImpl: f.impl }),
+      fetchNcmBenchmark({ ncm: '95069100', countryCode: '160', fetchImpl: f.impl }),
+    ]);
+    expect(a).toBe(b);
+    expect(f.bodies).toHaveLength(2); // um POST por ano, uma vez só
+  });
+
+  it('lista vazia com país → nome legível pelo código (160 → China)', async () => {
+    const f = fakeComexStat({ data: { list: [] }, success: true });
+    const b = await fetchNcmBenchmark({ ncm: '95069100', countryCode: '160', fetchImpl: f.impl });
+    expect(b.countryName).toBe('China');
+  });
+
+  it('erros próprios são ComexStatError', async () => {
+    const impl = vi.fn(async () => jsonResponse({}, 503)) as unknown as typeof fetch;
+    await expect(fetchNcmBenchmark({ ncm: '95069100', countryCode: '160', fetchImpl: impl })).rejects.toBeInstanceOf(
+      ComexStatError,
+    );
   });
 
   it('HTTP de erro → Error em pt-BR', async () => {
@@ -285,6 +330,30 @@ describe('POST /api/comex/benchmark', () => {
     expect(json.data.benchmark.allCountries).toBe(true);
     expect(json.data.comparison).toBeNull();
     expect((f.bodies[0] as { filters: unknown[] }).filters).toHaveLength(1);
+  });
+
+  it('502: erro próprio do módulo sai com a mensagem; erro inesperado sai genérico', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+      String(input).startsWith(COMEXSTAT_API) ? Promise.resolve(jsonResponse({}, 500)) : realFetch(input, init),
+    );
+    const known = await post({ ncmCode: '95069100', country: 'CN' });
+    expect(known.status).toBe(502);
+    expect((await known.json()).error).toMatch(/ComexStat respondeu HTTP 500/);
+
+    clearComexStatCache();
+    const spyErr = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+      String(input).startsWith(COMEXSTAT_API)
+        ? Promise.reject(new Error('connect ECONNREFUSED 10.0.0.7:443 detalhe interno'))
+        : realFetch(input, init),
+    );
+    const unknown = await post({ ncmCode: '95069100', country: 'CN' });
+    expect(unknown.status).toBe(502);
+    const msg = (await unknown.json()).error as string;
+    expect(msg).not.toMatch(/ECONNREFUSED|10\.0\.0\.7/);
+    expect(msg).toMatch(/ComexStat/);
+    expect(spyErr).toHaveBeenCalled();
+    spyErr.mockRestore();
   });
 
   it('429 acima de 30 chamadas/min', async () => {
