@@ -21,6 +21,7 @@ import { comexGateway, comexGuardStatus } from './comexGuard';
 import {
   consultValueFromProcess,
   getComexStore,
+  getStoreFallbackReason,
   type ComexStore,
 } from './comexStore';
 import { indexComexDocuments } from './docsIndexer';
@@ -103,7 +104,7 @@ export function registerPucomexRoutes(app: Express): void {
       guard: comexGuardStatus(),
       environments: PUCOMEX_ENVIRONMENTS,
       roleTypes: PUCOMEX_ROLE_TYPES,
-      store: { driver: store.driver, docsRoot: defaultDocsRoot() },
+      store: { driver: store.driver, docsRoot: defaultDocsRoot(), fallbackReason: getStoreFallbackReason() },
       docs: {
         home: PUCOMEX_DOCS_HOME,
         auth: PUCOMEX_DOCS_AUTH,
