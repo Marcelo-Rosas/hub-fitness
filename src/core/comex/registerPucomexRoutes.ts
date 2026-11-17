@@ -146,9 +146,10 @@ export function registerPucomexRoutes(app: Express): void {
     const store = await storeOf();
     res.json({
       success: true,
-      status: pucomexClient.getStatus(),
-      session: pucomexClient.getSessionPublic(),
-      representante: { status: pucomexRepClient.getStatus(), session: pucomexRepClient.getSessionPublic() },
+      // Rota pública (sem x-comex-token): CPF/CNPJ do titular mascarados.
+      status: pucomexClient.getStatusMasked(),
+      session: pucomexClient.getSessionMasked(),
+      representante: { status: pucomexRepClient.getStatusMasked(), session: pucomexRepClient.getSessionMasked() },
       guard: comexGuardStatus(),
       environments: PUCOMEX_ENVIRONMENTS,
       roleTypes: PUCOMEX_ROLE_TYPES,
@@ -304,7 +305,8 @@ export function registerPucomexRoutes(app: Express): void {
       const client = clienteId ? await (await storeOf()).getClient(clienteId) : null;
 
       // IMPEXP (e-CPF do representante) quando configurado; senão a empresa (OPERPORT).
-      const perfilUsado = pucomexRepClient.isCertConfigured() ? 'representante' : 'empresa';
+      const perfilUsado =
+        pucomexRepClient.isLiveModeEnabled() && !pucomexRepClient.getCertError() ? 'representante' : 'empresa';
       const portal = perfilUsado === 'representante' ? pucomexRepClient : pucomexClient;
       const [taRes, ttceRes] = await Promise.allSettled([
         portal.simulateTaImport(ncm, paisIso2),

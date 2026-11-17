@@ -100,6 +100,20 @@ function parseBodyJson(bodyText: string): unknown {
   }
 }
 
+/**
+ * Mascara CPF (11 dígitos) e CNPJ (14) num texto — o CN do e-CPF é "NOME:CPF".
+ * Para respostas públicas (/status sem x-comex-token); uso interno fica com o valor completo.
+ */
+export function maskDocuments(text: string | null | undefined): string | null {
+  if (text === null || text === undefined) return null;
+  return text.replace(/\d[\d./-]*\d/g, (m) => {
+    const d = m.replace(/\D/g, '');
+    if (d.length === 11) return `***.${d.slice(3, 6)}.${d.slice(6, 9)}-**`;
+    if (d.length === 14) return `${d.slice(0, 2)}.${d.slice(2, 5)}.***/${d.slice(8, 12)}-**`;
+    return m;
+  });
+}
+
 /** Traduz erros do OpenSSL ao abrir PFX para algo acionável. */
 export function explainPfxError(message: string, passwordEnv = 'PUCOMEX_CERT_PASSWORD'): string {
   if (/mac verify failure/i.test(message)) {
@@ -263,6 +277,18 @@ export class PucomexClient {
       minAuthIntervalMs: PUCOMEX_MIN_AUTH_INTERVAL_MS,
       docsHome: 'https://docs.portalunico.siscomex.gov.br/',
     };
+  }
+
+  /** Status para a rota pública /status: titular com CPF/CNPJ mascarado. */
+  getStatusMasked(): PucomexClientStatus {
+    const st = this.getStatus();
+    return { ...st, certSubject: maskDocuments(st.certSubject) };
+  }
+
+  /** Sessão para a rota pública /status: documento do titular mascarado. */
+  getSessionMasked(): ReturnType<PucomexClient['getSessionPublic']> {
+    const s = this.getSessionPublic();
+    return s ? { ...s, cnpjeCPF: maskDocuments(s.cnpjeCPF) ?? '' } : null;
   }
 
   getSessionPublic() {

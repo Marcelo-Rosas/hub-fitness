@@ -134,6 +134,37 @@ describe('perfis de credencial PUCOMEX', () => {
     expect(j.representante.status.roleType).toBe('IMPEXP');
     expect('session' in j.representante).toBe(true);
   });
+
+  it('GET /pucomex/status (público) nunca expõe o CPF completo do titular', async (ctx) => {
+    if (!pfxPath) ctx.skip();
+    process.env.PUCOMEX_CERT_PFX_PATH = pfxPath!;
+    process.env.PUCOMEX_CERT_PASSWORD = 'certo';
+    process.env.PUCOMEX_REP_CERT_PFX_PATH = pfxPath!;
+    process.env.PUCOMEX_REP_CERT_PASSWORD = 'certo';
+    process.env.PUCOMEX_LIVE = 'false'; // sessão DEMO local, sem Portal
+    pucomexRepClient.authenticateDemo();
+    pucomexClient.authenticateDemo();
+    // uso interno continua com o valor completo
+    expect(pucomexRepClient.getStatus().certSubject).toBe('MARCELO TESTE:12345678900');
+    const raw = await (await fetch(`${baseUrl}/api/comex/pucomex/status`)).text();
+    expect(raw).not.toContain('12345678900');
+    expect(raw).not.toContain('123.456.789-00');
+    const j = JSON.parse(raw);
+    expect(j.representante.status.certSubject).toBe('MARCELO TESTE:***.456.789-**');
+    expect(j.representante.session.cnpjeCPF).toBe('MARCELO TESTE:***.456.789-**');
+    expect(j.status.certSubject).toBe('MARCELO TESTE:***.456.789-**');
+  });
+});
+
+describe('maskDocuments', () => {
+  it('mascara CPF (11) e CNPJ (14), mantém o nome', async () => {
+    const { maskDocuments } = await import('../core/comex/pucomexClient');
+    expect(maskDocuments('MARCELO ABISSULO ROSAS:12345678900')).toBe('MARCELO ABISSULO ROSAS:***.456.789-**');
+    expect(maskDocuments('VECTRA HUB LTDA:62.188.748/0001-17')).toBe('VECTRA HUB LTDA:62.188.***/0001-**');
+    expect(maskDocuments('X:123.456.789-00')).toBe('X:***.456.789-**');
+    expect(maskDocuments(null)).toBeNull();
+    expect(maskDocuments('Sem documento 2026')).toBe('Sem documento 2026');
+  });
 });
 
 const BOM = '﻿';
@@ -187,8 +218,9 @@ describe('TTCE: parse e diagnóstico', () => {
 describe('POST /api/comex/ncm/tratamentos com perfis', () => {
   const okTa = { status: 200, mode: 'live' as const, path: '/talpco', data: [] };
 
-  it('usa o representante quando configurado', async () => {
-    vi.spyOn(pucomexRepClient, 'isCertConfigured').mockReturnValue(true);
+  it('usa o representante quando live e o certificado abre', async () => {
+    vi.spyOn(pucomexRepClient, 'isLiveModeEnabled').mockReturnValue(true);
+    vi.spyOn(pucomexRepClient, 'getCertError').mockReturnValue(null);
     const repTa = vi.spyOn(pucomexRepClient, 'simulateTaImport').mockResolvedValue(okTa);
     const repTt = vi.spyOn(pucomexRepClient, 'ttceChapter').mockResolvedValue({
       status: 200, mode: 'live', data: BOM + JSON.stringify(chapterFile(['160'])),
@@ -203,8 +235,20 @@ describe('POST /api/comex/ncm/tratamentos com perfis', () => {
     expect(r.data.ttceDiag).toBeUndefined();
   });
 
+  it('representante com certificado que não abre → cai para a empresa', async () => {
+    vi.spyOn(pucomexRepClient, 'isLiveModeEnabled').mockReturnValue(true);
+    vi.spyOn(pucomexRepClient, 'getCertError').mockReturnValue('PFX não abre (mac verify failure)');
+    const repTa = vi.spyOn(pucomexRepClient, 'simulateTaImport');
+    const empTa = vi.spyOn(pucomexClient, 'simulateTaImport').mockResolvedValue(okTa);
+    vi.spyOn(pucomexClient, 'ttceChapter').mockResolvedValue({ status: 200, mode: 'live', data: chapterFile(['160']) });
+    const r = await (await api('POST', '/api/comex/ncm/tratamentos', { ncmCode: '95069100', country: 'CN' })).json();
+    expect(r.data.perfilUsado).toBe('empresa');
+    expect(repTa).not.toHaveBeenCalled();
+    expect(empTa).toHaveBeenCalled();
+  });
+
   it('sem representante cai para a empresa; TTCE vazio traz ttceDiag', async () => {
-    vi.spyOn(pucomexRepClient, 'isCertConfigured').mockReturnValue(false);
+    vi.spyOn(pucomexRepClient, 'isLiveModeEnabled').mockReturnValue(false);
     const repTa = vi.spyOn(pucomexRepClient, 'simulateTaImport');
     vi.spyOn(pucomexClient, 'simulateTaImport').mockResolvedValue(okTa);
     vi.spyOn(pucomexClient, 'ttceChapter').mockResolvedValue({
@@ -219,7 +263,7 @@ describe('POST /api/comex/ncm/tratamentos com perfis', () => {
   });
 
   it('erro JSON do Portal vira message + code legível', async () => {
-    vi.spyOn(pucomexRepClient, 'isCertConfigured').mockReturnValue(false);
+    vi.spyOn(pucomexRepClient, 'isLiveModeEnabled').mockReturnValue(false);
     vi.spyOn(pucomexClient, 'simulateTaImport').mockResolvedValue({
       status: 403, mode: 'live', path: '/talpco',
       data: { message: 'Transação não autorizada para esse perfil', code: 'PUCX-ER0201', extra: 'x' },
