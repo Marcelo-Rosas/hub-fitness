@@ -55,6 +55,7 @@ import { Comex4plPanel } from './Comex4plPanel';
 import { ComexClientsPanel } from './ComexClientsPanel';
 import { RadarUsageBadge } from './RadarUsageBadge';
 import { NcmTreatmentsPanel, type NcmTreatmentsData } from './NcmTreatmentsPanel';
+import { NcmBenchmarkCard } from './NcmBenchmarkCard';
 import { declarationRouteNote } from '../../core/comex/comexRegistry';
 import type { RadarUsage } from '../../core/comex/radarUsage';
 
@@ -136,6 +137,8 @@ export const M18Comex: React.FC = () => {
   const [aiDescription, setAiDescription] = useState('Aparelhos de musculação / fitness equipment');
   const [aiOperationType, setAiOperationType] = useState<'exportacao' | 'importacao'>('importacao');
   const [aiFobUsd, setAiFobUsd] = useState('128500');
+  const [aiKg, setAiKg] = useState('');
+  const [benchmarkReq, setBenchmarkReq] = useState<{ ncmCode: string; country: string; fobUsd: number; kg: number | null } | null>(null);
   const [aiCountry, setAiCountry] = useState('China (CN)');
   const [aiClienteId, setAiClienteId] = useState('');
   const [ncmTreatments, setNcmTreatments] = useState<NcmTreatmentsData | null>(null);
@@ -542,6 +545,13 @@ export const M18Comex: React.FC = () => {
     setAiError(null);
     setAiResult(null);
     setNcmTreatments(null);
+    // Em paralelo: média ComexStat (MDIC) da NCM/origem — o cartão consulta /api/comex/benchmark
+    setBenchmarkReq({
+      ncmCode: aiNcmCode,
+      country: aiCountry,
+      fobUsd: parseFloat(aiFobUsd) || 0,
+      kg: parseFloat(aiKg) || null,
+    });
     // Em paralelo: tratamentos reais do Portal (LPCO/anuentes, TTCE, documentos pelo Radar)
     void cfetch('/api/comex/ncm/tratamentos', {
       method: 'POST',
@@ -1478,9 +1488,19 @@ export const M18Comex: React.FC = () => {
                   type="number"
                   value={aiFobUsd}
                   onChange={(e) => setAiFobUsd(e.target.value)}
+                  title="FOB (US$)"
+                  placeholder="FOB (US$)"
                   className="px-3 py-2 bg-slate-50 border rounded-lg"
                 />
               </div>
+              <input
+                type="number"
+                min="0"
+                value={aiKg}
+                onChange={(e) => setAiKg(e.target.value)}
+                placeholder="Peso (kg) — opcional, compara o preço/kg com a média"
+                className="w-full px-3 py-2 bg-slate-50 border rounded-lg"
+              />
               <SearchableSelect
                 value={aiCountry}
                 options={Object.entries(COUNTRY_NAME_MAP).map(([code, label]) => ({
@@ -1529,6 +1549,14 @@ export const M18Comex: React.FC = () => {
               <div className="py-16 text-center text-slate-400 text-xs">
                 Execute a auditoria para NCM fitness 9506.
               </div>
+            )}
+            {benchmarkReq && (
+              <NcmBenchmarkCard
+                ncmCode={benchmarkReq.ncmCode}
+                country={benchmarkReq.country}
+                fobUsd={benchmarkReq.fobUsd}
+                kg={benchmarkReq.kg}
+              />
             )}
             {aiResult && (
               <div className="space-y-3 text-xs">
@@ -1786,6 +1814,19 @@ export const M18Comex: React.FC = () => {
                 onChange={setFormPayload}
                 extraCatalogs={extraCatalogs}
               />
+              {editingProcess && formPayload.ncm_code && Number(formPayload.fob_value_usd) > 0 ? (
+                <NcmBenchmarkCard
+                  compact
+                  ncmCode={String(formPayload.ncm_code)}
+                  // UN/LOCODE do porto de origem (ex.: CNSHA) → ISO2 do país.
+                  country={/^[A-Za-z]{2}/.test(String(formPayload.port_of_origin_code || ''))
+                    ? String(formPayload.port_of_origin_code).slice(0, 2).toUpperCase()
+                    : null}
+                  fobUsd={Number(formPayload.fob_value_usd)}
+                  kg={Number(formPayload.gross_weight_kg) || null}
+                  freightUsd={Number(formPayload.freight_value_usd) || null}
+                />
+              ) : null}
               {extractJson ? (
                 <details className="rounded-lg border bg-slate-50 p-2">
                   <summary className="cursor-pointer font-semibold text-slate-600">JSON extraído</summary>

@@ -30,6 +30,12 @@ import { ingestPdfBuffer } from './pdfIngest';
 import { comexErrorStatus, registerComexClientRoutes } from './registerComexClientRoutes';
 import { computeRadarUsage, processRadarDate, type RadarUsage } from './radarUsage';
 import {
+  ComexStatError,
+  compareProcessToBenchmark,
+  fetchNcmBenchmark,
+  takeBenchmarkSlot,
+} from './comexStatBenchmark';
+import {
   buildRequiredDocuments,
   ISO2_TO_SISCOMEX,
   parseCountryIso2,
@@ -349,6 +355,35 @@ export function registerPucomexRoutes(app: Express): void {
       });
     } catch (err: unknown) {
       return sendError(res, 500, err instanceof Error ? err.message : String(err));
+    }
+  });
+
+  // Benchmark ComexStat (MDIC) — dado público, rota sem token (COMEX_PUBLIC_ROUTES), limitada a 30/min.
+  app.post('/api/comex/benchmark', async (req, res) => {
+    try {
+      const ncm = String(req.body?.ncmCode || '').replace(/\D/g, '');
+      if (ncm.length !== 8) return sendError(res, 400, 'ncmCode deve ter 8 dígitos');
+      if (!takeBenchmarkSlot()) {
+        return sendError(res, 429, 'Muitas consultas ao ComexStat — aguarde um minuto e tente de novo.');
+      }
+      const iso2 = parseCountryIso2(String(req.body?.country || ''));
+      const countryCode = iso2 ? (ISO2_TO_SISCOMEX[iso2] ?? null) : null;
+      const benchmark = await fetchNcmBenchmark({ ncm, countryCode });
+      const optNum = (v: unknown) => (v == null || v === '' ? null : Number(v));
+      const fobUsd = optNum(req.body?.fobUsd);
+      const comparison =
+        fobUsd != null && Number.isFinite(fobUsd)
+          ? compareProcessToBenchmark(
+              { fobUsd, kg: optNum(req.body?.kg), freightUsd: optNum(req.body?.freightUsd) },
+              benchmark,
+            )
+          : null;
+      return res.json({ success: true, data: { benchmark, comparison } });
+    } catch (err: unknown) {
+      // Rota pública: só mensagens próprias do módulo saem; o resto fica no log do servidor.
+      if (err instanceof ComexStatError) return sendError(res, 502, err.message);
+      console.error('[comex/benchmark] falha inesperada:', err);
+      return sendError(res, 502, 'Falha ao consultar o ComexStat — tente de novo em instantes.');
     }
   });
 
