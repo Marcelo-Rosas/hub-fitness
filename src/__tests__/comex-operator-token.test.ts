@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   generateOperatorToken,
   buildWranglerSecretCommand,
+  isValidOperatorTokenFormat,
   setComexOperatorToken,
   getComexOperatorToken,
   comexFetch,
@@ -31,10 +32,18 @@ describe('comexOperatorToken', () => {
     expect(a).not.toBe(b);
   });
 
-  it('comando wrangler usa npx.cmd e aspas simples', () => {
-    expect(buildWranglerSecretCommand('ab12')).toBe(
-      "$token = 'ab12'; $token | npx.cmd wrangler secret put COMEX_OPERATOR_TOKEN",
+  it('comando wrangler entra na pasta do worker e lê o token do clipboard', () => {
+    expect(buildWranglerSecretCommand()).toBe(
+      'cd workers\\hub-fitness-proxy; Get-Clipboard | npx.cmd wrangler secret put COMEX_OPERATOR_TOKEN',
     );
+  });
+
+  it('valida formato do token', () => {
+    expect(isValidOperatorTokenFormat(generateOperatorToken())).toBe(true);
+    expect(isValidOperatorTokenFormat('abc_DEF-1234567890')).toBe(true);
+    expect(isValidOperatorTokenFormat('curto')).toBe(false);
+    expect(isValidOperatorTokenFormat("abcdefghijklmnop'; rm")).toBe(false);
+    expect(isValidOperatorTokenFormat('com espaco 1234567890')).toBe(false);
   });
 
   it('setComexOperatorToken faz trim', () => {

@@ -30,7 +30,9 @@ Sem PFX → modo **DEMO** (sessão local + respostas stub; paths oficiais preser
 - Livres (`COMEX_PUBLIC_ROUTES`): `GET /api/comex/pucomex/status`, `GET /api/comex/pucomex/catalog`. `POST /api/comex/benchmark` consta na lista, mas a rota ainda não existe (Fase 2).
 - Sem `COMEX_OPERATOR_TOKEN` no servidor → 503 `COMEX_OPERATOR_TOKEN_UNSET` (também em DEMO). Header ausente ou errado → 401 `COMEX_OPERATOR_TOKEN_REQUIRED`. Comparação por SHA-256 + `timingSafeEqual`.
 - Login do app é mock (forjável, repo público) → **não** serve de autorização.
-- Gerador no M18 (`src/components/modules/ComexOperatorTokenPanel.tsx`, lógica em `comexOperatorToken.ts`): botões **Gerar** e **Salvar**. O token fica só no `sessionStorage` da aba. Salvar mostra o comando `$token = '…'; $token | npx.cmd wrangler secret put COMEX_OPERATOR_TOKEN`. **O servidor nunca recebe o token por HTTP**; o secret é gravado pelo próprio comando (Cloudflare ou `.env` local).
+- Gerador no M18 (`src/components/modules/ComexOperatorTokenPanel.tsx`, lógica em `comexOperatorToken.ts`): botões **Gerar** e **Salvar**. O token fica só no `sessionStorage` da aba. Salvar valida o formato (`^[A-Za-z0-9_-]{16,}$`), copia o TOKEN para a área de transferência e mostra o comando `cd workers\hub-fitness-proxy; Get-Clipboard | npx.cmd wrangler secret put COMEX_OPERATOR_TOKEN` (rodar na raiz do repo; o token não vai no comando). **O servidor nunca recebe o token por HTTP**; o secret é gravado pelo próprio comando (Cloudflare ou `.env` local).
+- **Aviso operacional:** gravar/trocar o secret só vale após reiniciar o container (deploy); sem `DATABASE_URL`, reiniciar APAGA o SQLite (processos, clientes, despachantes). Fixe o token uma vez, antes de cadastrar clientes reais, e ligue o Postgres antes do uso real.
+- `POST /api/gemini/comex-ai` só consulta o NCM no Portal (mTLS) com `x-comex-token` válido; sem token roda só com o Gemini.
 - Proxy: só `GET`; escrita exige `PUCOMEX_PROXY_ALLOW_WRITE=true`. Path absoluto/`//` recusado.
 - `/status` expõe `status.certError` (PFX testado com `tls.createSecureContext`; "mac verify failure" = senha errada ou .pfx corrompido) e `guard`.
 - `autenticar` respeita 60s mesmo com `force` e deduplica chamadas simultâneas.
@@ -85,7 +87,7 @@ Sem PFX → modo **DEMO** (sessão local + respostas stub; paths oficiais preser
 - `POST /api/comex/ncm/consult`, `/catalogo/consult`
 - `POST /api/comex/pucomex/proxy` — path genérico oficial
 - CRUD `/api/comex/field-defs` — metadado de campos
-- CRUD `/api/comex/processes` — payload jsonb; `POST` exige `cliente_id` e devolve `radar`
+- CRUD `/api/comex/processes` — payload jsonb; `POST` exige `cliente_id`; `POST` e `PUT` devolvem `radar`
 - CRUD `/api/comex/clients` — importadores (`PUT /:id`, `DELETE /:id`)
 - `GET /api/comex/clients/:id/radar-usage?ref=YYYY-MM-DD` — uso do limite Radar (padrão: hoje)
 - CRUD `/api/comex/brokers` — despachantes (`PUT /:id`, `DELETE /:id`)

@@ -722,6 +722,8 @@ export const M18Comex: React.FC = () => {
             setTokenVersion((v) => v + 1);
             void loadFieldDefs().catch(() => undefined);
             void loadProcesses().catch(() => undefined);
+            void loadClients().catch(() => undefined);
+            void refreshPortalStatus();
           }}
         />
       ) : (

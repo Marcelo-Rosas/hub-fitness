@@ -252,14 +252,18 @@ export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged,
   const deleteClient = async (c: ComexClientRecord) => {
     if (!window.confirm(`Excluir o cliente ${c.legal_name}?`)) return;
     setListError(null);
-    const res = await fetcher(`/api/comex/clients/${encodeURIComponent(c.id)}`, { method: 'DELETE' });
-    const json = await readJson(res);
-    if (!json.success) {
-      setListError(json.error || `Falha ao excluir (HTTP ${res.status})`);
-      return;
+    try {
+      const res = await fetcher(`/api/comex/clients/${encodeURIComponent(c.id)}`, { method: 'DELETE' });
+      const json = await readJson(res);
+      if (!json.success) {
+        setListError(json.error || `Falha ao excluir (HTTP ${res.status})`);
+        return;
+      }
+      await loadAll();
+      onChanged?.();
+    } catch (err) {
+      setListError(err instanceof Error ? err.message : 'Falha de rede ao excluir cliente');
     }
-    await loadAll();
-    onChanged?.();
   };
 
   const openNewBroker = () => {
@@ -317,13 +321,17 @@ export const ComexClientsPanel: React.FC<ComexClientsPanelProps> = ({ onChanged,
   const deleteBroker = async (b: ComexBrokerRecord) => {
     if (!window.confirm(`Excluir o despachante ${b.name}?`)) return;
     setListError(null);
-    const res = await fetcher(`/api/comex/brokers/${encodeURIComponent(b.id)}`, { method: 'DELETE' });
-    const json = await readJson(res);
-    if (!json.success) {
-      setListError(json.error || `Falha ao excluir (HTTP ${res.status})`);
-      return;
+    try {
+      const res = await fetcher(`/api/comex/brokers/${encodeURIComponent(b.id)}`, { method: 'DELETE' });
+      const json = await readJson(res);
+      if (!json.success) {
+        setListError(json.error || `Falha ao excluir (HTTP ${res.status})`);
+        return;
+      }
+      await loadAll();
+    } catch (err) {
+      setListError(err instanceof Error ? err.message : 'Falha de rede ao excluir despachante');
     }
-    await loadAll();
   };
 
   const brokerName = (id: string | null) => (id ? brokers.find((b) => b.id === id)?.name || '—' : '—');

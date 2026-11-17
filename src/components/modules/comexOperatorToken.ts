@@ -30,9 +30,19 @@ export function generateOperatorToken(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** Comando PowerShell para gravar o secret no Worker. */
-export function buildWranglerSecretCommand(token: string): string {
-  return `$token = '${token}'; $token | npx.cmd wrangler secret put COMEX_OPERATOR_TOKEN`;
+/** Formato aceito para o token (também evita problemas de aspas no PowerShell). */
+export const OPERATOR_TOKEN_PATTERN = /^[A-Za-z0-9_-]{16,}$/;
+
+export function isValidOperatorTokenFormat(token: string): boolean {
+  return OPERATOR_TOKEN_PATTERN.test(token.trim());
+}
+
+/**
+ * Comando PowerShell (rodar na raiz do repo) para gravar o secret no Worker.
+ * O token NÃO vai no comando: é lido da área de transferência.
+ */
+export function buildWranglerSecretCommand(): string {
+  return 'cd workers\\hub-fitness-proxy; Get-Clipboard | npx.cmd wrangler secret put COMEX_OPERATOR_TOKEN';
 }
 
 /** fetch para /api/comex/* com x-comex-token; JSON content-type só se body for string. */

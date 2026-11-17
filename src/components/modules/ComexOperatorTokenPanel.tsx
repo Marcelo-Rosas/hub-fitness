@@ -4,6 +4,7 @@ import {
   buildWranglerSecretCommand,
   generateOperatorToken,
   getComexOperatorToken,
+  isValidOperatorTokenFormat,
   setComexOperatorToken,
 } from './comexOperatorToken';
 
@@ -21,14 +22,21 @@ export const ComexOperatorTokenPanel: React.FC<ComexOperatorTokenPanelProps> = (
   const [command, setCommand] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const [error, setError] = useState<string | null>(null);
+
   const save = async () => {
     const clean = token.trim();
     if (!clean) return;
+    if (!isValidOperatorTokenFormat(clean)) {
+      setError('Token inválido: use ao menos 16 caracteres, apenas letras, números, "-" e "_". Use o botão Gerar.');
+      setCommand(null);
+      return;
+    }
+    setError(null);
     setComexOperatorToken(clean);
-    const cmd = buildWranglerSecretCommand(clean);
-    setCommand(cmd);
+    setCommand(buildWranglerSecretCommand());
     try {
-      await navigator.clipboard.writeText(cmd);
+      await navigator.clipboard.writeText(clean);
       setCopied(true);
     } catch {
       setCopied(false);
@@ -84,12 +92,23 @@ export const ComexOperatorTokenPanel: React.FC<ComexOperatorTokenPanelProps> = (
         </button>
       </div>
 
+      {error && <p className="text-xs text-rose-700">{error}</p>}
+
+      <p className="text-xs text-amber-700 leading-relaxed">
+        Atenção: gravar ou trocar o secret só vale depois de reiniciar o container (deploy). Sem{' '}
+        <span className="font-mono">DATABASE_URL</span>, reiniciar APAGA o SQLite (processos, clientes e
+        despachantes). Fixe o token uma vez, antes de cadastrar clientes reais, e ligue o Postgres antes do uso
+        real.
+      </p>
+
       {command && (
         <div className="space-y-2">
           <p className="text-xs text-slate-700">
-            {copied ? 'Comando copiado. ' : 'Copie o comando abaixo. '}
-            Rode no PowerShell para gravar o secret no servidor — cole só o comando, sem o{' '}
-            <span className="font-mono">PS C:\&gt;</span> da frente.
+            {copied
+              ? 'O token foi copiado para a área de transferência. '
+              : 'Não foi possível copiar o token automaticamente — copie-o do campo acima. '}
+            Rode o comando abaixo no PowerShell, na raiz do repositório hub-fitness. Ele lê o token da área de
+            transferência (o token não aparece no comando). Guarde o token num gerenciador de senhas.
           </p>
           <pre className="p-3 rounded-lg bg-slate-900 text-slate-100 text-[11px] font-mono whitespace-pre-wrap break-all">
             {command}
@@ -100,7 +119,8 @@ export const ComexOperatorTokenPanel: React.FC<ComexOperatorTokenPanelProps> = (
       {!configuredOnServer && (
         <p className="text-xs text-amber-700">
           O servidor ainda não tem <span className="font-mono">COMEX_OPERATOR_TOKEN</span>. Depois de rodar o
-          comando, reinicie/deploy e recarregue.
+          comando, reinicie o container (deploy) e recarregue. Sem <span className="font-mono">DATABASE_URL</span>,
+          o reinício apaga os dados do SQLite.
         </p>
       )}
     </div>

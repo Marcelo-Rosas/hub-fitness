@@ -33,6 +33,14 @@ export function comexGuardStatus() {
   };
 }
 
+/** Verificação pura: há token configurado no servidor e o header bate. */
+export function isValidComexOperatorToken(req: Pick<Request, 'headers'>): boolean {
+  const token = configuredToken();
+  if (!token) return false;
+  const sent = String(req.headers[COMEX_TOKEN_HEADER] || '').trim();
+  return !!sent && safeEqual(sent, token);
+}
+
 /**
  * Estrito: sem COMEX_OPERATOR_TOKEN no servidor → 503 (mesmo em DEMO);
  * sem header ou header errado → 401.
