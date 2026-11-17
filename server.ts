@@ -279,15 +279,24 @@ app.post("/api/gemini/comex-ai", async (req, res) => {
   const portalNcm = await fetchPortalNcmIfAuthorized(req, String(ncmCode), pucomexClient);
 
   const hasPortal = portalNcm != null;
-  // Sem Portal: não inventar alíquotas como se fossem do Siscomex
+  const ncmInfo = portalNcm as null | {
+    ncm?: { Codigo?: string; Descricao?: string; Data_Inicio?: string; Tipo_Ato_Ini?: string; Numero_Ato_Ini?: string; Ano_Ato_Ini?: string };
+    tabelaAtualizadaEm?: string | null;
+  };
+  const ncmDesc = ncmInfo?.ncm?.Descricao?.replace(/^[-\s]+/, "");
+  const ncmAto = ncmInfo?.ncm?.Tipo_Ato_Ini
+    ? `${ncmInfo.ncm.Tipo_Ato_Ini} ${ncmInfo.ncm.Numero_Ato_Ini}/${ncmInfo.ncm.Ano_Ato_Ini}`
+    : null;
+  // Sem Portal: não inventar alíquotas como se fossem do Siscomex.
+  // Canal de conferência só sai no registro da declaração — nunca presumir "Verde".
   const fallback = {
-    productCategory: `Aparelhos de ginástica / NCM ${ncmCode}`,
-    siscomexChannelRisk: hasPortal ? "Verde" : "Indeterminado",
+    productCategory: ncmDesc ? `NCM ${ncmInfo?.ncm?.Codigo} — ${ncmDesc}` : `NCM ${ncmCode}`,
+    siscomexChannelRisk: "Indeterminado (o canal só é definido no registro da declaração)",
     auditSummary: hasPortal
-      ? `Parecer HUB-FITNESS: ${operationType} de "${productDescription}" (NCM ${ncmCode}) com origem/destino ${country}, FOB USD ${Number(fobValueUsd).toLocaleString("pt-BR")}. Densidade/CIF alimentam pitch e CLIA; Ad Valorem do DRE permanece 0,10% sobre NF de serviço.`
-      : `Portal Único indisponível para NCM ${ncmCode}. Alíquotas II/IPI/PIS/COFINS não foram inventadas — use consulta live PUCOMEX ou tax_rates no Operator. Ad Valorem do DRE permanece 0,10% sobre NF de serviço.`,
+      ? `NCM ${ncmInfo?.ncm?.Codigo} vigente na tabela oficial do Portal Único${ncmInfo?.ncm?.Data_Inicio ? ` desde ${ncmInfo.ncm.Data_Inicio}` : ""}${ncmAto ? ` (${ncmAto})` : ""}: "${ncmDesc}". ${operationType} de "${productDescription}", origem/destino ${country}, FOB USD ${Number(fobValueUsd).toLocaleString("pt-BR")}. Alíquotas II/IPI/PIS/COFINS não vêm dessa tabela — confirmar no TEC/simulador. Ad Valorem do DRE permanece 0,10% sobre NF de serviço.`
+      : `Tabela NCM do Portal Único indisponível agora para ${ncmCode}. Alíquotas II/IPI/PIS/COFINS não foram inventadas — use consulta live PUCOMEX ou tax_rates no Operator. Ad Valorem do DRE permanece 0,10% sobre NF de serviço.`,
     estimatedTaxes: null as null | Record<string, number>,
-    taxesSource: hasPortal ? "portal" : "unavailable",
+    taxesSource: hasPortal ? "ncm-portal-sem-aliquotas" : "unavailable",
     lpcoRequirements: ["Verificar MAPA/INMETRO caso a caso (sem Portal não há isenção assumida)"],
     requiredDocuments: ["Invoice comercial", "Packing list", "BL / conhecimento de embarque", "DI/DUIMP"],
     portalNcm,
@@ -302,7 +311,7 @@ app.post("/api/gemini/comex-ai", async (req, res) => {
     const response = await ai.models.generateContent({
       model: process.env.GEMINI_MODEL || "gemini-3.6-flash",
       contents: `Você é auditor Comex BR para 3PL fitness. Responda APENAS JSON válido com campos: productCategory, siscomexChannelRisk, auditSummary, estimatedTaxes (objeto ou null), lpcoRequirements[], requiredDocuments[], taxesSource ("portal"|"unavailable").
-Regra: se Dados Portal for null/ausente, estimatedTaxes DEVE ser null, taxesSource="unavailable", siscomexChannelRisk="Indeterminado". NÃO invente alíquotas II/PIS/COFINS como se fossem do Portal.
+Regras: estimatedTaxes DEVE ser null (a tabela NCM do Portal não traz alíquotas) e siscomexChannelRisk="Indeterminado" (o canal só sai no registro). NÃO invente alíquotas II/IPI/PIS/COFINS. Use "Dados Portal" (descrição oficial e vigência da NCM) no auditSummary e liste LPCO/anuentes prováveis como itens a verificar.
 NCM: ${ncmCode}
 Produto: ${productDescription}
 Operação: ${operationType}
@@ -317,14 +326,12 @@ Dados Portal (se houver): ${JSON.stringify(portalNcm)?.slice(0, 2000)}`,
       return res.json({ success: true, isSimulated: false, data: fallback });
     }
     const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
-    if (!hasPortal) {
-      parsed.estimatedTaxes = null;
-      parsed.taxesSource = "unavailable";
-      if (!parsed.siscomexChannelRisk || parsed.siscomexChannelRisk === "Verde") {
-        parsed.siscomexChannelRisk = "Indeterminado";
-      }
-    }
-    const data = { ...parsed, portalNcm, taxesSource: hasPortal ? (parsed.taxesSource || "portal") : "unavailable" };
+    // A tabela NCM do Portal não traz alíquotas e o canal só sai no registro:
+    // nada disso pode vir da IA, com ou sem Portal.
+    parsed.estimatedTaxes = null;
+    parsed.siscomexChannelRisk = fallback.siscomexChannelRisk;
+    if (ncmDesc) parsed.productCategory = fallback.productCategory;
+    const data = { ...parsed, portalNcm, taxesSource: fallback.taxesSource };
     return res.json({ success: true, isSimulated: false, data });
   } catch (error: any) {
     return res.json({ success: true, isSimulated: true, data: fallback, warning: error.message });

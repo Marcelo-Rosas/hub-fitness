@@ -524,7 +524,7 @@ export const M18Comex: React.FC = () => {
     setAiError(null);
     setAiResult(null);
     try {
-      const res = await fetch('/api/gemini/comex-ai', {
+      const res = await comexFetch('/api/gemini/comex-ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1464,7 +1464,7 @@ export const M18Comex: React.FC = () => {
                   </div>
                   <p className="text-violet-800 mt-1">{(aiResult.auditSummary as string) || ''}</p>
                   <span className="inline-block mt-2 px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full font-bold">
-                    Canal: {(aiResult.siscomexChannelRisk as string) || 'Verde'}
+                    Canal: {(aiResult.siscomexChannelRisk as string) || 'Indeterminado'}
                   </span>
                 </div>
                 {Array.isArray(aiResult.lpcoRequirements) && (

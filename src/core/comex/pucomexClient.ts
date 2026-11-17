@@ -20,6 +20,7 @@ import {
   type PucomexRoleType,
 } from './environments';
 import { fillPathTemplate } from './endpoints';
+import { getNcmTable, lookupNcm, NCM_TABLE_PATH } from './ncmTable';
 
 // process.cwd() — esbuild CJS zera import.meta.url; script fica fora do bundle.
 const WINDOWS_CERT_SCRIPT = path.join(
@@ -607,12 +608,25 @@ export class PucomexClient {
     return this.apiRequest('GET', path);
   }
 
-  consultNcm(codigo: string) {
-    const clean = codigo.replace(/\D/g, '');
-    const path = fillPathTemplate('/classif/api/publico/nomenclatura/ncm/{codigo}', {
-      codigo: clean,
-    });
-    return this.apiRequest('GET', path);
+  /**
+   * NCM pela tabela pública oficial (o Portal não tem consulta por código).
+   * Não usa certificado nem sessão: é download público com cache de 24 h.
+   */
+  async consultNcm(
+    codigo: string,
+    fetchImpl: typeof fetch = fetch,
+  ): Promise<{ status: number; data: unknown; mode: 'live' | 'demo'; path: string }> {
+    const path = NCM_TABLE_PATH;
+    try {
+      const table = await getNcmTable(this.getBaseUrl(), fetchImpl);
+      const found = lookupNcm(table, codigo);
+      if (!found) {
+        return { status: 404, mode: 'live', path, data: { error: `NCM ${codigo} não encontrada na tabela vigente` } };
+      }
+      return { status: 200, mode: 'live', path, data: found };
+    } catch (err) {
+      return { status: 503, mode: 'live', path, data: { error: err instanceof Error ? err.message : String(err) } };
+    }
   }
 
   consultCatalogoProduto(query: Record<string, string> = {}) {
