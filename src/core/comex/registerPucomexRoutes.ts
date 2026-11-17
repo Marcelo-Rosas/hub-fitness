@@ -37,8 +37,31 @@ import {
   summarizeTa,
   ttceForNcm,
 } from './comexTreatments';
-import { todayYmd } from './comexRegistry';
-import type { ComexProcessRecord } from '../../types/comex';
+import {
+  isRegistryEntity,
+  isSystemField,
+  lockedOptionsError,
+  REGISTRY_COLUMNS,
+  todayYmd,
+} from './comexRegistry';
+import type { ComexFieldDef, ComexFieldDefInput, ComexProcessRecord } from '../../types/comex';
+
+const FIELD_ENTITIES = ['process', 'document', 'client', 'broker'];
+
+/** Regras de metadado de cliente/despachante: entidade, coluna real, valores travados. */
+function fieldDefError(def: ComexFieldDefInput, existing?: ComexFieldDef): string | null {
+  if (!FIELD_ENTITIES.includes(def.entity)) return `Entidade inválida: ${def.entity}`;
+  if (existing && isSystemField(existing.entity, existing.field_key)) {
+    if (existing.entity !== def.entity || existing.field_key !== def.field_key) {
+      return 'Campo de sistema não pode mudar de entidade nem de chave';
+    }
+  }
+  if (isRegistryEntity(def.entity) && !REGISTRY_COLUMNS[def.entity].includes(def.field_key)) {
+    const nome = def.entity === 'client' ? 'cliente' : 'despachante';
+    return `Campo "${def.field_key}" não é coluna do cadastro de ${nome} — não há onde gravar`;
+  }
+  return lockedOptionsError(def);
+}
 
 function defaultDocsRoot(): string {
   return process.env.COMEX_DOCS_ROOT || 'D:\\Comex';
@@ -360,18 +383,32 @@ export function registerPucomexRoutes(app: Express): void {
       return sendError(res, 400, 'entity, field_key, label e data_type obrigatórios');
     }
     const store = await storeOf();
+    const existing = (await store.listFieldDefs(body.entity)).find((f) => f.field_key === body.field_key);
+    const invalid = fieldDefError(body, existing);
+    if (invalid) return sendError(res, 400, invalid);
     const data = await store.upsertFieldDef(body);
     res.json({ success: true, data });
   });
 
   app.put('/api/comex/field-defs/:id', async (req, res) => {
     const store = await storeOf();
-    const data = await store.upsertFieldDef({ ...req.body, id: req.params.id });
+    const existing = (await store.listFieldDefs()).find((f) => f.id === req.params.id);
+    const merged = { ...(existing || {}), ...(req.body || {}), id: req.params.id } as ComexFieldDefInput & { id: string };
+    if (!merged.entity || !merged.field_key || !merged.label || !merged.data_type) {
+      return sendError(res, 400, 'entity, field_key, label e data_type obrigatórios');
+    }
+    const invalid = fieldDefError(merged, existing);
+    if (invalid) return sendError(res, 400, invalid);
+    const data = await store.upsertFieldDef(merged);
     res.json({ success: true, data });
   });
 
   app.delete('/api/comex/field-defs/:id', async (req, res) => {
     const store = await storeOf();
+    const existing = (await store.listFieldDefs()).find((f) => f.id === req.params.id);
+    if (existing && isSystemField(existing.entity, existing.field_key)) {
+      return sendError(res, 409, 'Campo de sistema não pode ser excluído (é coluna da tabela)');
+    }
     const ok = await store.deleteFieldDef(req.params.id);
     if (!ok) return sendError(res, 404, 'Campo não encontrado');
     res.json({ success: true });

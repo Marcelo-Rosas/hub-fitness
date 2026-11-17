@@ -10,6 +10,7 @@ import type {
   ComexDocumentRecord,
   ComexFieldDef,
   ComexFieldDefInput,
+  ComexFieldEntity,
   ComexProcessRecord,
 } from '../../types/comex';
 import { DEFAULT_COMEX_FIELD_DEFS } from './fieldDefsSeed';
@@ -30,6 +31,7 @@ CREATE TABLE IF NOT EXISTS comex_field_defs (
   consult_key INTEGER NOT NULL DEFAULT 0,
   kpi TEXT,
   sort_order INTEGER NOT NULL DEFAULT 0,
+  ui_group TEXT,
   created_at TEXT NOT NULL,
   UNIQUE (entity, field_key)
 );
@@ -156,10 +158,12 @@ function asBool(v: unknown): boolean {
   return v === true || v === 1 || v === '1';
 }
 
+const FIELD_ENTITIES: ComexFieldEntity[] = ['process', 'document', 'client', 'broker'];
+
 function hydrateField(row: Record<string, unknown>): ComexFieldDef {
   return {
     id: String(row.id),
-    entity: row.entity === 'document' ? 'document' : 'process',
+    entity: FIELD_ENTITIES.includes(row.entity as ComexFieldEntity) ? (row.entity as ComexFieldEntity) : 'process',
     field_key: String(row.field_key),
     label: String(row.label),
     data_type: (row.data_type as ComexFieldDef['data_type']) || 'text',
@@ -171,6 +175,7 @@ function hydrateField(row: Record<string, unknown>): ComexFieldDef {
     consult_key: asBool(row.consult_key),
     kpi: row.kpi ? String(row.kpi) : null,
     sort_order: Number(row.sort_order || 0),
+    ui_group: row.ui_group == null || row.ui_group === '' ? null : String(row.ui_group),
   };
 }
 
@@ -321,8 +326,35 @@ export class SqliteComexStore implements ComexStore {
       this.db.exec('ALTER TABLE comex_processes ADD COLUMN cliente_id TEXT REFERENCES comex_clients(id)');
     }
     this.db.exec('CREATE INDEX IF NOT EXISTS comex_processes_cliente_idx ON comex_processes (cliente_id)');
+    const fieldCols = this.db.prepare('PRAGMA table_info(comex_field_defs)').all() as { name: string }[];
+    if (!fieldCols.some((c) => c.name === 'ui_group')) {
+      this.db.exec('ALTER TABLE comex_field_defs ADD COLUMN ui_group TEXT');
+    }
+    // Seed só-inserção: não sobrescreve edições feitas pelo painel Campos.
+    const insertSeed = this.db.prepare(
+      `INSERT INTO comex_field_defs
+        (id, entity, field_key, label, data_type, required, enum_options, widget, ui_list, ui_form, consult_key, kpi, sort_order, ui_group, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(entity, field_key) DO NOTHING`,
+    );
     for (const def of DEFAULT_COMEX_FIELD_DEFS) {
-      await this.upsertFieldDef(def);
+      insertSeed.run(
+        randomUUID(),
+        def.entity,
+        def.field_key,
+        def.label,
+        def.data_type,
+        def.required ? 1 : 0,
+        JSON.stringify(def.enum_options || []),
+        def.widget || 'text',
+        def.ui_list ? 1 : 0,
+        def.ui_form === false ? 0 : 1,
+        def.consult_key ? 1 : 0,
+        def.kpi ?? null,
+        def.sort_order ?? 0,
+        def.ui_group ?? null,
+        nowIso(),
+      );
     }
   }
 
@@ -360,17 +392,19 @@ export class SqliteComexStore implements ComexStore {
       consult_key: input.consult_key ? 1 : 0,
       kpi: input.kpi ?? null,
       sort_order: input.sort_order ?? 0,
+      ui_group: input.ui_group ?? null,
       created_at: String(existing?.created_at || nowIso()),
     };
     this.db
       .prepare(
         `INSERT INTO comex_field_defs
-          (id, entity, field_key, label, data_type, required, enum_options, widget, ui_list, ui_form, consult_key, kpi, sort_order, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (id, entity, field_key, label, data_type, required, enum_options, widget, ui_list, ui_form, consult_key, kpi, sort_order, ui_group, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(entity, field_key) DO UPDATE SET
           label=excluded.label, data_type=excluded.data_type, required=excluded.required,
           enum_options=excluded.enum_options, widget=excluded.widget, ui_list=excluded.ui_list,
-          ui_form=excluded.ui_form, consult_key=excluded.consult_key, kpi=excluded.kpi, sort_order=excluded.sort_order`,
+          ui_form=excluded.ui_form, consult_key=excluded.consult_key, kpi=excluded.kpi, sort_order=excluded.sort_order,
+          ui_group=excluded.ui_group`,
       )
       .run(
         row.id,
@@ -386,6 +420,7 @@ export class SqliteComexStore implements ComexStore {
         row.consult_key,
         row.kpi,
         row.sort_order,
+        row.ui_group,
         row.created_at,
       );
     return hydrateField(row);
@@ -670,6 +705,25 @@ export class SqliteComexStore implements ComexStore {
   }
 }
 
+function pgFieldParams(id: string, input: ComexFieldDefInput): unknown[] {
+  return [
+    id,
+    input.entity,
+    input.field_key,
+    input.label,
+    input.data_type,
+    input.required === true,
+    JSON.stringify(input.enum_options || []),
+    input.widget || 'text',
+    input.ui_list === true,
+    input.ui_form !== false,
+    input.consult_key === true,
+    input.kpi ?? null,
+    input.sort_order ?? 0,
+    input.ui_group ?? null,
+  ];
+}
+
 type PgPool = {
   query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
 };
@@ -691,12 +745,25 @@ export class PgComexStore implements ComexStore {
   async ensureReady(): Promise<void> {
     const db = await this.db();
     await db.query('SELECT 1 FROM comex_field_defs LIMIT 1');
+    // db/neon/0002_field_defs_entities.sql — idempotente (o app conecta como dono do banco)
+    await db.query('ALTER TABLE comex_field_defs ADD COLUMN IF NOT EXISTS ui_group text');
+    await db.query('ALTER TABLE comex_field_defs DROP CONSTRAINT IF EXISTS comex_field_defs_entity_check');
+    await db.query(
+      "ALTER TABLE comex_field_defs ADD CONSTRAINT comex_field_defs_entity_check CHECK (entity IN ('process','document','client','broker'))",
+    );
     // migration 20261116120000: sem ela create/update de processo quebram — falha explícita
     await db.query('SELECT cliente_id FROM comex_processes LIMIT 1');
     await db.query('SELECT 1 FROM comex_clients LIMIT 1');
     await db.query('SELECT 1 FROM comex_brokers LIMIT 1');
+    // Seed só-inserção: não sobrescreve edições feitas pelo painel Campos.
     for (const def of DEFAULT_COMEX_FIELD_DEFS) {
-      await this.upsertFieldDef(def);
+      await db.query(
+        `INSERT INTO comex_field_defs
+          (id, entity, field_key, label, data_type, required, enum_options, widget, ui_list, ui_form, consult_key, kpi, sort_order, ui_group)
+         VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14)
+         ON CONFLICT (entity, field_key) DO NOTHING`,
+        pgFieldParams(randomUUID(), def),
+      );
     }
   }
 
@@ -716,28 +783,15 @@ export class PgComexStore implements ComexStore {
     const id = input.id || randomUUID();
     const { rows } = await db.query(
       `INSERT INTO comex_field_defs
-        (id, entity, field_key, label, data_type, required, enum_options, widget, ui_list, ui_form, consult_key, kpi, sort_order)
-       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13)
+        (id, entity, field_key, label, data_type, required, enum_options, widget, ui_list, ui_form, consult_key, kpi, sort_order, ui_group)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14)
        ON CONFLICT (entity, field_key) DO UPDATE SET
         label=EXCLUDED.label, data_type=EXCLUDED.data_type, required=EXCLUDED.required,
         enum_options=EXCLUDED.enum_options, widget=EXCLUDED.widget, ui_list=EXCLUDED.ui_list,
-        ui_form=EXCLUDED.ui_form, consult_key=EXCLUDED.consult_key, kpi=EXCLUDED.kpi, sort_order=EXCLUDED.sort_order
+        ui_form=EXCLUDED.ui_form, consult_key=EXCLUDED.consult_key, kpi=EXCLUDED.kpi, sort_order=EXCLUDED.sort_order,
+        ui_group=EXCLUDED.ui_group
        RETURNING *`,
-      [
-        id,
-        input.entity,
-        input.field_key,
-        input.label,
-        input.data_type,
-        input.required === true,
-        JSON.stringify(input.enum_options || []),
-        input.widget || 'text',
-        input.ui_list === true,
-        input.ui_form !== false,
-        input.consult_key === true,
-        input.kpi ?? null,
-        input.sort_order ?? 0,
-      ],
+      pgFieldParams(id, input),
     );
     return hydrateField(rows[0]);
   }

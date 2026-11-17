@@ -5,7 +5,7 @@
 
 import type { Express, Request, Response } from 'express';
 import type { ComexBrokerInput, ComexClientInput } from '../../types/comex';
-import { isValidYmd, normalizeClientInput, todayYmd } from './comexRegistry';
+import { isValidYmd, normalizeClientInput, todayYmd, validateRecordAgainstDefs } from './comexRegistry';
 import { getComexStore } from './comexStore';
 import { computeRadarUsage } from './radarUsage';
 
@@ -51,6 +51,8 @@ export function registerComexClientRoutes(app: Express): void {
       } catch (err) {
         return sendError(res, 400, err instanceof Error ? err.message : String(err));
       }
+      const invalid = validateRecordAgainstDefs(input as Record<string, unknown>, await store.listFieldDefs('client'));
+      if (invalid) return sendError(res, 400, invalid);
       const data = await store.upsertClient(input);
       res.json({ success: true, data });
     } catch (err) {
@@ -107,6 +109,8 @@ export function registerComexClientRoutes(app: Express): void {
       if (id && !(await store.listBrokers()).some((b) => b.id === id)) {
         return sendError(res, 404, 'Despachante não encontrado');
       }
+      const invalid = validateRecordAgainstDefs(body as unknown as Record<string, unknown>, await store.listFieldDefs('broker'));
+      if (invalid) return sendError(res, 400, invalid);
       const data = await store.upsertBroker({ ...body, id });
       res.json({ success: true, data });
     } catch (err) {
