@@ -29,6 +29,15 @@ import { extractProcessFromPdfs, mergeExtracted } from './pdfExtract';
 import { ingestPdfBuffer } from './pdfIngest';
 import { comexErrorStatus, registerComexClientRoutes } from './registerComexClientRoutes';
 import { computeRadarUsage, processRadarDate, type RadarUsage } from './radarUsage';
+import {
+  buildRequiredDocuments,
+  ISO2_TO_SISCOMEX,
+  parseCountryIso2,
+  SIMULADOR_RECEITA_URL,
+  summarizeTa,
+  ttceForNcm,
+} from './comexTreatments';
+import { todayYmd } from './comexRegistry';
 import type { ComexProcessRecord } from '../../types/comex';
 
 function defaultDocsRoot(): string {
@@ -229,6 +238,56 @@ export function registerPucomexRoutes(app: Express): void {
         success: false,
         error: err instanceof Error ? err.message : String(err),
       });
+    }
+  });
+
+  // Tratamentos da NCM: administrativo (LPCO/anuentes) + tributário (TTCE) + documentos pelo Radar do cliente
+  app.post('/api/comex/ncm/tratamentos', async (req, res) => {
+    try {
+      const ncm = String(req.body?.ncmCode || '').replace(/\D/g, '');
+      if (ncm.length !== 8) return sendError(res, 400, 'ncmCode deve ter 8 dígitos');
+      const paisIso2 = parseCountryIso2(String(req.body?.country || '')) ?? 'CN';
+      const clienteId = typeof req.body?.clienteId === 'string' ? req.body.clienteId : '';
+      const client = clienteId ? await (await storeOf()).getClient(clienteId) : null;
+
+      const [taRes, ttceRes] = await Promise.allSettled([
+        pucomexClient.simulateTaImport(ncm, paisIso2),
+        pucomexClient.ttceChapter(ncm.slice(0, 2), todayYmd()),
+      ]);
+      const errorOf = (r: PromiseSettledResult<{ status: number; data: unknown; mode: string }>) =>
+        r.status === 'rejected'
+          ? String((r.reason as Error)?.message ?? r.reason)
+          : r.value.mode === 'demo'
+            ? 'Modo DEMO — sem consulta ao Portal'
+            : r.value.status >= 400
+              ? `Portal HTTP ${r.value.status}: ${JSON.stringify(r.value.data).slice(0, 300)}`
+              : null;
+
+      const taError = errorOf(taRes);
+      const ta = !taError && taRes.status === 'fulfilled' ? summarizeTa(taRes.value.data) : null;
+      const ttceError = errorOf(ttceRes);
+      const ttce =
+        !ttceError && ttceRes.status === 'fulfilled'
+          ? ttceForNcm(ttceRes.value.data, ncm, ISO2_TO_SISCOMEX[paisIso2] ?? null)
+          : null;
+
+      return res.json({
+        success: true,
+        data: {
+          ncm,
+          paisIso2,
+          cliente: client ? { id: client.id, legal_name: client.legal_name, radar_modality: client.radar_modality } : null,
+          ta,
+          taError,
+          ttce,
+          ttceError,
+          ttcePaisConhecido: ISO2_TO_SISCOMEX[paisIso2] != null,
+          documentos: buildRequiredDocuments({ radarModality: client?.radar_modality ?? null, ta }),
+          simuladorUrl: SIMULADOR_RECEITA_URL,
+        },
+      });
+    } catch (err: unknown) {
+      return sendError(res, 500, err instanceof Error ? err.message : String(err));
     }
   });
 

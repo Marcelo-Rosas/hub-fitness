@@ -168,3 +168,35 @@ describe('rotas de clientes/despachantes/radar', () => {
     expect((await api('PUT', `/api/comex/processes/${p.id}`, { cliente_id: 'nope', payload: {} })).status).toBe(404);
   });
 });
+
+describe('POST /api/comex/ncm/tratamentos', () => {
+  it('junta TA + TTCE + documentos pelo Radar do cliente; erros do Portal viram mensagem', async () => {
+    const { pucomexClient } = await import('../core/comex/pucomexClient');
+    const { vi } = await import('vitest');
+    const ta = vi.spyOn(pucomexClient, 'simulateTaImport').mockResolvedValue({
+      status: 200, mode: 'live', path: '/talpco',
+      data: [{ numeroTa: 'I0927', tipoTratamento: 'Requer LPCO', orgao: 'INMETRO', impedeDesembaraco: true,
+        modelos: [{ codigo: 'I00014', nome: 'Registro de objeto', preenchimento: 'Ambos' }], efeitos: [] }],
+    });
+    const tt = vi.spyOn(pucomexClient, 'ttceChapter').mockResolvedValue({ status: 401, mode: 'live', data: { message: 'Usuário não autenticado' } });
+    try {
+      const c = await (await api('POST', '/api/comex/clients', { cnpj_root: '60450605', legal_name: 'RM ACADEMIA LTDA', radar_modality: 'limitada_50k' })).json();
+      const r = await (await api('POST', '/api/comex/ncm/tratamentos', { ncmCode: '9506.91.00', country: 'China (CN)', clienteId: c.data.id })).json();
+      expect(ta).toHaveBeenCalledWith('95069100', 'CN');
+      expect(r.data.ta.exigeLpco).toBe(true);
+      expect(r.data.ttce).toBeNull();
+      expect(r.data.ttceError).toMatch(/Portal HTTP 401/);
+      expect(r.data.documentos).toContain('DI (Radar Limitado — DUIMP indisponível)');
+      expect(r.data.documentos.some((d: string) => d.startsWith('LPCO INMETRO'))).toBe(true);
+      expect(r.data.simuladorUrl).toMatch(/receita\.fazenda/);
+    } finally {
+      ta.mockRestore();
+      tt.mockRestore();
+    }
+  });
+
+  it('NCM inválida → 400; sem token → 401', async () => {
+    expect((await api('POST', '/api/comex/ncm/tratamentos', { ncmCode: '9506' })).status).toBe(400);
+    expect((await api('POST', '/api/comex/ncm/tratamentos', { ncmCode: '95069100' }, {})).status).toBe(401);
+  });
+});

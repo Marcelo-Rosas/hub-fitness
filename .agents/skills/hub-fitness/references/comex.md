@@ -105,3 +105,11 @@ Sem PFX → modo **DEMO** (sessão local + respostas stub; paths oficiais preser
 - Ad Valorem DRE = NF serviço, não CIF carga
 - Konnen = dogfood
 - Não acoplar Freight LogiTwenty
+
+## Auditoria NCM — dados reais do Portal (2026-11-17)
+- NCM: tabela pública `GET /classif/api/publico/nomenclatura/download/json?perfil=PUBLICO` (sem certificado, cache 24 h) — o Portal NÃO tem consulta por código (`src/core/comex/ncmTable.ts`).
+- `POST /api/comex/ncm/tratamentos` {ncmCode, country, clienteId?} (atrás da trava):
+  - LPCO/anuentes: `POST /talpco/api/ext/simular-ta/importacao` autenticado, `fundamentoLegal: "NAO_SE_APLICA"`, `condicaoMercadoria: "NOVA"`, país ISO2. Ex.: 9506.91.00 China → INMETRO "Requer LPCO" (I00014/I00207/I00041, impede desembaraço) + ANVISA alerta (RDC 977/2025).
+  - Tributário: TTCE em lote por capítulo (`/ttce/api/ext/importacao/ncm-capitulos/{cap}/hash` → `.../tratamentos-tributarios?data&hash`), país numérico Siscomex (CN=160). Traz tributos/regimes/fundamentos (Ex-tarifário em destaque) — **sem alíquotas**.
+  - Documentos pelo Radar do cliente (Limitado → DI) + LPCO exigido.
+- Alíquotas: simulador da Receita (`www4.receita.fazenda.gov.br/simulador/`) tem captcha → só link, sem automação. Simulador público de TA do Portal usa reCAPTCHA na tela → o HUB usa a versão autenticada documentada.

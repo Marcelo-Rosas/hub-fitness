@@ -629,6 +629,43 @@ export class PucomexClient {
     }
   }
 
+  /**
+   * Tratamento administrativo (LPCO/anuentes) da importação — serviço documentado e autenticado.
+   * fundamentoLegal NAO_SE_APLICA = importação comum (mesmo valor que a tela do Portal usa).
+   */
+  simulateTaImport(ncm: string, paisIso2: string) {
+    return this.apiRequest('POST', '/talpco/api/ext/simular-ta/importacao', {
+      pais: paisIso2,
+      condicaoMercadoria: 'NOVA',
+      ncm: ncm.replace(/\D/g, ''),
+      atributos: [],
+      fundamentoLegal: 'NAO_SE_APLICA',
+      camposAdicionais: [],
+    });
+  }
+
+  private ttceCache = new Map<string, unknown>();
+
+  /** Tratamentos tributários do capítulo (TTCE em lote): obtém o hash do dia e baixa o arquivo (cache por hash). */
+  async ttceChapter(capitulo: string, data: string): Promise<{ status: number; data: unknown; mode: 'live' | 'demo' }> {
+    const cap = capitulo.padStart(2, '0').slice(0, 2);
+    const h = await this.apiRequest('GET', `/ttce/api/ext/importacao/ncm-capitulos/${cap}/hash?data=${data}`);
+    if (h.mode === 'demo' || h.status >= 400) return { status: h.status, data: h.data, mode: h.mode };
+    const hash = String((h.data as { hash?: string } | null)?.hash ?? '');
+    if (!hash) return { status: 502, data: { error: 'TTCE não devolveu hash do capítulo' }, mode: 'live' };
+    const key = `${cap}|${hash}`;
+    if (this.ttceCache.has(key)) return { status: 200, data: this.ttceCache.get(key), mode: 'live' };
+    const f = await this.apiRequest(
+      'GET',
+      `/ttce/api/ext/importacao/ncm-capitulos/${cap}/tratamentos-tributarios?data=${data}&hash=${encodeURIComponent(hash)}`,
+    );
+    if (f.status < 400) {
+      this.ttceCache.clear(); // guarda só o capítulo mais recente (arquivos grandes)
+      this.ttceCache.set(key, f.data);
+    }
+    return { status: f.status, data: f.data, mode: f.mode };
+  }
+
   consultCatalogoProduto(query: Record<string, string> = {}) {
     const qs = new URLSearchParams(query).toString();
     const path = `/catalogo-produtos-ext/api/ext/produto${qs ? `?${qs}` : ''}`;

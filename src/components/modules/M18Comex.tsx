@@ -53,6 +53,7 @@ import { PdfDocumentIngestPanel } from '../PdfDocumentIngestPanel';
 import { Comex4plPanel } from './Comex4plPanel';
 import { ComexClientsPanel } from './ComexClientsPanel';
 import { RadarUsageBadge } from './RadarUsageBadge';
+import { NcmTreatmentsPanel, type NcmTreatmentsData } from './NcmTreatmentsPanel';
 import { declarationRouteNote } from '../../core/comex/comexRegistry';
 import type { RadarUsage } from '../../core/comex/radarUsage';
 
@@ -133,6 +134,8 @@ export const M18Comex: React.FC = () => {
   const [aiOperationType, setAiOperationType] = useState<'exportacao' | 'importacao'>('importacao');
   const [aiFobUsd, setAiFobUsd] = useState('128500');
   const [aiCountry, setAiCountry] = useState('China (CN)');
+  const [aiClienteId, setAiClienteId] = useState('');
+  const [ncmTreatments, setNcmTreatments] = useState<NcmTreatmentsData | null>(null);
   const [aiResult, setAiResult] = useState<Record<string, unknown> | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -523,6 +526,15 @@ export const M18Comex: React.FC = () => {
     setAiLoading(true);
     setAiError(null);
     setAiResult(null);
+    setNcmTreatments(null);
+    // Em paralelo: tratamentos reais do Portal (LPCO/anuentes, TTCE, documentos pelo Radar)
+    void cfetch('/api/comex/ncm/tratamentos', {
+      method: 'POST',
+      body: JSON.stringify({ ncmCode: aiNcmCode, country: aiCountry, clienteId: aiClienteId || undefined }),
+    })
+      .then((r) => r.json())
+      .then((j) => setNcmTreatments(j?.success ? (j.data as NcmTreatmentsData) : null))
+      .catch(() => setNcmTreatments(null));
     try {
       const res = await comexFetch('/api/gemini/comex-ai', {
         method: 'POST',
@@ -1429,6 +1441,18 @@ export const M18Comex: React.FC = () => {
                 allowCustom
                 placeholder="Filtrar país…"
               />
+              <select
+                value={aiClienteId}
+                onChange={(e) => setAiClienteId(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border rounded-lg"
+              >
+                <option value="">Cliente (opcional — ajusta DI/DUIMP pelo Radar)</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.legal_name}
+                  </option>
+                ))}
+              </select>
               <button
                 type="submit"
                 disabled={aiLoading}
@@ -1467,7 +1491,8 @@ export const M18Comex: React.FC = () => {
                     Canal: {(aiResult.siscomexChannelRisk as string) || 'Indeterminado'}
                   </span>
                 </div>
-                {Array.isArray(aiResult.lpcoRequirements) && (
+                {ncmTreatments && <NcmTreatmentsPanel data={ncmTreatments} />}
+                {!ncmTreatments && Array.isArray(aiResult.lpcoRequirements) && (
                   <div className="p-4 bg-slate-50 rounded-xl border">
                     <h4 className="font-bold mb-2 flex items-center gap-1">
                       <AlertTriangle className="w-3.5 h-3.5 text-amber-500" /> LPCO / Anuentes
@@ -1482,7 +1507,7 @@ export const M18Comex: React.FC = () => {
                     </ul>
                   </div>
                 )}
-                {Array.isArray(aiResult.requiredDocuments) && (
+                {!ncmTreatments && Array.isArray(aiResult.requiredDocuments) && (
                   <div className="p-4 bg-slate-50 rounded-xl border">
                     <h4 className="font-bold mb-2 flex items-center gap-1">
                       <FileText className="w-3.5 h-3.5 text-indigo-500" /> Documentos
