@@ -21,9 +21,17 @@ Fonte: [Ambientes](https://docs.portalunico.siscomex.gov.br/ambientes/)
 | `producao` | https://portalunico.siscomex.gov.br |
 | `homologacao` | https://hom.pucomex.serpro.gov.br (restrito) |
 
-Env: `PUCOMEX_ENV`, `PUCOMEX_CERT_PFX_PATH`, `PUCOMEX_CERT_PASSWORD`, `PUCOMEX_ROLE_TYPE`, `PUCOMEX_LIVE`, `COMEX_OPERATOR_TOKEN`, `PUCOMEX_PROXY_ALLOW_WRITE`
+Env: `PUCOMEX_ENV`, `PUCOMEX_CERT_PFX_PATH`, `PUCOMEX_CERT_PASSWORD`, `PUCOMEX_ROLE_TYPE`, `PUCOMEX_REP_CERT_PFX_PATH`, `PUCOMEX_REP_CERT_PASSWORD`, `PUCOMEX_REP_ROLE_TYPE`, `PUCOMEX_LIVE`, `COMEX_OPERATOR_TOKEN`, `PUCOMEX_PROXY_ALLOW_WRITE`
 
 Sem PFX → modo **DEMO** (sessão local + respostas stub; paths oficiais preservados).
+
+### Dois perfis de credencial (`PucomexClient(profile)`)
+- **empresa** (`pucomexClient`): e-CNPJ VECTRA HUB, `PUCOMEX_CERT_PFX_PATH`/`PUCOMEX_CERT_PASSWORD`/`PUCOMEX_ROLE_TYPE` (OPERPORT) + fallback thumbprint Windows. Usado em DUE/DUIMP/CCT/proxy.
+- **representante** (`pucomexRepClient`): e-CPF do representante do importador, `PUCOMEX_REP_CERT_PFX_PATH`/`PUCOMEX_REP_CERT_PASSWORD`/`PUCOMEX_REP_ROLE_TYPE` (padrão **IMPEXP**, que só aceita e-CPF). Sem fallback Windows; `PUCOMEX_LIVE=false` também desliga. `PUCOMEX_REP_LABEL` opcional.
+- Sessão, throttle de 60 s, agent mTLS e `certError` são independentes por perfil. `/status` traz `representante: { status, session }` (com `certSubject`/`certValidTo`); `POST /pucomex/authenticate` autentica os dois configurados.
+- `POST /api/comex/ncm/tratamentos` (TA/LPCO + TTCE) usa o representante quando configurado e cai para a empresa; devolve `perfilUsado`. Motivo: com OPERPORT o `simular-ta/importacao` deu **403 PUCX-ER0201** "Transação não autorizada para esse perfil".
+- Container: `PUCOMEX_REP_CERT_PFX_B64_1..3` → `/tmp/pucomex-rep-cert.pfx` (`docker-entrypoint.sh`); Worker repassa `PUCOMEX_REP_*` em `PASSTHROUGH_ENV`.
+- TTCE vazio → `ttceDiag` (tipo do arquivo, amostra/gzip/zip se string, chaves, nº de intervalos, intervalos da NCM com `paisesOrigem`, código de país usado). Arquivo string (JSON com BOM) é parseado antes do recorte.
 
 ## Trava geral (`src/core/comex/comexGuard.ts`)
 - `comexGateway` montado com `app.use('/api/comex', …)` em `registerPucomexRoutes.ts`: **todo** `/api/comex/*` exige header `x-comex-token` = `COMEX_OPERATOR_TOKEN`, inclusive em DEMO e em dev.

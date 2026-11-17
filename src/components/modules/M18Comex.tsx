@@ -33,6 +33,7 @@ import type {
   ComexProcessRecord,
   PucomexAuthSession,
   PucomexPortalStatus,
+  PucomexRepresentativeStatus,
   ComexGuardStatus,
 } from '../../types/comex';
 import { comexFetch, getComexOperatorToken, isComexTokenRejection, openComexDocument } from './comexOperatorToken';
@@ -106,6 +107,8 @@ export const M18Comex: React.FC = () => {
   const [expandedProcessId, setExpandedProcessId] = useState<string | null>(null);
   const [pucomexAuth, setPucomexAuth] = useState<PucomexAuthSession>(INITIAL_PUCOMEX_AUTH);
   const [portalStatus, setPortalStatus] = useState<PucomexPortalStatus | null>(null);
+  const [repStatus, setRepStatus] = useState<PucomexRepresentativeStatus | null>(null);
+  const [repAuthMsg, setRepAuthMsg] = useState<string | null>(null);
   const [endpointCatalog, setEndpointCatalog] = useState(PUCOMEX_ENDPOINT_CATALOG);
   const [authError, setAuthError] = useState<string | null>(null);
   const [consultMode, setConsultMode] = useState<'live' | 'demo' | null>(null);
@@ -171,6 +174,7 @@ export const M18Comex: React.FC = () => {
       const json = await res.json();
       if (json.success) {
         setPortalStatus(json.status);
+        setRepStatus(json.representante ?? null);
         if (json.guard) setGuard(json.guard);
         setStoreFallback(json.store?.fallbackReason ?? null);
         if (json.session) {
@@ -471,6 +475,17 @@ export const M18Comex: React.FC = () => {
         });
       }
       if (data.portalStatus) setPortalStatus(data.portalStatus);
+      if (data.representante) {
+        const rep = data.representante;
+        setRepStatus({ status: rep.portalStatus, session: rep.session });
+        setRepAuthMsg(
+          rep.success
+            ? `Representante (e-CPF · IMPEXP): ${rep.mode === 'live' ? 'autenticado no Portal' : 'sessão DEMO'}.`
+            : `Representante (e-CPF · IMPEXP): ${rep.error || 'falha na autenticação'}${rep.code ? ` (${rep.code})` : ''}`,
+        );
+      } else {
+        setRepAuthMsg(null);
+      }
       if (data.success) {
         setAuthSuccessMsg(
           data.mode === 'live'
@@ -669,6 +684,41 @@ export const M18Comex: React.FC = () => {
                   <div className="text-[10px] text-slate-400">AMBIENTE</div>
                   <div className="font-semibold text-slate-200">{envLabel}</div>
                 </div>
+              </div>
+            </div>
+            <div className="mt-2 flex items-start gap-2 bg-slate-800/40 px-3 py-2 rounded-lg border border-slate-700/60 text-xs text-slate-300">
+              <Key className="w-4 h-4 text-violet-300 shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <div className="text-[10px] text-slate-400">REPRESENTANTE (E-CPF · IMPEXP) — LPCO e TTCE de importação</div>
+                {!repStatus?.status.certConfigured ? (
+                  <div className="text-slate-400">
+                    Não configurado (PUCOMEX_REP_CERT_PFX_PATH + PUCOMEX_REP_CERT_PASSWORD) — a Auditoria NCM usa o
+                    e-CNPJ da empresa.
+                  </div>
+                ) : (
+                  <div className="space-y-0.5">
+                    <div className="font-semibold text-slate-200 truncate">
+                      {repStatus.status.certSubject || 'Certificado e-CPF'} · {repStatus.status.roleType}
+                      {repStatus.status.certValidTo
+                        ? ` · válido até ${new Date(repStatus.status.certValidTo).toLocaleDateString('pt-BR')}`
+                        : ''}
+                    </div>
+                    {repStatus.status.certError ? (
+                      <div className="text-rose-300">Certificado não abre: {repStatus.status.certError}</div>
+                    ) : null}
+                    <div className="text-slate-400">
+                      {repStatus.status.liveModeEnabled ? 'LIVE' : 'DEMO'} ·{' '}
+                      {repStatus.status.sessionActive
+                        ? `sessão ativa até ${
+                            repStatus.status.csrfExpiresAt
+                              ? new Date(repStatus.status.csrfExpiresAt).toLocaleTimeString('pt-BR')
+                              : '—'
+                          }`
+                        : 'sem sessão — autentique'}
+                    </div>
+                  </div>
+                )}
+                {repAuthMsg ? <div className="text-slate-300">{repAuthMsg}</div> : null}
               </div>
             </div>
           </div>

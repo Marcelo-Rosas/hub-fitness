@@ -1,6 +1,6 @@
 import React from 'react';
 import { AlertTriangle, CheckCircle2, ExternalLink, FileText, Landmark, ShieldAlert } from 'lucide-react';
-import type { TaSummary, TtceNcmResult } from '../../core/comex/comexTreatments';
+import type { TaSummary, TtceDiag, TtceNcmResult } from '../../core/comex/comexTreatments';
 
 export interface NcmTreatmentsData {
   ncm: string;
@@ -10,6 +10,10 @@ export interface NcmTreatmentsData {
   taError: string | null;
   ttce: TtceNcmResult | null;
   ttceError: string | null;
+  /** Presente quando o recorte TTCE veio vazio. */
+  ttceDiag?: TtceDiag;
+  /** Credencial usada no Portal: e-CPF do representante (IMPEXP) ou e-CNPJ da empresa. */
+  perfilUsado?: 'representante' | 'empresa';
   ttcePaisConhecido: boolean;
   documentos: string[];
   simuladorUrl: string;
@@ -20,8 +24,18 @@ const card = 'p-4 bg-slate-50 rounded-xl border';
 /** Cartões da Auditoria NCM com dados reais do Portal: LPCO/anuentes, tratamento tributário e documentos. */
 export const NcmTreatmentsPanel: React.FC<{ data: NcmTreatmentsData }> = ({ data }) => {
   const { ta, ttce } = data;
+  const diag = data.ttceDiag;
   return (
     <div className="space-y-3">
+      {data.perfilUsado ? (
+        <p className="text-[11px] text-slate-500">
+          Consultado no Portal com{' '}
+          <span className="font-semibold">
+            {data.perfilUsado === 'representante' ? 'e-CPF do representante (IMPEXP)' : 'e-CNPJ da empresa (OPERPORT)'}
+          </span>
+          {data.perfilUsado === 'empresa' ? ' — o perfil da empresa pode não ter acesso a LPCO/TTCE de importação.' : ''}
+        </p>
+      ) : null}
       <div className={card}>
         <h4 className="font-bold mb-2 flex items-center gap-1">
           <ShieldAlert className="w-3.5 h-3.5 text-amber-500" /> LPCO / Anuentes
@@ -72,7 +86,37 @@ export const NcmTreatmentsPanel: React.FC<{ data: NcmTreatmentsData }> = ({ data
         {data.ttceError ? (
           <p className="text-amber-800">Não foi possível consultar: {data.ttceError}</p>
         ) : !ttce || (ttce.normais.length === 0 && ttce.opcionais.length === 0) ? (
-          <p className="text-slate-600">Nenhum tratamento encontrado para esta NCM.</p>
+          <div>
+            <p className="text-slate-600">Nenhum tratamento encontrado para esta NCM.</p>
+            {diag ? (
+              <details className="mt-1 text-[11px] text-slate-600">
+                <summary className="cursor-pointer text-slate-500">Diagnóstico do arquivo TTCE</summary>
+                <ul className="mt-1 space-y-0.5 font-mono">
+                  <li>tipo recebido: {diag.tipo}</li>
+                  {diag.amostra !== undefined ? (
+                    <li>
+                      início: {JSON.stringify(diag.amostra)}
+                      {diag.pareceGzip ? ' · parece gzip' : ''}
+                      {diag.pareceZip ? ' · parece zip' : ''}
+                    </li>
+                  ) : null}
+                  <li>chaves: {diag.chaves.join(', ') || '—'}</li>
+                  <li>intervalosNcm: {diag.intervalosNcm}</li>
+                  <li>código de país usado: {diag.paisCodigo ?? '— (sem mapeamento)'}</li>
+                  {diag.intervalosDaNcm.length === 0 ? (
+                    <li>nenhum intervalo contém a NCM {data.ncm}</li>
+                  ) : (
+                    diag.intervalosDaNcm.map((iv) => (
+                      <li key={`${iv.inicio}-${iv.fim}`}>
+                        {iv.inicio}–{iv.fim} · todos os países: {iv.todosPaisesOrigem ? 'sim' : 'não'} · países:{' '}
+                        {iv.paisesOrigem.join(', ') || '—'}
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </details>
+            ) : null}
+          </div>
         ) : (
           <div className="space-y-2">
             {!data.ttcePaisConhecido && (

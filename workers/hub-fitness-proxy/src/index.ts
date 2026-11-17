@@ -31,6 +31,12 @@ interface Env {
   PUCOMEX_CERT_PFX_B64_1?: string;
   PUCOMEX_CERT_PFX_B64_2?: string;
   PUCOMEX_CERT_PFX_B64_3?: string;
+  // e-CPF do representante (Role-Type IMPEXP)
+  PUCOMEX_REP_ROLE_TYPE?: string;
+  PUCOMEX_REP_CERT_PASSWORD?: string;
+  PUCOMEX_REP_CERT_PFX_B64_1?: string;
+  PUCOMEX_REP_CERT_PFX_B64_2?: string;
+  PUCOMEX_REP_CERT_PFX_B64_3?: string;
 }
 
 const PASSTHROUGH_ENV = [
@@ -53,6 +59,11 @@ const PASSTHROUGH_ENV = [
   "PUCOMEX_CERT_PFX_B64_1",
   "PUCOMEX_CERT_PFX_B64_2",
   "PUCOMEX_CERT_PFX_B64_3",
+  "PUCOMEX_REP_ROLE_TYPE",
+  "PUCOMEX_REP_CERT_PASSWORD",
+  "PUCOMEX_REP_CERT_PFX_B64_1",
+  "PUCOMEX_REP_CERT_PFX_B64_2",
+  "PUCOMEX_REP_CERT_PFX_B64_3",
 ] as const satisfies readonly (keyof Env)[];
 
 export class HubApp extends Container<Env> {

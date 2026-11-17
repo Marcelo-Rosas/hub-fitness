@@ -16,7 +16,7 @@ import {
   TABADU_VALIDACAO,
   type PucomexRoleType,
 } from './environments';
-import { pucomexClient } from './pucomexClient';
+import { pucomexClient, pucomexRepClient } from './pucomexClient';
 import { comexGateway, comexGuardStatus } from './comexGuard';
 import {
   consultValueFromProcess,
@@ -33,8 +33,10 @@ import {
   buildRequiredDocuments,
   ISO2_TO_SISCOMEX,
   parseCountryIso2,
+  parseTtceFile,
   SIMULADOR_RECEITA_URL,
   summarizeTa,
+  ttceDiagnostics,
   ttceForNcm,
 } from './comexTreatments';
 import {
@@ -48,6 +50,15 @@ import {
 import type { ComexFieldDef, ComexFieldDefInput, ComexProcessRecord } from '../../types/comex';
 
 const FIELD_ENTITIES = ['process', 'document', 'client', 'broker'];
+
+/** Erro do Portal legível: "message (code)" quando o corpo é JSON; senão o texto cortado. */
+function portalErrorText(data: unknown): string {
+  const body = data as { message?: unknown; code?: unknown } | null;
+  if (body && typeof body === 'object' && typeof body.message === 'string') {
+    return body.code ? `${body.message} (${String(body.code)})` : body.message;
+  }
+  return (typeof data === 'string' ? data : JSON.stringify(data)).slice(0, 300);
+}
 
 /** Regras de metadado de cliente/despachante: entidade, coluna real, valores travados. */
 function fieldDefError(def: ComexFieldDefInput, existing?: ComexFieldDef): string | null {
@@ -137,6 +148,7 @@ export function registerPucomexRoutes(app: Express): void {
       success: true,
       status: pucomexClient.getStatus(),
       session: pucomexClient.getSessionPublic(),
+      representante: { status: pucomexRepClient.getStatus(), session: pucomexRepClient.getSessionPublic() },
       guard: comexGuardStatus(),
       environments: PUCOMEX_ENVIRONMENTS,
       roleTypes: PUCOMEX_ROLE_TYPES,
@@ -170,7 +182,11 @@ export function registerPucomexRoutes(app: Express): void {
       }
       roleType = code as PucomexRoleType;
     }
-    const result = await pucomexClient.authenticate(force, roleType);
+    // Autentica os dois perfis configurados; roleType do corpo vale só para a empresa.
+    const [result, rep] = await Promise.all([
+      pucomexClient.authenticate(force, roleType),
+      pucomexRepClient.isCertConfigured() ? pucomexRepClient.authenticate(force) : Promise.resolve(null),
+    ]);
     const status = result.success ? 200 : result.code === 'PUCOMEX_AUTH_THROTTLE' ? 429 : 401;
     res.status(result.mode === 'demo' && result.success ? 200 : status).json({
       success: result.success || result.mode === 'demo',
@@ -179,6 +195,16 @@ export function registerPucomexRoutes(app: Express): void {
       error: result.error,
       code: result.code,
       portalStatus: pucomexClient.getStatus(),
+      representante: rep
+        ? {
+            success: rep.success,
+            mode: rep.mode,
+            session: rep.session,
+            error: rep.error,
+            code: rep.code,
+            portalStatus: pucomexRepClient.getStatus(),
+          }
+        : null,
     });
   });
 
@@ -277,9 +303,12 @@ export function registerPucomexRoutes(app: Express): void {
       const clienteId = typeof req.body?.clienteId === 'string' ? req.body.clienteId : '';
       const client = clienteId ? await (await storeOf()).getClient(clienteId) : null;
 
+      // IMPEXP (e-CPF do representante) quando configurado; senão a empresa (OPERPORT).
+      const perfilUsado = pucomexRepClient.isCertConfigured() ? 'representante' : 'empresa';
+      const portal = perfilUsado === 'representante' ? pucomexRepClient : pucomexClient;
       const [taRes, ttceRes] = await Promise.allSettled([
-        pucomexClient.simulateTaImport(ncm, paisIso2),
-        pucomexClient.ttceChapter(ncm.slice(0, 2), todayYmd()),
+        portal.simulateTaImport(ncm, paisIso2),
+        portal.ttceChapter(ncm.slice(0, 2), todayYmd()),
       ]);
       const errorOf = (r: PromiseSettledResult<{ status: number; data: unknown; mode: string }>) =>
         r.status === 'rejected'
@@ -287,16 +316,17 @@ export function registerPucomexRoutes(app: Express): void {
           : r.value.mode === 'demo'
             ? 'Modo DEMO — sem consulta ao Portal'
             : r.value.status >= 400
-              ? `Portal HTTP ${r.value.status}: ${JSON.stringify(r.value.data).slice(0, 300)}`
+              ? `Portal HTTP ${r.value.status}: ${portalErrorText(r.value.data)}`
               : null;
 
+      const paisCodigo = ISO2_TO_SISCOMEX[paisIso2] ?? null;
       const taError = errorOf(taRes);
       const ta = !taError && taRes.status === 'fulfilled' ? summarizeTa(taRes.value.data) : null;
       const ttceError = errorOf(ttceRes);
-      const ttce =
-        !ttceError && ttceRes.status === 'fulfilled'
-          ? ttceForNcm(ttceRes.value.data, ncm, ISO2_TO_SISCOMEX[paisIso2] ?? null)
-          : null;
+      const ttceRaw = !ttceError && ttceRes.status === 'fulfilled' ? ttceRes.value.data : undefined;
+      const ttce = ttceRaw !== undefined ? ttceForNcm(parseTtceFile(ttceRaw), ncm, paisCodigo) : null;
+      const ttceVazio = !!ttce && ttce.tributos.length === 0 && ttce.normais.length === 0 && ttce.opcionais.length === 0;
+      const ttceDiag = ttceVazio ? ttceDiagnostics(ttceRaw, ncm, paisCodigo) : undefined;
 
       return res.json({
         success: true,
@@ -308,6 +338,8 @@ export function registerPucomexRoutes(app: Express): void {
           taError,
           ttce,
           ttceError,
+          ttceDiag,
+          perfilUsado,
           ttcePaisConhecido: ISO2_TO_SISCOMEX[paisIso2] != null,
           documentos: buildRequiredDocuments({ radarModality: client?.radar_modality ?? null, ta }),
           simuladorUrl: SIMULADOR_RECEITA_URL,

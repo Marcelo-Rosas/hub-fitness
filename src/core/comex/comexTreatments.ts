@@ -153,6 +153,81 @@ export function ttceForNcm(file: unknown, ncm: string, paisCodigo: string | null
   return out;
 }
 
+/** Arquivo TTCE que chegou como texto (ex.: JSON com BOM): tira o BOM e tenta JSON.parse. */
+export function parseTtceFile(data: unknown): unknown {
+  if (typeof data !== 'string') return data;
+  const text = data.replace(/^﻿/, '').trim();
+  if (!text.startsWith('{') && !text.startsWith('[')) return data;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return data;
+  }
+}
+
+export interface TtceIntervaloDiag {
+  inicio: string;
+  fim: string;
+  todosPaisesOrigem: boolean;
+  paisesOrigem: string[];
+}
+
+export interface TtceDiag {
+  tipo: string;
+  /** Só quando chegou string: 120 primeiros caracteres. */
+  amostra?: string;
+  pareceGzip?: boolean;
+  pareceZip?: boolean;
+  chaves: string[];
+  intervalosNcm: number;
+  intervalosDaNcm: TtceIntervaloDiag[];
+  paisCodigo: string | null;
+}
+
+/** Diagnóstico de um recorte TTCE vazio: o que chegou e o que existe para a NCM. */
+export function ttceDiagnostics(raw: unknown, ncm: string, paisCodigo: string | null): TtceDiag {
+  const diag: TtceDiag = {
+    tipo: raw === null ? 'null' : Array.isArray(raw) ? 'array' : typeof raw,
+    chaves: [],
+    intervalosNcm: 0,
+    intervalosDaNcm: [],
+    paisCodigo,
+  };
+  if (typeof raw === 'string') {
+    diag.amostra = raw.slice(0, 120);
+    // gzip = 1F 8B (texto UTF-8 decodificado vira \x1F + U+FFFD); zip = "PK\x03\x04"
+    diag.pareceGzip = raw.charCodeAt(0) === 0x1f && (raw.charCodeAt(1) === 0x8b || raw.charCodeAt(1) === 0xfffd);
+    diag.pareceZip = raw.startsWith('PK\x03\x04');
+  }
+  const file = parseTtceFile(raw);
+  if (file && typeof file === 'object' && !Array.isArray(file)) {
+    diag.chaves = Object.keys(file as Raw).slice(0, 30);
+  }
+  const intervalos = Array.isArray((file as Raw)?.intervalosNcm) ? ((file as Raw).intervalosNcm as Raw[]) : [];
+  diag.intervalosNcm = intervalos.length;
+  const target = ncm.replace(/\D/g, '');
+  for (const iv of intervalos) {
+    const ini = str(iv.intervaloInicialNcm).replace(/\D/g, '');
+    const fim = str(iv.intervaloFinalNcm).replace(/\D/g, '');
+    if (!(target >= ini && target <= fim)) continue;
+    const ods = Array.isArray(iv.origensDestinosTratamentos) ? (iv.origensDestinosTratamentos as Raw[]) : [];
+    const paises: string[] = [];
+    for (const od of ods) {
+      for (const p of Array.isArray(od.paisesOrigem) ? (od.paisesOrigem as unknown[]) : []) {
+        const c = str(p);
+        if (paises.length < 20 && !paises.includes(c)) paises.push(c);
+      }
+    }
+    diag.intervalosDaNcm.push({
+      inicio: ini,
+      fim,
+      todosPaisesOrigem: ods.some((od) => od.todosPaisesOrigem === true),
+      paisesOrigem: paises,
+    });
+  }
+  return diag;
+}
+
 export function parseCountryIso2(label: string): string | null {
   const m = /\(([A-Za-z]{2})\)\s*$/.exec(label.trim());
   if (m) return m[1].toUpperCase();

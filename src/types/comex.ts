@@ -180,6 +180,17 @@ export interface PucomexPortalStatus {
   certSource?: 'pfx' | 'windows-store' | null;
   /** Erro ao abrir o PFX (ex.: mac verify failure) — null quando ok */
   certError?: string | null;
+  /** 'empresa' (e-CNPJ) ou 'representante' (e-CPF IMPEXP) */
+  profile?: 'empresa' | 'representante';
+  /** Titular (CN) e validade (ISO) do PFX, quando abre */
+  certSubject?: string | null;
+  certValidTo?: string | null;
+}
+
+/** Bloco do representante em GET /api/comex/pucomex/status. */
+export interface PucomexRepresentativeStatus {
+  status: PucomexPortalStatus;
+  session: { csrfExpiresAt?: string; mode?: 'live' | 'demo'; authenticatedAt?: string } | null;
 }
 
 export interface ComexGuardStatus {
