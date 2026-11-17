@@ -5,7 +5,7 @@
 
 import type { Express, Request, Response } from 'express';
 import type { ComexBrokerInput, ComexClientInput } from '../../types/comex';
-import { normalizeClientInput } from './comexRegistry';
+import { isValidYmd, normalizeClientInput, todayYmd } from './comexRegistry';
 import { getComexStore } from './comexStore';
 import { computeRadarUsage } from './radarUsage';
 
@@ -29,16 +29,6 @@ export function comexErrorStatus(err: unknown): { status: number; message: strin
 function fail(res: Response, err: unknown) {
   const { status, message } = comexErrorStatus(err);
   return sendError(res, status, message);
-}
-
-function todayYmd(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function validYmd(v: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
-  const d = new Date(`${v}T00:00:00Z`);
-  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
 }
 
 export function registerComexClientRoutes(app: Express): void {
@@ -89,7 +79,7 @@ export function registerComexClientRoutes(app: Express): void {
     try {
       const raw = req.query.ref;
       const ref = raw === undefined || raw === '' ? todayYmd() : String(raw);
-      if (!validYmd(ref)) return sendError(res, 400, 'Parâmetro ref inválido: use AAAA-MM-DD');
+      if (!isValidYmd(ref)) return sendError(res, 400, 'Parâmetro ref inválido: use AAAA-MM-DD');
       const store = await getComexStore();
       const client = await store.getClient(req.params.id);
       if (!client) return sendError(res, 404, 'Cliente não encontrado');

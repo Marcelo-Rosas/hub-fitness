@@ -7,7 +7,9 @@ import type { ComexClientInput, ComexRadarModality, ComexRepStatus } from '../..
 const MODALITIES: ComexRadarModality[] = ['expressa', 'limitada_50k', 'limitada_150k', 'ilimitada'];
 const REP_STATUSES: ComexRepStatus[] = ['pendente', 'ativa', 'vencida', 'revogada'];
 
+/** Teto padrão por modalidade (US$/6 meses). Expressa = US$ 50 mil (confirmado pelo Marcelo, 2026-11-17). */
 export function defaultRadarLimit(m: ComexRadarModality | null | undefined): number | null {
+  if (m === 'expressa') return 50000;
   if (m === 'limitada_50k') return 50000;
   if (m === 'limitada_150k') return 150000;
   return null;
@@ -31,6 +33,30 @@ function textOrNull(v: unknown): string | null {
   if (v === undefined || v === null) return null;
   const s = String(v).trim();
   return s ? s : null;
+}
+
+/** true só para data real no formato AAAA-MM-DD (rejeita 2026-02-30). */
+export function isValidYmd(v: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const d = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+}
+
+/** Data de hoje (AAAA-MM-DD) no fuso de Brasília — não vira o dia seguinte após 21h. */
+export function todayYmd(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+}
+
+function dateOrNull(v: unknown, invalidMsg: string): string | null {
+  const s = textOrNull(v);
+  if (s === null) return null;
+  if (!isValidYmd(s)) throw new Error(`${invalidMsg}: use AAAA-MM-DD`);
+  return s;
 }
 
 export function normalizeClientInput(input: ComexClientInput): ComexClientInput {
@@ -76,12 +102,12 @@ export function normalizeClientInput(input: ComexClientInput): ComexClientInput 
     radar_limit_usd,
     radar_operations: textOrNull(input.radar_operations),
     radar_legal_basis: textOrNull(input.radar_legal_basis),
-    radar_checked_at: textOrNull(input.radar_checked_at),
+    radar_checked_at: dateOrNull(input.radar_checked_at, 'Data de conferência do Radar inválida'),
     rep_status,
     rep_certificate: textOrNull(input.rep_certificate),
     rep_role_type: textOrNull(input.rep_role_type),
-    rep_valid_from: textOrNull(input.rep_valid_from),
-    rep_valid_to: textOrNull(input.rep_valid_to),
+    rep_valid_from: dateOrNull(input.rep_valid_from, 'Início da representação inválido'),
+    rep_valid_to: dateOrNull(input.rep_valid_to, 'Fim da representação inválido'),
     broker_id: textOrNull(input.broker_id),
     notes: textOrNull(input.notes),
   };

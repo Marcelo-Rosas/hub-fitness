@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { SqliteComexStore, PgComexStore, createComexStore } from '../core/comex/comexStore';
-import { normalizeClientInput, defaultRadarLimit, slugify } from '../core/comex/comexRegistry';
+import { normalizeClientInput, defaultRadarLimit, slugify, isValidYmd, todayYmd } from '../core/comex/comexRegistry';
 import type { ComexClientInput } from '../types/comex';
 
 describe('comexRegistry', () => {
@@ -33,10 +33,47 @@ describe('comexRegistry', () => {
   it('limite padrão por modalidade e slug', () => {
     expect(defaultRadarLimit('limitada_50k')).toBe(50000);
     expect(defaultRadarLimit('limitada_150k')).toBe(150000);
-    expect(defaultRadarLimit('expressa')).toBeNull();
+    expect(defaultRadarLimit('expressa')).toBe(50000);
+    expect(defaultRadarLimit('ilimitada')).toBeNull();
     expect(defaultRadarLimit(null)).toBeNull();
     expect(slugify('RM Academia Ltda.')).toBe('rm-academia-ltda');
     expect(slugify('Ação & Cia')).toBe('acao-cia');
+  });
+
+  it('valida datas AAAA-MM-DD do cadastro', () => {
+    const base = { cnpj_root: '60450605', legal_name: 'X' };
+    const ok = normalizeClientInput({
+      ...base,
+      radar_checked_at: '2026-11-16',
+      rep_valid_from: ' 2026-01-01 ',
+      rep_valid_to: '',
+    } as ComexClientInput);
+    expect(ok.radar_checked_at).toBe('2026-11-16');
+    expect(ok.rep_valid_from).toBe('2026-01-01');
+    expect(ok.rep_valid_to).toBeNull();
+    expect(() => normalizeClientInput({ ...base, radar_checked_at: '16/11/2026' } as ComexClientInput)).toThrow(
+      /Data de conferência do Radar inválida/,
+    );
+    expect(() => normalizeClientInput({ ...base, rep_valid_from: '2026-02-30' } as ComexClientInput)).toThrow(
+      /Início da representação inválido/,
+    );
+    expect(() => normalizeClientInput({ ...base, rep_valid_to: 'abc' } as ComexClientInput)).toThrow(
+      /Fim da representação inválido/,
+    );
+  });
+
+  it('isValidYmd aceita só datas reais', () => {
+    expect(isValidYmd('2024-02-29')).toBe(true);
+    expect(isValidYmd('2026-02-29')).toBe(false);
+    expect(isValidYmd('2026-13-01')).toBe(false);
+    expect(isValidYmd('2026-1-01')).toBe(false);
+  });
+
+  it('todayYmd usa o fuso de Brasília (America/Sao_Paulo)', () => {
+    // 2026-11-17 01:30 UTC = 2026-11-16 22:30 em Brasília
+    expect(todayYmd(new Date('2026-11-17T01:30:00Z'))).toBe('2026-11-16');
+    // 2026-11-17 03:00 UTC = 2026-11-17 00:00 em Brasília
+    expect(todayYmd(new Date('2026-11-17T03:00:00Z'))).toBe('2026-11-17');
   });
 });
 
