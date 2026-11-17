@@ -121,3 +121,11 @@ Sem PFX → modo **DEMO** (sessão local + respostas stub; paths oficiais preser
   - Tributário: TTCE em lote por capítulo (`/ttce/api/ext/importacao/ncm-capitulos/{cap}/hash` → `.../tratamentos-tributarios?data&hash`), país numérico Siscomex (CN=160). Traz tributos/regimes/fundamentos (Ex-tarifário em destaque) — **sem alíquotas**.
   - Documentos pelo Radar do cliente (Limitado → DI) + LPCO exigido.
 - Alíquotas: simulador da Receita (`www4.receita.fazenda.gov.br/simulador/`) tem captcha → só link, sem automação. Simulador público de TA do Portal usa reCAPTCHA na tela → o HUB usa a versão autenticada documentada.
+
+## Benchmark ComexStat (MDIC) — preço/kg e frete/FOB (2026-11-17)
+- `src/core/comex/comexStatBenchmark.ts`: API pública `https://api-comexstat.mdic.gov.br` (sem auth). `GET /general/dates/updated` → último mês fechado; janela de 12 meses; `POST /general?language=pt` com `flow:"import"`, filtros `ncm` + `country` (código numérico ComexStat, CN=160 via `ISO2_TO_SISCOMEX`; sem mapeamento → todos os países). Valores vêm como **string**.
+- **Pegadinha:** período que cruza o ano (ex.: `2025-11`→`2026-10`) volta `list: []` — o módulo quebra a janela em um POST por ano e soma as linhas.
+- Cache em memória 24 h (data de atualização + `ncm|país|to`). `compareProcessToBenchmark` (puro): razão US$/kg processo ÷ média — `<0,5` muito abaixo (risco de valoração/subfaturamento), `<0,8` abaixo, `>2` acima (informativo), sem FOB/kg → `sem_dados`. Sempre com a ressalva: a NCM agrega produtos diferentes — média é referência, não prova.
+- `POST /api/comex/benchmark` {ncmCode, country?, fobUsd?, kg?, freightUsd?} → `{benchmark, comparison|null}` — **pública** (`COMEX_PUBLIC_ROUTES`), limite global 30/min (429).
+- UI: `NcmBenchmarkCard.tsx` na Auditoria NCM (FOB do formulário + peso opcional) e no modal do processo (NCM + FOB; peso `gross_weight_kg`; país pelo UN/LOCODE do porto de origem; frete se existir `freight_value_usd`). Só informativo.
+- Ex. real (9506.91.00, China, 11/2025–10/2026): US$ 1,95/kg, frete ≈ 15% do FOB.
