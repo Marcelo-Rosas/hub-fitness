@@ -98,6 +98,7 @@ export const M18Comex: React.FC = () => {
   const [processes, setProcesses] = useState<ComexProcessRecord[]>([]);
   const [fieldDefs, setFieldDefs] = useState<ComexFieldDef[]>([]);
   const [storeDriver, setStoreDriver] = useState<string>('…');
+  const [storeFallback, setStoreFallback] = useState<string | null>(null);
   const [indexBusy, setIndexBusy] = useState(false);
   const [indexMsg, setIndexMsg] = useState<string | null>(null);
   const [showFieldDefs, setShowFieldDefs] = useState(false);
@@ -168,6 +169,7 @@ export const M18Comex: React.FC = () => {
       if (json.success) {
         setPortalStatus(json.status);
         if (json.guard) setGuard(json.guard);
+        setStoreFallback(json.store?.fallbackReason ?? null);
         if (json.session) {
           setPucomexAuth({
             cnpjeCPF: json.session.cnpjeCPF || 'Certificado ICP-Brasil',
@@ -572,7 +574,7 @@ export const M18Comex: React.FC = () => {
         title="Comex · Portal Único Siscomex"
         subtitle="Integração oficial PUCOMEX (mTLS + JWT/CSRF) — DU-E, DUIMP, CCT, NCM 9506 · ADR-003"
         kpis={[
-          { label: 'Processos', value: processes.length, subtext: `${storeDriver} · ${docsTotal} docs`, highlightColor: 'indigo' },
+          { label: 'Processos', value: processes.length, subtext: storeDriver === 'sqlite' && storeFallback ? `sqlite (temporário) · ${storeFallback}` : `${storeDriver} · ${docsTotal} docs`, highlightColor: 'indigo' },
           {
             label: 'FOB Total',
             value: `USD ${totalFobUsd.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`,

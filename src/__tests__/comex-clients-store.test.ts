@@ -229,3 +229,29 @@ describe('PgComexStore.ensureReady — sondagem da migration nova', () => {
     }
   });
 });
+
+describe('diagnóstico do store', () => {
+  it('redactDbError tira URL e senha', async () => {
+    const { redactDbError } = await import('../core/comex/comexStore');
+    const msg = redactDbError(
+      'connect failed postgresql://hub_app:npg_ABC123@host/hub?sslmode=require password=xyz npg_Zz9',
+    );
+    expect(msg).not.toMatch(/npg_ABC123|npg_Zz9|xyz|hub_app:/);
+    expect(msg).toContain('postgresql://***');
+  });
+
+  it('DATABASE_URL mal formatado vira motivo legível e cai no sqlite', async () => {
+    const mod = await import('../core/comex/comexStore');
+    const prev = { url: process.env.DATABASE_URL, path: process.env.COMEX_DB_PATH };
+    process.env.DATABASE_URL = "psql 'postgresql://u:npg_x@h/db'";
+    process.env.COMEX_DB_PATH = ':memory:';
+    try {
+      const store = await mod.createComexStore();
+      expect(store.driver).toBe('sqlite');
+      expect(mod.getStoreFallbackReason()).toMatch(/não começa com postgresql/);
+    } finally {
+      if (prev.url === undefined) delete process.env.DATABASE_URL; else process.env.DATABASE_URL = prev.url;
+      if (prev.path === undefined) delete process.env.COMEX_DB_PATH; else process.env.COMEX_DB_PATH = prev.path;
+    }
+  });
+});

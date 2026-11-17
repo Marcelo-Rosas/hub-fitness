@@ -1013,18 +1013,42 @@ export function defaultSqlitePath(): string {
   return process.env.COMEX_DB_PATH || path.join(process.cwd(), 'data', 'comex.sqlite');
 }
 
+let storeFallbackReason: string | null = null;
+
+/** Remove credenciais de mensagens de erro (URL postgres, senhas npg_…, password=…). */
+export function redactDbError(message: string): string {
+  return message
+    .replace(/postgres(?:ql)?:\/\/[^\s'"]+/gi, 'postgresql://***')
+    .replace(/npg_[A-Za-z0-9]+/g, 'npg_***')
+    .replace(/password=[^\s&'"]+/gi, 'password=***');
+}
+
+/** Por que o store caiu no SQLite (null = Postgres ativo ou sem tentativa). Sem segredos. */
+export function getStoreFallbackReason(): string | null {
+  return storeFallbackReason;
+}
+
 export async function createComexStore(): Promise<ComexStore> {
+  storeFallbackReason = null;
   if (process.env.DATABASE_URL) {
-    const pgStore = new PgComexStore(process.env.DATABASE_URL);
-    try {
-      await pgStore.ensureReady();
-      return pgStore;
-    } catch (err) {
-      console.warn(
-        '[comex] Postgres indisponível — sqlite local. Aplique supabase/client/migrations/20260814120000_comex_metadata.sql e 20261116120000_comex_clients_brokers.sql',
-        err instanceof Error ? err.message : err,
-      );
+    const raw = process.env.DATABASE_URL.trim();
+    if (!/^postgres(?:ql)?:\/\//i.test(raw)) {
+      storeFallbackReason =
+        'DATABASE_URL não começa com postgresql:// (cole só a URL, sem "psql", aspas ou espaços)';
+    } else {
+      const pgStore = new PgComexStore(raw);
+      try {
+        await pgStore.ensureReady();
+        return pgStore;
+      } catch (err) {
+        storeFallbackReason = redactDbError(err instanceof Error ? err.message : String(err));
+      }
     }
+    console.warn(
+      `[comex] Postgres indisponível — sqlite local. Motivo: ${storeFallbackReason}. Schema: db/neon/0001_comex_schema.sql (ou supabase/client/migrations/20260814120000_comex_metadata.sql e 20261116120000_comex_clients_brokers.sql)`,
+    );
+  } else {
+    storeFallbackReason = 'DATABASE_URL não definido';
   }
   const sqlite = new SqliteComexStore(defaultSqlitePath());
   await sqlite.ensureReady();
