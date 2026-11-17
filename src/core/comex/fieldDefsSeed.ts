@@ -276,6 +276,16 @@ export const DEFAULT_COMEX_FIELD_DEFS: ComexFieldDefInput[] = [
     sort_order: 110,
   },
   {
+    // Preço/kg do benchmark ComexStat (FOB ÷ peso).
+    entity: 'process',
+    field_key: 'gross_weight_kg',
+    label: 'Peso bruto (kg)',
+    data_type: 'number',
+    widget: 'number',
+    ui_form: true,
+    sort_order: 115,
+  },
+  {
     entity: 'process',
     field_key: 'cif_value_brl',
     label: 'CIF BRL (pitch — não Ad Valorem)',

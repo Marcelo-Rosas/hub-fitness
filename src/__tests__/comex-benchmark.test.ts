@@ -8,8 +8,10 @@ import {
   COMEXSTAT_API,
   fetchNcmBenchmark,
   resetBenchmarkRateLimit,
+  splitPeriodByYear,
   type NcmBenchmark,
 } from '../core/comex/comexStatBenchmark';
+import { DEFAULT_COMEX_FIELD_DEFS } from '../core/comex/fieldDefsSeed';
 import { registerPucomexRoutes } from '../core/comex/registerPucomexRoutes';
 
 const UPDATED = { data: { updated: '2026-11-06', year: '2026', monthNumber: '10' }, success: true };
@@ -27,15 +29,24 @@ function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-/** fetch falso da ComexStat: datas + /general. Guarda os corpos enviados. */
+/**
+ * fetch falso da ComexStat: datas + /general. Guarda os corpos enviados.
+ * Como a API real, um período que cruza o ano volta vazio; dentro do ano,
+ * devolve só as linhas daquele ano.
+ */
 function fakeComexStat(general: unknown = GENERAL, updated: unknown = UPDATED) {
   const bodies: unknown[] = [];
   const impl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.includes('/general/dates/updated')) return jsonResponse(updated);
     if (url.includes('/general')) {
-      bodies.push(JSON.parse(String(init?.body)));
-      return jsonResponse(general);
+      const body = JSON.parse(String(init?.body)) as { period: { from: string; to: string } };
+      bodies.push(body);
+      const g = general as { data?: { list?: Array<{ year: string }> } };
+      if (!g?.data?.list) return jsonResponse(general);
+      const y = body.period.from.slice(0, 4);
+      const list = y === body.period.to.slice(0, 4) ? g.data.list.filter((r) => r.year === y) : [];
+      return jsonResponse({ ...g, data: { list } });
     }
     return jsonResponse({ success: false }, 404);
   });
@@ -59,6 +70,18 @@ describe('benchmarkWindow — 12 meses terminando no último mês fechado', () =
   });
 });
 
+describe('splitPeriodByYear — a API não aceita período que cruza o ano', () => {
+  it('quebra 2025-11..2026-10 em dois trechos', () => {
+    expect(splitPeriodByYear({ from: '2025-11', to: '2026-10' })).toEqual([
+      { from: '2025-11', to: '2025-12' },
+      { from: '2026-01', to: '2026-10' },
+    ]);
+  });
+  it('mesmo ano → um trecho', () => {
+    expect(splitPeriodByYear({ from: '2025-01', to: '2025-12' })).toEqual([{ from: '2025-01', to: '2025-12' }]);
+  });
+});
+
 describe('fetchNcmBenchmark', () => {
   it('soma as linhas, converte strings e monta o corpo com NCM e país', async () => {
     const f = fakeComexStat();
@@ -76,7 +99,11 @@ describe('fetchNcmBenchmark', () => {
     expect(b.countryCode).toBe('160');
     const body = f.bodies[0] as { flow: string; period: unknown; filters: Array<{ filter: string; values: unknown[] }> };
     expect(body.flow).toBe('import');
-    expect(body.period).toEqual({ from: '2025-11', to: '2026-10' });
+    // A API devolve vazio quando o período cruza o ano: uma consulta por ano.
+    expect(f.bodies.map((x) => (x as { period: unknown }).period)).toEqual([
+      { from: '2025-11', to: '2025-12' },
+      { from: '2026-01', to: '2026-10' },
+    ]);
     expect(body.filters).toEqual([
       { filter: 'ncm', values: ['95069100'] },
       { filter: 'country', values: [160] },
@@ -107,11 +134,11 @@ describe('fetchNcmBenchmark', () => {
     const now = () => t;
     await fetchNcmBenchmark({ ncm: '95069100', countryCode: '160', fetchImpl: f.impl, now });
     await fetchNcmBenchmark({ ncm: '95069100', countryCode: '160', fetchImpl: f.impl, now });
-    expect(f.bodies).toHaveLength(1);
-    expect(f.mock).toHaveBeenCalledTimes(2);
+    expect(f.bodies).toHaveLength(2); // dois trechos (um por ano), uma vez só
+    expect(f.mock).toHaveBeenCalledTimes(3);
     t += 24 * 3600 * 1000 + 1;
     await fetchNcmBenchmark({ ncm: '95069100', countryCode: '160', fetchImpl: f.impl, now });
-    expect(f.bodies).toHaveLength(2);
+    expect(f.bodies).toHaveLength(4);
   });
 
   it('HTTP de erro → Error em pt-BR', async () => {
@@ -181,6 +208,17 @@ describe('compareProcessToBenchmark', () => {
   it('média sem preço/kg → sem_dados', () => {
     const c = compareProcessToBenchmark({ fobUsd: 10000, kg: 100 }, { usdPerKg: null, freightPctFob: null } as NcmBenchmark);
     expect(c.level).toBe('sem_dados');
+  });
+});
+
+describe('seed de processo — peso bruto para o preço/kg', () => {
+  it('gross_weight_kg numérico logo depois do FOB', () => {
+    const proc = DEFAULT_COMEX_FIELD_DEFS.filter((d) => d.entity === 'process');
+    const peso = proc.find((d) => d.field_key === 'gross_weight_kg');
+    const fob = proc.find((d) => d.field_key === 'fob_value_usd')!;
+    expect(peso).toMatchObject({ label: 'Peso bruto (kg)', data_type: 'number', widget: 'number' });
+    expect(peso!.sort_order!).toBeGreaterThan(fob.sort_order!);
+    expect(peso!.sort_order!).toBeLessThan(120);
   });
 });
 

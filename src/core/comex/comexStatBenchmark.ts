@@ -52,6 +52,20 @@ export function benchmarkWindow(year: string, monthNumber: string): { from: stri
   return { from: `${fy}-${pad(fm)}`, to: `${y}-${pad(m)}` };
 }
 
+/**
+ * A API devolve lista vazia quando o período cruza o ano (verificado em 2026-11-17):
+ * quebra a janela em trechos dentro de cada ano.
+ */
+export function splitPeriodByYear(period: { from: string; to: string }): Array<{ from: string; to: string }> {
+  const fy = Number(period.from.slice(0, 4));
+  const ty = Number(period.to.slice(0, 4));
+  const out: Array<{ from: string; to: string }> = [];
+  for (let y = fy; y <= ty; y += 1) {
+    out.push({ from: y === fy ? period.from : `${y}-01`, to: y === ty ? period.to : `${y}-12` });
+  }
+  return out;
+}
+
 const num = (v: unknown): number => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -115,20 +129,24 @@ export async function fetchNcmBenchmark(opts: {
 
   const filters: Array<{ filter: string; values: unknown[] }> = [{ filter: 'ncm', values: [ncm] }];
   if (countryCode) filters.push({ filter: 'country', values: [Number(countryCode)] });
-  const res = await doFetch(`${COMEXSTAT_API}/general?language=pt`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({
-      flow: 'import',
-      monthDetail: false,
-      period,
-      filters,
-      details: ['country'],
-      metrics: ['metricFOB', 'metricKG', 'metricFreight', 'metricCIF'],
-    }),
-  });
-  const json = await readJson(res, `importações da NCM ${ncm}`);
-  const list = ((json.data as { list?: unknown[] } | undefined)?.list ?? []) as Array<Record<string, unknown>>;
+  const list: Array<Record<string, unknown>> = [];
+  // Sequencial: a API tem limite de execução.
+  for (const segment of splitPeriodByYear(period)) {
+    const res = await doFetch(`${COMEXSTAT_API}/general?language=pt`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        flow: 'import',
+        monthDetail: false,
+        period: segment,
+        filters,
+        details: ['country'],
+        metrics: ['metricFOB', 'metricKG', 'metricFreight', 'metricCIF'],
+      }),
+    });
+    const json = await readJson(res, `importações da NCM ${ncm}`);
+    list.push(...(((json.data as { list?: unknown[] } | undefined)?.list ?? []) as Array<Record<string, unknown>>));
+  }
 
   let fobUsd = 0;
   let kg = 0;
