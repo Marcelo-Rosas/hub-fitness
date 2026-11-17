@@ -22,8 +22,10 @@ interface RegistryMetaFormProps {
   values: Record<string, RegistryValue>;
   onChange: (key: string, value: RegistryValue) => void;
   brokers?: RegistryBrokerOption[];
-  /** Conteúdo extra abaixo de um campo (ex.: aviso de DI abaixo da modalidade). */
+  /** Conteúdo extra abaixo de um campo (ex.: selo curto abaixo da modalidade). */
   renderAfter?: (fieldKey: string) => React.ReactNode;
+  /** Conteúdo em largura total no fim de um grupo (ex.: aviso de DI no fim do grupo Radar). */
+  renderGroupFooter?: (groupName: string) => React.ReactNode;
 }
 
 export interface FieldGroup {
@@ -77,6 +79,7 @@ export const RegistryMetaForm: React.FC<RegistryMetaFormProps> = ({
   onChange,
   brokers = [],
   renderAfter,
+  renderGroupFooter,
 }) => {
   const renderInput = (f: ComexFieldDef) => {
     const key = f.field_key;
@@ -213,6 +216,7 @@ export const RegistryMetaForm: React.FC<RegistryMetaFormProps> = ({
               </div>
             ))}
           </div>
+          {renderGroupFooter?.(g.name)}
         </fieldset>
       ))}
     </div>

@@ -1771,9 +1771,13 @@ export const M18Comex: React.FC = () => {
                   </p>
                 ) : null}
                 {declarationRouteNote(clientsById.get(formClienteId)?.radar_modality) ? (
-                  <p className="mt-1 text-[11px] text-amber-700">
-                    {declarationRouteNote(clientsById.get(formClienteId)?.radar_modality)}
-                  </p>
+                  <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2">
+                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+                    <p className="text-[11px] leading-relaxed text-amber-900">
+                      <span className="font-semibold">Declaração por DI.</span> Radar Limitado não pode registrar
+                      DUIMP — confirme com o despachante.
+                    </p>
+                  </div>
                 ) : null}
               </div>
               <ComexMetaForm
