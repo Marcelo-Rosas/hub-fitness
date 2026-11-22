@@ -10,7 +10,7 @@ export const COMEXSTAT_API = 'https://api-comexstat.mdic.gov.br';
 export const COMEXSTAT_SITE = 'https://comexstat.mdic.gov.br';
 export const BENCHMARK_DISCLAIMER = 'a NCM agrega produtos diferentes — a média é referência, não prova.';
 
-const CACHE_TTL_MS = 24 * 3600 * 1000;
+export const CACHE_TTL_MS = 24 * 3600 * 1000;
 const RATE_LIMIT_PER_MIN = 30;
 
 export interface NcmBenchmark {
@@ -86,7 +86,7 @@ const COUNTRY_NAME_BY_CODE: Record<string, string> = { '160': 'China' };
 /** Teto do cache: a chave vem de chamadores anônimos (rota pública). */
 export const BENCH_CACHE_MAX = 500;
 
-type UpdatedInfo = { at: number; updated: string; year: string; month: string };
+export type UpdatedInfo = { at: number; updated: string; year: string; month: string };
 let updatedCache: UpdatedInfo | null = null;
 let updatedInFlight: Promise<UpdatedInfo> | null = null;
 const benchCache = new Map<string, { at: number; value: NcmBenchmark }>();
@@ -130,7 +130,8 @@ export function takeBenchmarkSlot(now: number = Date.now()): boolean {
   return true;
 }
 
-async function readJson(res: Response, what: string): Promise<{ data?: unknown; success?: boolean }> {
+/** Lê o JSON da ComexStat; HTTP de erro, corpo inválido ou success:false → ComexStatError. */
+export async function readComexStatJson(res: Response, what: string): Promise<{ data?: unknown; success?: boolean }> {
   if (!res.ok) throw new ComexStatError(`ComexStat respondeu HTTP ${res.status} ao consultar ${what}.`);
   let json: { data?: unknown; success?: boolean };
   try {
@@ -142,12 +143,13 @@ async function readJson(res: Response, what: string): Promise<{ data?: unknown; 
   return json;
 }
 
-async function loadUpdated(doFetch: typeof fetch, now: () => number): Promise<UpdatedInfo> {
+/** Último mês fechado da base ComexStat (cache 24 h, consultas simultâneas compartilhadas). */
+export async function loadComexStatUpdated(doFetch: typeof fetch, now: () => number): Promise<UpdatedInfo> {
   if (updatedCache && now() - updatedCache.at <= CACHE_TTL_MS) return updatedCache;
   if (!updatedInFlight) {
     updatedInFlight = (async () => {
       const res = await doFetch(`${COMEXSTAT_API}/general/dates/updated`, { headers: { Accept: 'application/json' } });
-      const json = await readJson(res, 'a data de atualização');
+      const json = await readComexStatJson(res, 'a data de atualização');
       const d = (json.data || {}) as { updated?: string; year?: string; monthNumber?: string };
       if (!d.year || !d.monthNumber) throw new ComexStatError('ComexStat não informou o último mês fechado.');
       updatedCache = { at: now(), updated: String(d.updated || ''), year: String(d.year), month: String(d.monthNumber) };
@@ -170,7 +172,7 @@ export async function fetchNcmBenchmark(opts: {
   const ncm = opts.ncm.replace(/\D/g, '');
   const countryCode = opts.countryCode && /^\d+$/.test(opts.countryCode) ? opts.countryCode : null;
 
-  const updated = await loadUpdated(doFetch, now);
+  const updated = await loadComexStatUpdated(doFetch, now);
   const period = benchmarkWindow(updated.year, updated.month);
   const key = `${ncm}|${countryCode ?? '*'}|${period.to}`;
   const hit = benchCache.get(key);
@@ -214,7 +216,7 @@ async function loadBenchmark(args: {
         metrics: ['metricFOB', 'metricKG', 'metricFreight', 'metricCIF'],
       }),
     });
-    const json = await readJson(res, `importações da NCM ${ncm}`);
+    const json = await readComexStatJson(res, `importações da NCM ${ncm}`);
     list.push(...(((json.data as { list?: unknown[] } | undefined)?.list ?? []) as Array<Record<string, unknown>>));
   }
 
