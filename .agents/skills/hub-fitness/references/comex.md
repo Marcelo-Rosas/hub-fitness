@@ -35,7 +35,7 @@ Sem PFX → modo **DEMO** (sessão local + respostas stub; paths oficiais preser
 
 ## Trava geral (`src/core/comex/comexGuard.ts`)
 - `comexGateway` montado com `app.use('/api/comex', …)` em `registerPucomexRoutes.ts`: **todo** `/api/comex/*` exige header `x-comex-token` = `COMEX_OPERATOR_TOKEN`, inclusive em DEMO e em dev.
-- Livres (`COMEX_PUBLIC_ROUTES`): `GET /api/comex/pucomex/status`, `GET /api/comex/pucomex/catalog`. `POST /api/comex/benchmark` consta na lista, mas a rota ainda não existe (Fase 2).
+- Livres (`COMEX_PUBLIC_ROUTES`): `GET /api/comex/pucomex/status`, `GET /api/comex/pucomex/catalog`, `POST /api/comex/benchmark` e `POST /api/comex/stats/monthly` (dados públicos ComexStat, cota 30/min).
 - Sem `COMEX_OPERATOR_TOKEN` no servidor → 503 `COMEX_OPERATOR_TOKEN_UNSET` (também em DEMO). Header ausente ou errado → 401 `COMEX_OPERATOR_TOKEN_REQUIRED`. Comparação por SHA-256 + `timingSafeEqual`.
 - Login do app é mock (forjável, repo público) → **não** serve de autorização.
 - Gerador no M18 (`src/components/modules/ComexOperatorTokenPanel.tsx`, lógica em `comexOperatorToken.ts`): botões **Gerar** e **Salvar**. O token fica só no `sessionStorage` da aba. Salvar valida o formato (`^[A-Za-z0-9_-]{16,}$`), copia o TOKEN para a área de transferência e mostra o comando `cd workers\hub-fitness-proxy; Get-Clipboard | npx.cmd wrangler secret put COMEX_OPERATOR_TOKEN` (rodar na raiz do repo; o token não vai no comando). **O servidor nunca recebe o token por HTTP**; o secret é gravado pelo próprio comando (Cloudflare ou `.env` local).
@@ -129,6 +129,13 @@ Sem PFX → modo **DEMO** (sessão local + respostas stub; paths oficiais preser
 - `POST /api/comex/benchmark` {ncmCode, country?, fobUsd?, kg?, freightUsd?} → `{benchmark, comparison|null}` — **pública** (`COMEX_PUBLIC_ROUTES`), limite global 30/min (429).
 - UI: `NcmBenchmarkCard.tsx` na Auditoria NCM (FOB do formulário + peso opcional) e no modal do processo (NCM + FOB; peso `gross_weight_kg`; país pelo UN/LOCODE do porto de origem; frete se existir `freight_value_usd`). Só informativo.
 - Ex. real (9506.91.00, China, 11/2025–10/2026): US$ 1,95/kg, frete ≈ 15% do FOB.
+
+## Série mensal ComexStat — painel de mercado (2026-11-21)
+- `src/core/comex/comexStatMonthly.ts`: `monthlyWindow(ano, mês, 12|24)` (12 = `benchmarkWindow`); `fetchNcmMonthlySeries` faz um `POST /general` por ano com `monthDetail:true`, `details:[]`. Linhas vêm com `year` + `monthNumber` ("07"), valores **string** e **fora de ordem** — o módulo soma por mês, ordena e preenche meses sem linha com zero. `usdPerKg`/`freightPctFob` null com divisor 0. Cache próprio 24 h (`ncm|país|meses|to`, teto 500, dedupe). `seriesTrend` (puro): últimos 3 meses vs. 3 anteriores (FOB e US$/kg).
+- Reusa do benchmark: `loadComexStatUpdated`, `readComexStatJson`, `splitPeriodByYear`, `ComexStatError` e a **mesma cota** `takeBenchmarkSlot` (30/min somando as duas rotas). Testes limpam com `clearComexStatCache()` + `clearComexStatMonthlyCache()`.
+- `POST /api/comex/stats/monthly` {ncmCode, country?, months?=12|24} → `{series, trend}` — **pública** (`COMEX_PUBLIC_ROUTES`), em `registerComexStatsRoutes.ts` (registrada em `registerPucomexRoutes` após o gateway). 400 NCM/months inválidos, 429 sem cota, 502 erro ComexStat (mensagem própria; erro inesperado → genérico).
+- UI: `NcmMarketSeriesCard.tsx` (recharts: barras FOB/mês + linha US$/kg em eixo secundário, seletor 12/24, tendência) na Auditoria NCM abaixo do `NcmBenchmarkCard`. Fora do modal do processo.
+- Próxima etapa: recortes por porto/URF, país e UF/município com `details` diferentes sobre o mesmo módulo.
 
 ## Integra Comex — consulta pública (2026-11-17)
 - Gratuita, sem autenticação: SERPRO devolve só **quando** o documento mudou (`dataAtualizacao`, sem fuso = Brasília), não **o quê**. Não valida números: inválido e sem dado são iguais (só volta o que achou). Cobertura desde 2017. Spec: `docs/superpowers/specs/2026-11-17-integra-comex-monitor-gratuito-design.md`.
