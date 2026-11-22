@@ -69,11 +69,12 @@ export function requireComexOperatorStrict(req: Request, res: Response, next: Ne
   next();
 }
 
-/** Únicas rotas /api/comex liberadas sem token (diagnóstico, catálogo estático, benchmark). */
+/** Únicas rotas /api/comex liberadas sem token (diagnóstico, catálogo estático, dados públicos ComexStat). */
 export const COMEX_PUBLIC_ROUTES: ReadonlyArray<{ method: string; path: string }> = [
   { method: 'GET', path: '/api/comex/pucomex/status' },
   { method: 'GET', path: '/api/comex/pucomex/catalog' },
   { method: 'POST', path: '/api/comex/benchmark' },
+  { method: 'POST', path: '/api/comex/stats/monthly' },
 ];
 
 /** Montar com app.use('/api/comex', comexGateway): baseUrl + path = caminho completo. */
