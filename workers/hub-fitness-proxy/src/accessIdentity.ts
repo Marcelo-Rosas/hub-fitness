@@ -26,7 +26,22 @@ interface EntradaCache {
 }
 
 const TTL_CACHE_MS = 60 * 60 * 1000; // 1 h
+/** Intervalo mínimo entre refetches por `kid` desconhecido (evita 1 subrequest por request forjado). */
+const REFETCH_MIN_MS = 60 * 1000;
+/** Prazo da busca do JWKS: Access lento não pode pendurar o request. */
+const JWKS_TIMEOUT_MS = 5_000;
+/** Tolerância de relógio entre o Worker e o emissor do Access (nbf/exp). */
+const SKEW_S = 60;
 const cacheJwks = new Map<string, EntradaCache>();
+
+/** Rotas que consultam a identidade (gateway Comex e comex-ai). Fora delas não verifica JWT. */
+export function needsAccessIdentity(pathname: string): boolean {
+  return (
+    pathname === '/api/comex' ||
+    pathname.startsWith('/api/comex/') ||
+    pathname === '/api/gemini/comex-ai'
+  );
+}
 
 /** Limpa o cache de JWKS (usado pelos testes). */
 export function clearJwksCache(): void {
@@ -35,7 +50,7 @@ export function clearJwksCache(): void {
 
 // Resposta não-ok lança: não pode virar "keys vazias" no cache (verify captura → null).
 const fetcherPadrao: JwksFetcher = async (url) => {
-  const r = await fetch(url);
+  const r = await fetch(url, { signal: AbortSignal.timeout(JWKS_TIMEOUT_MS) });
   if (!r.ok) throw new Error(`JWKS do Access respondeu HTTP ${r.status}`);
   return (await r.json()) as { keys: JsonWebKey[] };
 };
@@ -82,8 +97,9 @@ async function acharChave(
     keys = await buscarChaves(teamDomain, fetchJwks, nowMs);
   }
   let chave = keys.find((k) => k.kid === kid) ?? null;
-  if (!chave) {
-    // Rotação de chave: refaz a busca UMA vez antes de desistir.
+  const recente = cacheJwks.get(teamDomain);
+  if (!chave && !(recente && nowMs - recente.buscadoEm < REFETCH_MIN_MS)) {
+    // Rotação de chave: refaz a busca UMA vez antes de desistir (no máx. 1x/min).
     keys = await buscarChaves(teamDomain, fetchJwks, nowMs);
     chave = keys.find((k) => k.kid === kid) ?? null;
   }
@@ -137,8 +153,8 @@ export async function verifyAccessJwt(
     if (!audOk) return null;
 
     const nowS = nowMs / 1000;
-    if (typeof payload.exp !== 'number' || payload.exp <= nowS) return null;
-    if (payload.nbf !== undefined && (typeof payload.nbf !== 'number' || payload.nbf > nowS)) return null;
+    if (typeof payload.exp !== 'number' || payload.exp + SKEW_S <= nowS) return null;
+    if (payload.nbf !== undefined && (typeof payload.nbf !== 'number' || payload.nbf > nowS + SKEW_S)) return null;
 
     const email = payload.email;
     if (typeof email !== 'string' || !email) return null;

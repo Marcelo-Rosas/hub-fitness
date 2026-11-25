@@ -8,7 +8,7 @@
  * Identidade: o e-mail do login do Cloudflare Access (JWT verificado) vai ao container em x-hub-access-email.
  */
 import { Container, getContainer } from "@cloudflare/containers";
-import { applyAccessIdentity } from "./accessIdentity";
+import { applyAccessIdentity, needsAccessIdentity } from "./accessIdentity";
 
 interface Env {
   HUB_APP: DurableObjectNamespace<HubApp>;
@@ -187,7 +187,11 @@ export default {
     try {
       const incoming = new URL(request.url);
       const headers = buildUpstreamHeaders(request, incoming.host);
-      await applyAccessIdentity(request.headers, headers, env);
+      // Só rotas Comex verificam o JWT: JWKS lento/fora não afeta o resto do site.
+      // Nas demais, x-hub-access-email já foi removido (SPOOFABLE).
+      if (needsAccessIdentity(incoming.pathname)) {
+        await applyAccessIdentity(request.headers, headers, env);
+      }
       const init: RequestInit = {
         method: request.method,
         headers,

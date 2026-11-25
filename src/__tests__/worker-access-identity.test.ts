@@ -3,6 +3,7 @@ import {
   verifyAccessJwt,
   applyAccessIdentity,
   clearJwksCache,
+  needsAccessIdentity,
   type JwksFetcher,
 } from '../../workers/hub-fitness-proxy/src/accessIdentity';
 
@@ -123,8 +124,8 @@ describe('verifyAccessJwt', () => {
     expect(email).toBeNull();
   });
 
-  it('exp no passado → null', async () => {
-    const token = await sign(headerOk, payloadOk({ exp: NOW_S - 1 }));
+  it('exp no passado (além da tolerância de 60 s) → null', async () => {
+    const token = await sign(headerOk, payloadOk({ exp: NOW_S - 61 }));
     const email = await verifyAccessJwt(token, {
       teamDomain: TEAM,
       aud: AUD,
@@ -169,16 +170,34 @@ describe('verifyAccessJwt', () => {
     expect(email).toBeNull();
   });
 
-  it('kid desconhecido: 1º fetch sem a chave, 2º com → válido; fetchJwks chamado 2x', async () => {
+  it('kid desconhecido com cache de >60 s: refaz o fetch uma vez → válido; fetchJwks chamado 2x', async () => {
     const token = await sign(headerOk, payloadOk());
     const outraChave = { ...publicJwk, kid: 'k0' };
     const fetchJwks = vi
       .fn<JwksFetcher>()
       .mockResolvedValueOnce({ keys: [outraChave] })
       .mockResolvedValueOnce({ keys: [outraChave, publicJwk] });
+    // Cache frio: busca recém-feita não é refeita na hora.
+    expect(await verifyAccessJwt(token, { teamDomain: TEAM, aud: AUD, now: NOW - 120_000, fetchJwks })).toBeNull();
+    expect(fetchJwks).toHaveBeenCalledTimes(1);
     const email = await verifyAccessJwt(token, { teamDomain: TEAM, aud: AUD, now: NOW, fetchJwks });
     expect(email).toBe('op@exemplo.com');
     expect(fetchJwks).toHaveBeenCalledTimes(2);
+  });
+
+  it('kid desconhecido repetido dentro de 60 s não refaz o fetch (rate limit)', async () => {
+    const forjado = await sign({ ...headerOk, kid: 'aleatorio' }, payloadOk());
+    const fetchJwks = fetcherWith([publicJwk]);
+    for (let i = 0; i < 5; i++) {
+      expect(await verifyAccessJwt(forjado, { teamDomain: TEAM, aud: AUD, now: NOW + i * 1000, fetchJwks })).toBeNull();
+    }
+    expect(fetchJwks).toHaveBeenCalledTimes(1);
+  });
+
+  it('nbf poucos segundos no futuro (relógio atrasado) → aceito', async () => {
+    const token = await sign(headerOk, payloadOk({ nbf: NOW_S + 5 }));
+    const email = await verifyAccessJwt(token, { teamDomain: TEAM, aud: AUD, now: NOW, fetchJwks: fetcherWith([publicJwk]) });
+    expect(email).toBe('op@exemplo.com');
   });
 
   it('usa o cache: segunda verificação não refaz o fetch', async () => {
@@ -287,5 +306,17 @@ describe('applyAccessIdentity', () => {
       verify,
     );
     expect(verify).toHaveBeenCalledWith('tok', { teamDomain: 'equipe.cloudflareaccess.com', aud: AUD });
+  });
+});
+
+describe('needsAccessIdentity', () => {
+  it('só rotas Comex e comex-ai verificam o JWT', () => {
+    expect(needsAccessIdentity('/api/comex/processes')).toBe(true);
+    expect(needsAccessIdentity('/api/comex')).toBe(true);
+    expect(needsAccessIdentity('/api/gemini/comex-ai')).toBe(true);
+    expect(needsAccessIdentity('/')).toBe(false);
+    expect(needsAccessIdentity('/assets/app.js')).toBe(false);
+    expect(needsAccessIdentity('/api/comexx')).toBe(false);
+    expect(needsAccessIdentity('/api/finance')).toBe(false);
   });
 });
