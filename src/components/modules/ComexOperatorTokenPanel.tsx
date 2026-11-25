@@ -56,7 +56,8 @@ export const ComexOperatorTokenPanel: React.FC<ComexOperatorTokenPanelProps> = (
             Token de operador Comex
           </h3>
           <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-            As rotas do Comex exigem o token de operador. Ele fica guardado neste navegador (não precisa colar de novo a cada entrada).
+            Você não está autorizado pelo login do Cloudflare Access. Como alternativa (ex.: dev local), use o token
+            de operador. Ele fica guardado neste navegador (não precisa colar de novo a cada entrada).
           </p>
         </div>
       </div>

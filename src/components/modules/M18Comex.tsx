@@ -166,7 +166,9 @@ export const M18Comex: React.FC = () => {
   const [guard, setGuard] = useState<ComexGuardStatus | null>(null);
   const [tokenRejected, setTokenRejected] = useState(false);
   const [, setTokenVersion] = useState(0);
-  const needsToken = tokenRejected || !getComexOperatorToken();
+  // Painel só quando o servidor diz que não estamos autorizados (Access ou token).
+  // Antes do /status carregar (guard null), cai no critério antigo: sem token salvo = painel.
+  const needsToken = tokenRejected || (guard ? !guard.authorized : !getComexOperatorToken());
 
   /** comexFetch + detecção de recusa do gateway por token (volta ao painel do token). */
   const cfetch = async (path: string, init?: RequestInit) => {
