@@ -17,7 +17,18 @@ import { comexFetch } from './comexOperatorToken';
 
 const usd = (n: number, digits = 2) =>
   n.toLocaleString('pt-BR', { style: 'currency', currency: 'USD', minimumFractionDigits: digits, maximumFractionDigits: digits });
-const usdMi = (n: number) => `US$ ${(n / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mi`;
+/** Valor compacto em US$ (mi/mil): NCM de pouco volume não vira "US$ 0 mi". */
+const usdCompact = (n: number) => {
+  const abs = Math.abs(n);
+  if (abs >= 1e6) return `US$ ${(n / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mi`;
+  if (abs >= 1e3) return `US$ ${(n / 1e3).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil`;
+  return usd(n, 0);
+};
+/** Tick do eixo FOB: mesma escala (mi ou mil) em todos os ticks, conforme o maior valor. */
+const fobTick = (max: number) => (v: number) =>
+  max >= 1e6
+    ? `${(v / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mi`
+    : `${(v / 1e3).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} mil`;
 const pct = (n: number) => `${(n * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
 const signedPct = (n: number) => `${n > 0 ? '+' : ''}${pct(n)}`;
 const ymLabel = (s: string) => {
@@ -54,6 +65,12 @@ export const NcmMarketSeriesCard: React.FC<{
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // NCM/país novo: descarta a série anterior (só a troca 12/24 mantém os dados esmaecidos).
+  useEffect(() => {
+    setSeries(null);
+    setTrend(null);
+  }, [ncm, country]);
+
   useEffect(() => {
     if (ncm.length !== 8) {
       setSeries(null);
@@ -70,7 +87,11 @@ export const NcmMarketSeriesCard: React.FC<{
         method: 'POST',
         body: JSON.stringify({ ncmCode: ncm, country: country || undefined, months }),
       })
-        .then((r) => r.json())
+        .then(async (r) => {
+          const isJson = (r.headers.get('content-type') || '').includes('application/json');
+          if (!isJson) throw new Error(`O servidor respondeu HTTP ${r.status}.`);
+          return r.json();
+        })
         .then((j) => {
           if (!alive) return;
           if (j?.success) {
@@ -82,7 +103,12 @@ export const NcmMarketSeriesCard: React.FC<{
             setError(j?.error || 'Falha ao consultar o ComexStat.');
           }
         })
-        .catch(() => alive && setError('Falha de rede ao consultar o ComexStat.'))
+        .catch((e: unknown) => {
+          if (!alive) return;
+          setSeries(null);
+          setTrend(null);
+          setError(e instanceof TypeError ? 'Falha de rede ao consultar o ComexStat.' : (e as Error).message);
+        })
         .finally(() => alive && setLoading(false));
     }, 500);
     return () => {
@@ -128,7 +154,7 @@ export const NcmMarketSeriesCard: React.FC<{
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <div>
               <div className="text-slate-500">FOB no período</div>
-              <div className="font-bold text-slate-800">{usdMi(series.totals.fobUsd)}</div>
+              <div className="font-bold text-slate-800">{usdCompact(series.totals.fobUsd)}</div>
             </div>
             <div>
               <div className="text-slate-500">US$/kg médio</div>
@@ -149,7 +175,7 @@ export const NcmMarketSeriesCard: React.FC<{
                   yAxisId="fob"
                   tick={hubTick}
                   width={48}
-                  tickFormatter={(v: number) => `${(v / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} mi`}
+                  tickFormatter={fobTick(Math.max(0, ...series.months.map((p) => p.fobUsd)))}
                 />
                 <YAxis
                   yAxisId="ppk"
@@ -163,7 +189,7 @@ export const NcmMarketSeriesCard: React.FC<{
                   labelFormatter={(l) => ymLabel(String(l))}
                   formatter={(value, name) => {
                     const v = Number(value);
-                    return name === 'US$/kg' ? [usd(v), name] : [usdMi(v), name];
+                    return name === 'US$/kg' ? [usd(v), name] : [usdCompact(v), name];
                   }}
                 />
                 <Bar yAxisId="fob" dataKey="fobUsd" name="FOB" fill={HUB_CHART.stroke} radius={[3, 3, 0, 0]} />
@@ -185,7 +211,7 @@ export const NcmMarketSeriesCard: React.FC<{
             Importações do Brasil · NCM {series.ncm} ·{' '}
             {allCountries ? 'todos os países' : `origem código ${series.countryCode}`} · {ymLabel(series.period.from)} a{' '}
             {ymLabel(series.period.to)} · base atualizada em {series.updatedAt || '—'}
-            {allCountries && country ? ' (país sem código ComexStat mapeado)' : ''}. Barras: FOB (US$ mi, eixo
+            {allCountries && country ? ' (país sem código ComexStat mapeado)' : ''}. Barras: FOB (US$, eixo
             esquerdo); linha: US$/kg (eixo direito). Atenção: {BENCHMARK_DISCLAIMER}
           </p>
         </div>

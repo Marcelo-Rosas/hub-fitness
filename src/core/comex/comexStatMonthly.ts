@@ -97,6 +97,31 @@ export function clearComexStatMonthlyCache(): void {
   monthlyInFlight.clear();
 }
 
+/**
+ * Cota própria da série mensal (não divide com o benchmark de valoração): conta cada
+ * POST real ao ComexStat (1 por ano da janela) e só é consumida em cache miss.
+ */
+const MONTHLY_RATE_LIMIT_PER_MIN = 30;
+let monthlyRateHits: number[] = [];
+
+export class ComexStatRateLimitError extends ComexStatError {
+  constructor() {
+    super('Muitas consultas ao ComexStat — aguarde um minuto e tente de novo.');
+  }
+}
+
+export function resetMonthlyRateLimit(): void {
+  monthlyRateHits = [];
+}
+
+/** true e registra `n` chamadas se couberem no último minuto; senão false (nada registrado). */
+export function takeMonthlySlots(n: number, now: number = Date.now()): boolean {
+  monthlyRateHits = monthlyRateHits.filter((t) => now - t < 60_000);
+  if (monthlyRateHits.length + n > MONTHLY_RATE_LIMIT_PER_MIN) return false;
+  for (let i = 0; i < n; i += 1) monthlyRateHits.push(now);
+  return true;
+}
+
 export function monthlyCacheSize(): number {
   return monthlyCache.size;
 }
@@ -156,6 +181,7 @@ export async function fetchNcmMonthlySeries(opts: {
   // Chamadas simultâneas iguais compartilham a mesma consulta.
   const pending = monthlyInFlight.get(key);
   if (pending) return pending;
+  if (!takeMonthlySlots(splitPeriodByYear(period).length, now())) throw new ComexStatRateLimitError();
   const p = loadSeries({ ncm, countryCode, period, updatedAt: updated.updated, doFetch })
     .then((value) => {
       storeMonthly(key, value, now());

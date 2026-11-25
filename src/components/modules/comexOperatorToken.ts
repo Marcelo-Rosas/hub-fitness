@@ -6,28 +6,61 @@
  */
 
 const KEY = 'hub.comex.operatorToken';
+/** Quando o token foi salvo (ms, string). Token sem data = salvo antes da expiração existir. */
+const KEY_SAVED_AT = 'hub.comex.operatorTokenSavedAt';
+/** Token salvo expira em 30 dias: limita exposição em máquina compartilhada/perfil sincronizado. */
+export const OPERATOR_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-export function getComexOperatorToken(): string {
+function persist(token: string, now: number): void {
+  localStorage.setItem(KEY, token);
+  localStorage.setItem(KEY_SAVED_AT, String(now));
+}
+
+export function getComexOperatorToken(now: number = Date.now()): string {
+  let persisted = '';
   try {
-    const persisted = (localStorage.getItem(KEY) || '').trim();
-    if (persisted) return persisted;
-    // Migração: token salvo pela versão antiga (sessionStorage).
-    const legacy = (sessionStorage.getItem(KEY) || '').trim();
-    if (legacy) {
-      localStorage.setItem(KEY, legacy);
-      sessionStorage.removeItem(KEY);
+    persisted = (localStorage.getItem(KEY) || '').trim();
+    if (persisted) {
+      const savedAt = Number(localStorage.getItem(KEY_SAVED_AT));
+      if (!Number.isFinite(savedAt) || savedAt <= 0) {
+        // Salvo antes da expiração existir: começa a contar agora.
+        localStorage.setItem(KEY_SAVED_AT, String(now));
+      } else if (now - savedAt > OPERATOR_TOKEN_TTL_MS) {
+        localStorage.removeItem(KEY);
+        localStorage.removeItem(KEY_SAVED_AT);
+        return '';
+      }
+      return persisted;
     }
-    return legacy;
+  } catch {
+    return persisted;
+  }
+  // Migração: token salvo pela versão antiga (sessionStorage).
+  let legacy = '';
+  try {
+    legacy = (sessionStorage.getItem(KEY) || '').trim();
   } catch {
     return '';
   }
+  if (legacy) {
+    try {
+      persist(legacy, now);
+      sessionStorage.removeItem(KEY);
+    } catch {
+      /* localStorage cheio/bloqueado: segue usando o token da sessão */
+    }
+  }
+  return legacy;
 }
 
-export function setComexOperatorToken(token: string): void {
+export function setComexOperatorToken(token: string, now: number = Date.now()): void {
   const clean = token.trim();
   try {
-    if (clean) localStorage.setItem(KEY, clean);
-    else localStorage.removeItem(KEY);
+    if (clean) persist(clean, now);
+    else {
+      localStorage.removeItem(KEY);
+      localStorage.removeItem(KEY_SAVED_AT);
+    }
     sessionStorage.removeItem(KEY);
   } catch {
     /* storage bloqueado — token vale só até recarregar */
