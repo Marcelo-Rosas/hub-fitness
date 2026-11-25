@@ -2,21 +2,40 @@
  * Trava das rotas Comex que usam o certificado ICP-Brasil (mTLS) ou o disco.
  *
  * O login do app ainda é mock (token `mock-jwt:<email>` forjável, repo público),
- * então a sessão do usuário não serve de autorização. A trava é um segredo só
- * do servidor: COMEX_OPERATOR_TOKEN, enviado pelo M18 no header x-comex-token.
+ * então a sessão do usuário não serve de autorização. Duas formas aceitas:
  *
- * Fail-closed estrito: sem COMEX_OPERATOR_TOKEN no servidor, tudo em /api/comex
- * (exceto rotas públicas) responde 503 — inclusive em DEMO.
+ * 1. Identidade do Cloudflare Access: o Worker valida o login do Access e envia
+ *    ao container o header confiável x-hub-access-email (e-mail em minúsculas),
+ *    sempre removendo a cópia vinda do cliente. Autoriza se o e-mail estiver em
+ *    COMEX_ALLOWED_EMAILS (lista separada por vírgula).
+ * 2. Segredo do servidor: COMEX_OPERATOR_TOKEN, enviado pelo M18 no header
+ *    x-comex-token.
+ *
+ * Fail-closed estrito: sem COMEX_ALLOWED_EMAILS nem COMEX_OPERATOR_TOKEN no
+ * servidor, tudo em /api/comex (exceto rotas públicas) responde 503 — inclusive
+ * em DEMO.
  */
 
 import crypto from 'node:crypto';
 import type { NextFunction, Request, Response } from 'express';
 
 export const COMEX_TOKEN_HEADER = 'x-comex-token';
+/** Header setado pelo Cloudflare Worker após validar o Access (nunca vindo do cliente). */
+export const ACCESS_EMAIL_HEADER = 'x-hub-access-email';
+
+export type ComexAuthVia = 'access' | 'token';
 
 function configuredToken(): string | null {
   const t = process.env.COMEX_OPERATOR_TOKEN?.trim();
   return t ? t : null;
+}
+
+/** Lista normalizada (trim + minúsculas) de COMEX_ALLOWED_EMAILS. */
+function allowedEmails(): string[] {
+  return String(process.env.COMEX_ALLOWED_EMAILS || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
 }
 
 function safeEqual(a: string, b: string): boolean {
@@ -25,44 +44,62 @@ function safeEqual(a: string, b: string): boolean {
   return crypto.timingSafeEqual(ha, hb);
 }
 
-/** Exposto em /status para o M18 saber que o token é sempre exigido. */
-export function comexGuardStatus() {
-  return {
-    operatorTokenRequired: true,
-    operatorTokenConfigured: !!configuredToken(),
-  };
-}
+/** Como o request está autorizado: e-mail do Access primeiro, depois token; null se nenhum. */
+export function comexAuthVia(req: Pick<Request, 'headers'>): ComexAuthVia | null {
+  const emails = allowedEmails();
+  if (emails.length) {
+    const email = String(req.headers[ACCESS_EMAIL_HEADER] || '').trim().toLowerCase();
+    if (email && emails.includes(email)) return 'access';
+  }
 
-/** Verificação pura: há token configurado no servidor e o header bate. */
-export function isValidComexOperatorToken(req: Pick<Request, 'headers'>): boolean {
   const token = configuredToken();
-  if (!token) return false;
-  const sent = String(req.headers[COMEX_TOKEN_HEADER] || '').trim();
-  return !!sent && safeEqual(sent, token);
+  if (token) {
+    const sent = String(req.headers[COMEX_TOKEN_HEADER] || '').trim();
+    if (sent && safeEqual(sent, token)) return 'token';
+  }
+  return null;
 }
 
 /**
- * Estrito: sem COMEX_OPERATOR_TOKEN no servidor → 503 (mesmo em DEMO);
- * sem header ou header errado → 401.
+ * Exposto em /status para o M18 saber como está a trava e se o request atual
+ * está autorizado. Nunca devolve a lista de e-mails.
+ */
+export function comexGuardStatus(req: Pick<Request, 'headers'>) {
+  const via = comexAuthVia(req);
+  return {
+    operatorTokenRequired: true as const,
+    operatorTokenConfigured: !!configuredToken(),
+    accessEmailConfigured: allowedEmails().length > 0,
+    authorized: via !== null,
+    via,
+  };
+}
+
+/** Verificação pura: request autorizado por e-mail do Access ou por token. */
+export function isValidComexOperatorToken(req: Pick<Request, 'headers'>): boolean {
+  return comexAuthVia(req) !== null;
+}
+
+/**
+ * Estrito: sem COMEX_ALLOWED_EMAILS nem COMEX_OPERATOR_TOKEN no servidor → 503
+ * (mesmo em DEMO); sem identidade autorizada nem token válido → 401.
  */
 export function requireComexOperatorStrict(req: Request, res: Response, next: NextFunction): void {
-  const token = configuredToken();
-  if (!token) {
+  if (!configuredToken() && allowedEmails().length === 0) {
     res.status(503).json({
       success: false,
       code: 'COMEX_OPERATOR_TOKEN_UNSET',
       error:
-        'COMEX_OPERATOR_TOKEN não configurado no servidor — M18 Comex bloqueado. Defina o secret para usar o módulo.',
+        'Nem COMEX_ALLOWED_EMAILS nem COMEX_OPERATOR_TOKEN configurados no servidor — M18 Comex bloqueado. Defina um dos dois para usar o módulo.',
     });
     return;
   }
 
-  const sent = String(req.headers[COMEX_TOKEN_HEADER] || '').trim();
-  if (!sent || !safeEqual(sent, token)) {
+  if (comexAuthVia(req) === null) {
     res.status(401).json({
       success: false,
       code: 'COMEX_OPERATOR_TOKEN_REQUIRED',
-      error: 'Token de operador Comex ausente ou inválido.',
+      error: 'Acesso Comex não autorizado: e-mail fora da lista ou token de operador ausente/inválido.',
     });
     return;
   }

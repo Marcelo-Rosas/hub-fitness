@@ -10,6 +10,7 @@ import { explainPfxError, PucomexClient } from '../core/comex/pucomexClient';
 
 const ENV_KEYS = [
   'COMEX_OPERATOR_TOKEN',
+  'COMEX_ALLOWED_EMAILS',
   'PUCOMEX_LIVE',
   'PUCOMEX_PROXY_ALLOW_WRITE',
   'PUCOMEX_CERT_PFX_PATH',
@@ -137,6 +138,65 @@ describe('trava das rotas do certificado PUCOMEX', () => {
     process.env.COMEX_OPERATOR_TOKEN = 't';
     const res = await post('/api/comex/pucomex/authenticate', { roleType: 'ADMIN' }, { 'x-comex-token': 't' });
     expect(res.status).toBe(400);
+  });
+});
+
+describe('identidade do Cloudflare Access (x-hub-access-email)', () => {
+  const LISTA = ' Op@Exemplo.com ,b@x.com';
+  const getProc = (headers: Record<string, string> = {}) =>
+    fetch(`${baseUrl}/api/comex/processes`, { headers });
+
+  it('e-mail na lista (normalizado) → 200', async () => {
+    process.env.COMEX_ALLOWED_EMAILS = LISTA;
+    expect((await getProc({ 'x-hub-access-email': 'op@exemplo.com' })).status).toBe(200);
+  });
+
+  it('e-mail fora da lista → 401 COMEX_OPERATOR_TOKEN_REQUIRED', async () => {
+    process.env.COMEX_ALLOWED_EMAILS = LISTA;
+    const res = await getProc({ 'x-hub-access-email': 'intruso@x.com' });
+    expect(res.status).toBe(401);
+    expect((await res.json()).code).toBe('COMEX_OPERATOR_TOKEN_REQUIRED');
+  });
+
+  it('só lista configurada, sem header nem token → 401 (não 503)', async () => {
+    process.env.COMEX_ALLOWED_EMAILS = LISTA;
+    const res = await getProc();
+    expect(res.status).toBe(401);
+    expect((await res.json()).code).toBe('COMEX_OPERATOR_TOKEN_REQUIRED');
+  });
+
+  it('nada configurado → 503 COMEX_OPERATOR_TOKEN_UNSET', async () => {
+    const res = await getProc({ 'x-hub-access-email': 'op@exemplo.com' });
+    expect(res.status).toBe(503);
+    expect((await res.json()).code).toBe('COMEX_OPERATOR_TOKEN_UNSET');
+  });
+
+  it('token válido sem lista → 200', async () => {
+    process.env.COMEX_OPERATOR_TOKEN = 'segredo-123';
+    expect((await getProc({ 'x-comex-token': 'segredo-123' })).status).toBe(200);
+  });
+
+  it('/status com e-mail autorizado: via access, sem vazar a lista', async () => {
+    process.env.COMEX_ALLOWED_EMAILS = LISTA;
+    const res = await fetch(`${baseUrl}/api/comex/pucomex/status`, {
+      headers: { 'x-hub-access-email': 'op@exemplo.com' },
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).not.toContain('b@x.com');
+    const { guard } = JSON.parse(text);
+    expect(guard.authorized).toBe(true);
+    expect(guard.via).toBe('access');
+    expect(guard.accessEmailConfigured).toBe(true);
+    expect(guard.operatorTokenRequired).toBe(true);
+    expect(guard.operatorTokenConfigured).toBe(false);
+  });
+
+  it('/status sem identidade: authorized=false, via=null', async () => {
+    process.env.COMEX_ALLOWED_EMAILS = LISTA;
+    const { guard } = await (await fetch(`${baseUrl}/api/comex/pucomex/status`)).json();
+    expect(guard.authorized).toBe(false);
+    expect(guard.via).toBeNull();
   });
 });
 
