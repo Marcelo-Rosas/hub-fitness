@@ -10,6 +10,7 @@ import {
   BENCH_CACHE_MAX,
   CACHE_TTL_MS,
   COMEXSTAT_API,
+  ComexStatError,
   loadComexStatUpdated,
   readComexStatJson,
   splitPeriodByYear,
@@ -114,14 +115,33 @@ function storeMonthly(key: string, value: NcmMonthlySeries, at: number): void {
   monthlyCache.set(key, { at, value });
 }
 
+const COMEXSTAT_TIMEOUT_MS = 15_000;
+
+/** Aplica prazo a cada fetch; estouro vira `ComexStatError` (502 na rota), não pendura. */
+function withTimeout(doFetch: typeof fetch, ms: number): typeof fetch {
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+    try {
+      return await doFetch(input, { ...init, signal: AbortSignal.timeout(ms) });
+    } catch (err) {
+      const name = (err as { name?: string })?.name;
+      if (name === 'TimeoutError' || name === 'AbortError') {
+        throw new ComexStatError('ComexStat não respondeu a tempo.');
+      }
+      throw err;
+    }
+  }) as typeof fetch;
+}
+
 export async function fetchNcmMonthlySeries(opts: {
   ncm: string;
   countryCode: string | null;
   months: SeriesMonths;
   fetchImpl?: typeof fetch;
   now?: () => number;
+  /** Prazo por chamada ao ComexStat (padrão 15 s). Evita promise travada em `monthlyInFlight`. */
+  timeoutMs?: number;
 }): Promise<NcmMonthlySeries> {
-  const doFetch = opts.fetchImpl ?? globalThis.fetch;
+  const doFetch = withTimeout(opts.fetchImpl ?? globalThis.fetch, opts.timeoutMs ?? COMEXSTAT_TIMEOUT_MS);
   const now = opts.now ?? Date.now;
   const ncm = opts.ncm.replace(/\D/g, '');
   const countryCode = opts.countryCode && /^\d+$/.test(opts.countryCode) ? opts.countryCode : null;

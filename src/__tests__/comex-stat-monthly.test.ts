@@ -209,6 +209,20 @@ describe('fetchNcmMonthlySeries', () => {
     ).rejects.toThrow(/ComexStat respondeu HTTP 500/);
   });
 
+  it('ComexStat pendurado → ComexStatError por timeout e libera a consulta em andamento', async () => {
+    const hang = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(init.signal!.reason));
+        }),
+    ) as unknown as typeof fetch;
+    const opts = { ncm: '95069100', countryCode: null, months: 12 as const, fetchImpl: hang, timeoutMs: 20 };
+    await expect(fetchNcmMonthlySeries(opts)).rejects.toThrow(/não respondeu a tempo/);
+    const f = fakeComexStat();
+    const s = await fetchNcmMonthlySeries({ ...opts, fetchImpl: f.impl });
+    expect(s.months).toHaveLength(12);
+  });
+
   it('success:false → ComexStatError', async () => {
     const f = fakeComexStat(ALL_ROWS, { general: { success: false } });
     await expect(
