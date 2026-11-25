@@ -7,7 +7,11 @@ import {
   resetBenchmarkRateLimit,
   takeBenchmarkSlot,
 } from '../core/comex/comexStatBenchmark';
-import { clearComexStatMonthlyCache } from '../core/comex/comexStatMonthly';
+import {
+  clearComexStatMonthlyCache,
+  resetMonthlyRateLimit,
+  takeMonthlySlots,
+} from '../core/comex/comexStatMonthly';
 import { registerComexStatsRoutes } from '../core/comex/registerComexStatsRoutes';
 import { registerPucomexRoutes } from '../core/comex/registerPucomexRoutes';
 
@@ -74,6 +78,7 @@ beforeEach(() => {
   clearComexStatCache();
   clearComexStatMonthlyCache();
   resetBenchmarkRateLimit();
+  resetMonthlyRateLimit();
 });
 
 afterAll(() => {
@@ -137,12 +142,25 @@ describe('POST /api/comex/stats/monthly', () => {
     expect((bodies[0] as { filters: unknown[] }).filters[1]).toEqual({ filter: 'country', values: [160] });
   });
 
-  it('429 sem vaga na cota compartilhada do ComexStat', async () => {
-    for (let i = 0; i < 30; i += 1) takeBenchmarkSlot();
+  it('429 sem vaga na cota própria da série mensal', async () => {
+    takeMonthlySlots(30);
     const res = await post({ ncmCode: '95069100' });
     expect(res.status).toBe(429);
     expect((await res.json()).error).toMatch(/Muitas consultas/);
     expect(bodies).toHaveLength(0);
+  });
+
+  it('cota do benchmark esgotada não bloqueia a série mensal', async () => {
+    for (let i = 0; i < 30; i += 1) takeBenchmarkSlot();
+    expect((await post({ ncmCode: '95069100' })).status).toBe(200);
+  });
+
+  it('cache não consome cota; cada POST real (um por ano da janela) consome 1', async () => {
+    takeMonthlySlots(25);
+    expect((await post({ ncmCode: '95069100', months: 24 })).status).toBe(200); // 3 anos → 28/30
+    expect((await post({ ncmCode: '95069100', months: 24 })).status).toBe(200); // cache
+    expect((await post({ ncmCode: '84713012', months: 24 })).status).toBe(429); // precisaria 3
+    expect((await post({ ncmCode: '84713012', months: 12 })).status).toBe(200); // 2 anos → 30/30
   });
 
   it('502: erro próprio do módulo sai com a mensagem; erro inesperado sai genérico', async () => {
