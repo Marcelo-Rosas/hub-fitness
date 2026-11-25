@@ -2,8 +2,9 @@ import type { Request } from 'express';
 import { isValidComexOperatorToken } from './comexGuard';
 
 /**
- * Consulta NCM no Portal Único só quando a requisição traz x-comex-token válido.
- * Sem token válido devolve null (a rota segue só com o Gemini/fallback).
+ * Consulta NCM no Portal Único (mTLS) só quando a requisição está autorizada
+ * (e-mail do Access em COMEX_ALLOWED_EMAILS ou x-comex-token válido).
+ * Sem autorização devolve null (a rota segue só com o Gemini/fallback).
  */
 export async function fetchPortalNcmIfAuthorized(
   req: Pick<Request, 'headers'>,
