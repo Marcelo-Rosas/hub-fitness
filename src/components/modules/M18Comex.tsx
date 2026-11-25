@@ -165,6 +165,8 @@ export const M18Comex: React.FC = () => {
   const [authSuccessMsg, setAuthSuccessMsg] = useState<string | null>(null);
   const [guard, setGuard] = useState<ComexGuardStatus | null>(null);
   const [tokenRejected, setTokenRejected] = useState(false);
+  // Recusa com token enviado (vs. sem token nenhum): muda a mensagem do painel.
+  const [sentTokenRejected, setSentTokenRejected] = useState(false);
   // /status falhou (rede ou resposta sem guard): não dá para saber se o Access autoriza.
   const [guardCheckFailed, setGuardCheckFailed] = useState(false);
   const [, setTokenVersion] = useState(0);
@@ -176,8 +178,12 @@ export const M18Comex: React.FC = () => {
 
   /** comexFetch + detecção de recusa do gateway por token (volta ao painel do token). */
   const cfetch = async (path: string, init?: RequestInit) => {
+    const sentToken = !!getComexOperatorToken();
     const res = await comexFetch(path, init);
-    if (await isComexTokenRejection(res)) setTokenRejected(true);
+    if (await isComexTokenRejection(res)) {
+      setTokenRejected(true);
+      if (sentToken) setSentTokenRejected(true);
+    }
     return res;
   };
 
@@ -188,8 +194,13 @@ export const M18Comex: React.FC = () => {
       if (json.success) {
         setPortalStatus(json.status);
         setRepStatus(json.representante ?? null);
-        if (json.guard) setGuard(json.guard);
-        else setGuardCheckFailed(true);
+        if (json.guard) {
+          setGuard(json.guard);
+          setGuardCheckFailed(false);
+        } else {
+          setGuard(null);
+          setGuardCheckFailed(true);
+        }
         setStoreFallback(json.store?.fallbackReason ?? null);
         if (json.session) {
           setPucomexAuth({
@@ -204,10 +215,13 @@ export const M18Comex: React.FC = () => {
           });
         }
       } else {
+        // guard antigo (ex.: authorized=false) não pode prender o painel após salvar token.
+        setGuard(null);
         setGuardCheckFailed(true);
       }
     } catch {
       /* offline */
+      setGuard(null);
       setGuardCheckFailed(true);
     }
   };
@@ -820,9 +834,12 @@ export const M18Comex: React.FC = () => {
       ) : needsToken ? (
         <ComexOperatorTokenPanel
           configuredOnServer={guard?.operatorTokenConfigured ?? false}
-          rejected={tokenRejected}
+          rejected={sentTokenRejected}
+          accessConfigured={guard?.accessEmailConfigured ?? false}
+          statusUnknown={guardCheckFailed}
           onSaved={() => {
             setTokenRejected(false);
+            setSentTokenRejected(false);
             setTokenVersion((v) => v + 1);
             void loadFieldDefs().catch(() => undefined);
             void loadProcesses().catch(() => undefined);

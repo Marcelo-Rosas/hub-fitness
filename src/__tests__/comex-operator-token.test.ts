@@ -7,6 +7,7 @@ import {
   getComexOperatorToken,
   comexFetch,
   isComexTokenRejection,
+  OPERATOR_TOKEN_TTL_MS,
 } from '../components/modules/comexOperatorToken';
 
 function makeStorage() {
@@ -48,6 +49,29 @@ describe('comexOperatorToken', () => {
     (globalThis as any).sessionStorage.setItem('hub.comex.operatorToken', 'x');
     setComexOperatorToken('');
     expect(getComexOperatorToken()).toBe('');
+  });
+
+  it('token expira 30 dias depois de salvo', () => {
+    const t0 = 1_700_000_000_000;
+    setComexOperatorToken('abc_DEF-1234567890', t0);
+    expect(getComexOperatorToken(t0 + OPERATOR_TOKEN_TTL_MS)).toBe('abc_DEF-1234567890');
+    expect(getComexOperatorToken(t0 + OPERATOR_TOKEN_TTL_MS + 1)).toBe('');
+    expect((globalThis as any).localStorage.getItem('hub.comex.operatorToken')).toBeNull();
+  });
+
+  it('token antigo sem data começa a contar a expiração na leitura', () => {
+    (globalThis as any).localStorage.setItem('hub.comex.operatorToken', 'old_token_1234567890');
+    const t0 = 1_700_000_000_000;
+    expect(getComexOperatorToken(t0)).toBe('old_token_1234567890');
+    expect(getComexOperatorToken(t0 + OPERATOR_TOKEN_TTL_MS + 1)).toBe('');
+  });
+
+  it('migração: localStorage.setItem lançando ainda devolve o token do sessionStorage', () => {
+    (globalThis as any).sessionStorage.setItem('hub.comex.operatorToken', 'legacy_token_123456');
+    (globalThis as any).localStorage.setItem = () => {
+      throw new Error('QuotaExceededError');
+    };
+    expect(getComexOperatorToken()).toBe('legacy_token_123456');
   });
 
   it('gera 64 hex e nunca repete', () => {

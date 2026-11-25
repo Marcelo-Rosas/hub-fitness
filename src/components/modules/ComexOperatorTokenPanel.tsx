@@ -11,14 +11,20 @@ import {
 interface ComexOperatorTokenPanelProps {
   onSaved: () => void;
   configuredOnServer: boolean;
-  /** true quando o gateway respondeu 401/503 ao token salvo. */
+  /** true quando o gateway respondeu 401/503 a um token enviado por este navegador. */
   rejected?: boolean;
+  /** Servidor aceita login do Cloudflare Access (COMEX_ALLOWED_EMAILS + Worker). */
+  accessConfigured?: boolean;
+  /** /status falhou: não se sabe se o Access autoriza. */
+  statusUnknown?: boolean;
 }
 
 export const ComexOperatorTokenPanel: React.FC<ComexOperatorTokenPanelProps> = ({
   onSaved,
   configuredOnServer,
   rejected = false,
+  accessConfigured = false,
+  statusUnknown = false,
 }) => {
   const [token, setToken] = useState(getComexOperatorToken);
   const [visible, setVisible] = useState(false);
@@ -56,8 +62,12 @@ export const ComexOperatorTokenPanel: React.FC<ComexOperatorTokenPanelProps> = (
             Token de operador Comex
           </h3>
           <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-            Você não está autorizado pelo login do Cloudflare Access. Como alternativa (ex.: dev local), use o token
-            de operador. Ele fica guardado neste navegador (não precisa colar de novo a cada entrada).
+            {statusUnknown
+              ? 'Não foi possível verificar o acesso no servidor. Use o token de operador para continuar.'
+              : accessConfigured
+                ? 'Seu login do Cloudflare Access não está autorizado para o Comex. Como alternativa, use o token de operador.'
+                : 'Este servidor exige o token de operador para o Comex.'}{' '}
+            Ele fica guardado neste navegador por 30 dias (não precisa colar de novo a cada entrada).
           </p>
         </div>
       </div>
@@ -98,9 +108,9 @@ export const ComexOperatorTokenPanel: React.FC<ComexOperatorTokenPanelProps> = (
 
       {error && <p className="text-xs text-rose-700">{error}</p>}
 
-      {rejected && configuredOnServer && (
+      {rejected && configuredOnServer && !command && (
         <p className="text-xs text-rose-700 leading-relaxed">
-          O servidor recusou o token desta aba. Cole o token que você gravou no secret (gerenciador de senhas) —
+          O servidor recusou o token deste navegador. Cole o token que você gravou no secret (gerenciador de senhas) —
           não clique em Gerar: um token novo só funciona depois de gravar o secret de novo e reiniciar o container.
         </p>
       )}
