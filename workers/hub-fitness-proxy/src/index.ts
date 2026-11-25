@@ -26,6 +26,8 @@ interface Env {
   // Cloudflare Access (painel Zero Trust → Access → Applications → app do hub)
   CF_ACCESS_TEAM_DOMAIN?: string;
   CF_ACCESS_AUD?: string;
+  // 'true' = container confia em x-hub-access-email (só o Worker injeta; nunca em dev local)
+  HUB_TRUST_ACCESS_HEADER?: string;
   // secrets (opcionais: app sobe sem eles, com fallbacks)
   GEMINI_API_KEY?: string;
   OPERATOR_DATABASE_URL?: string;
@@ -57,6 +59,7 @@ const PASSTHROUGH_ENV = [
   "PUCOMEX_CNPJ_LABEL",
   "PUCOMEX_USE_VECTRA_HUB_CERT",
   "COMEX_CLIENT_SLUG",
+  "HUB_TRUST_ACCESS_HEADER",
   "GEMINI_API_KEY",
   "OPERATOR_DATABASE_URL",
   "DATABASE_URL",

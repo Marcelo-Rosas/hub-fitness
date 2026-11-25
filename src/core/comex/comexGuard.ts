@@ -7,7 +7,9 @@
  * 1. Identidade do Cloudflare Access: o Worker valida o login do Access e envia
  *    ao container o header confiável x-hub-access-email (e-mail em minúsculas),
  *    sempre removendo a cópia vinda do cliente. Autoriza se o e-mail estiver em
- *    COMEX_ALLOWED_EMAILS (lista separada por vírgula).
+ *    COMEX_ALLOWED_EMAILS (lista separada por vírgula). O header só é aceito com
+ *    HUB_TRUST_ACCESS_HEADER='true' (var injetada só pelo Worker): sem ela — dev
+ *    local, Express em 0.0.0.0 — qualquer um na rede poderia forjar o header.
  * 2. Segredo do servidor: COMEX_OPERATOR_TOKEN, enviado pelo M18 no header
  *    x-comex-token.
  *
@@ -30,8 +32,13 @@ function configuredToken(): string | null {
   return t ? t : null;
 }
 
-/** Lista normalizada (trim + minúsculas) de COMEX_ALLOWED_EMAILS. */
+/**
+ * Lista normalizada (trim + minúsculas) de COMEX_ALLOWED_EMAILS — vazia se o
+ * container não confia no header do Access (HUB_TRUST_ACCESS_HEADER !== 'true').
+ * Assim a lista só conta como "configurada" (503 vs 401) quando a flag existe.
+ */
 function allowedEmails(): string[] {
+  if (process.env.HUB_TRUST_ACCESS_HEADER !== 'true') return [];
   return String(process.env.COMEX_ALLOWED_EMAILS || '')
     .split(',')
     .map((e) => e.trim().toLowerCase())
@@ -81,7 +88,8 @@ export function isValidComexOperatorToken(req: Pick<Request, 'headers'>): boolea
 }
 
 /**
- * Estrito: sem COMEX_ALLOWED_EMAILS nem COMEX_OPERATOR_TOKEN no servidor → 503
+ * Estrito: sem COMEX_ALLOWED_EMAILS (com HUB_TRUST_ACCESS_HEADER='true') nem
+ * COMEX_OPERATOR_TOKEN no servidor → 503
  * (mesmo em DEMO); sem identidade autorizada nem token válido → 401.
  */
 export function requireComexOperatorStrict(req: Request, res: Response, next: NextFunction): void {
