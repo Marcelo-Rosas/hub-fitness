@@ -29,6 +29,7 @@ import { extractProcessFromPdfs, mergeExtracted } from './pdfExtract';
 import { ingestPdfBuffer } from './pdfIngest';
 import { comexErrorStatus, registerComexClientRoutes } from './registerComexClientRoutes';
 import { registerComexTrackingRoutes } from './registerComexTrackingRoutes';
+import { registerComexStatsRoutes } from './registerComexStatsRoutes';
 import { computeRadarUsage, processRadarDate, type RadarUsage } from './radarUsage';
 import {
   ComexStatError,
@@ -149,6 +150,7 @@ export function registerPucomexRoutes(app: Express): void {
   app.use('/api/comex', comexGateway);
   registerComexClientRoutes(app);
   registerComexTrackingRoutes(app);
+  registerComexStatsRoutes(app);
 
   app.get('/api/comex/pucomex/status', async (_req, res) => {
     const store = await storeOf();

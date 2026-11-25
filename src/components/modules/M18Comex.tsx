@@ -56,6 +56,7 @@ import { ComexClientsPanel } from './ComexClientsPanel';
 import { RadarUsageBadge } from './RadarUsageBadge';
 import { NcmTreatmentsPanel, type NcmTreatmentsData } from './NcmTreatmentsPanel';
 import { NcmBenchmarkCard } from './NcmBenchmarkCard';
+import { NcmMarketSeriesCard } from './NcmMarketSeriesCard';
 import { ComexTrackingCard, TrackingBadge, type TrackingSummaryItem } from './ComexTrackingCard';
 import { formatWarning } from '../../core/comex/integraComexPublic';
 import { declarationRouteNote } from '../../core/comex/comexRegistry';
@@ -1570,6 +1571,9 @@ export const M18Comex: React.FC = () => {
                 fobUsd={benchmarkReq.fobUsd}
                 kg={benchmarkReq.kg}
               />
+            )}
+            {benchmarkReq && (
+              <NcmMarketSeriesCard ncmCode={benchmarkReq.ncmCode} country={benchmarkReq.country} />
             )}
             {aiResult && (
               <div className="space-y-3 text-xs">
