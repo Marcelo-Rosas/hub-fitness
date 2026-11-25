@@ -805,6 +805,7 @@ export const M18Comex: React.FC = () => {
       {needsToken ? (
         <ComexOperatorTokenPanel
           configuredOnServer={guard?.operatorTokenConfigured ?? false}
+          rejected={tokenRejected}
           onSaved={() => {
             setTokenRejected(false);
             setTokenVersion((v) => v + 1);

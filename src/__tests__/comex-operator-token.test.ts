@@ -9,20 +9,45 @@ import {
   isComexTokenRejection,
 } from '../components/modules/comexOperatorToken';
 
-function stubStorage() {
+function makeStorage() {
   const store = new Map<string, string>();
-  (globalThis as any).sessionStorage = {
+  return {
     getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
     setItem: (k: string, v: string) => void store.set(k, v),
     removeItem: (k: string) => void store.delete(k),
   };
 }
 
+function stubStorage() {
+  (globalThis as any).localStorage = makeStorage();
+  (globalThis as any).sessionStorage = makeStorage();
+}
+
 describe('comexOperatorToken', () => {
   beforeEach(() => stubStorage());
   afterEach(() => {
+    delete (globalThis as any).localStorage;
     delete (globalThis as any).sessionStorage;
     vi.restoreAllMocks();
+  });
+
+  it('token sobrevive a nova aba (localStorage, não sessionStorage)', () => {
+    setComexOperatorToken('abc_DEF-1234567890');
+    (globalThis as any).sessionStorage = makeStorage(); // aba nova
+    expect(getComexOperatorToken()).toBe('abc_DEF-1234567890');
+  });
+
+  it('migra token antigo do sessionStorage para o localStorage', () => {
+    (globalThis as any).sessionStorage.setItem('hub.comex.operatorToken', 'legacy_token_123456');
+    expect(getComexOperatorToken()).toBe('legacy_token_123456');
+    expect((globalThis as any).localStorage.getItem('hub.comex.operatorToken')).toBe('legacy_token_123456');
+  });
+
+  it('setComexOperatorToken vazio apaga dos dois storages', () => {
+    setComexOperatorToken('abc_DEF-1234567890');
+    (globalThis as any).sessionStorage.setItem('hub.comex.operatorToken', 'x');
+    setComexOperatorToken('');
+    expect(getComexOperatorToken()).toBe('');
   });
 
   it('gera 64 hex e nunca repete', () => {
