@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import {
   verifyAccessJwt,
+  applyAccessIdentity,
   clearJwksCache,
   type JwksFetcher,
 } from '../../workers/hub-fitness-proxy/src/accessIdentity';
@@ -206,5 +207,66 @@ describe('verifyAccessJwt', () => {
     });
     const email = await verifyAccessJwt(token, { teamDomain: TEAM, aud: AUD, now: NOW, fetchJwks });
     expect(email).toBeNull();
+  });
+});
+
+describe('applyAccessIdentity', () => {
+  const ENV = { CF_ACCESS_TEAM_DOMAIN: TEAM, CF_ACCESS_AUD: AUD };
+
+  it('remove x-hub-access-email forjado quando não há JWT (e não chama verify)', async () => {
+    const incoming = new Headers({ 'x-hub-access-email': 'forjado@x.com' });
+    const upstream = new Headers({ 'x-hub-access-email': 'forjado@x.com' });
+    const verify = vi.fn(async () => 'op@exemplo.com');
+    await applyAccessIdentity(incoming, upstream, ENV, verify);
+    expect(upstream.has('x-hub-access-email')).toBe(false);
+    expect(verify).not.toHaveBeenCalled();
+  });
+
+  it('env sem CF_ACCESS_AUD → não chama verify, header ausente', async () => {
+    const incoming = new Headers({ 'cf-access-jwt-assertion': 'tok' });
+    const upstream = new Headers({ 'x-hub-access-email': 'forjado@x.com' });
+    const verify = vi.fn(async () => 'op@exemplo.com');
+    await applyAccessIdentity(incoming, upstream, { CF_ACCESS_TEAM_DOMAIN: TEAM }, verify);
+    expect(verify).not.toHaveBeenCalled();
+    expect(upstream.has('x-hub-access-email')).toBe(false);
+  });
+
+  it('env sem CF_ACCESS_TEAM_DOMAIN → não chama verify, header ausente', async () => {
+    const incoming = new Headers({ 'cf-access-jwt-assertion': 'tok' });
+    const upstream = new Headers();
+    const verify = vi.fn(async () => 'op@exemplo.com');
+    await applyAccessIdentity(incoming, upstream, { CF_ACCESS_AUD: AUD }, verify);
+    expect(verify).not.toHaveBeenCalled();
+    expect(upstream.has('x-hub-access-email')).toBe(false);
+  });
+
+  it('JWT válido → upstream recebe x-hub-access-email', async () => {
+    const incoming = new Headers({ 'Cf-Access-Jwt-Assertion': 'tok' });
+    const upstream = new Headers({ 'x-hub-access-email': 'forjado@x.com' });
+    const verify = vi.fn(async () => 'op@exemplo.com');
+    await applyAccessIdentity(incoming, upstream, ENV, verify);
+    expect(upstream.get('x-hub-access-email')).toBe('op@exemplo.com');
+    expect(verify).toHaveBeenCalledWith('tok', { teamDomain: TEAM, aud: AUD });
+  });
+
+  it('verify → null → header ausente', async () => {
+    const incoming = new Headers({ 'cf-access-jwt-assertion': 'tok' });
+    const upstream = new Headers({ 'x-hub-access-email': 'forjado@x.com' });
+    const verify = vi.fn(async () => null);
+    await applyAccessIdentity(incoming, upstream, ENV, verify);
+    expect(upstream.has('x-hub-access-email')).toBe(false);
+  });
+
+  it('normaliza CF_ACCESS_TEAM_DOMAIN (remove https:// e barra final)', async () => {
+    const incoming = new Headers({ 'cf-access-jwt-assertion': 'tok' });
+    const upstream = new Headers();
+    const verify = vi.fn(async () => 'op@exemplo.com');
+    await applyAccessIdentity(
+      incoming,
+      upstream,
+      { CF_ACCESS_TEAM_DOMAIN: 'https://equipe.cloudflareaccess.com/', CF_ACCESS_AUD: AUD },
+      verify,
+    );
+    expect(verify).toHaveBeenCalledWith('tok', { teamDomain: 'equipe.cloudflareaccess.com', aud: AUD });
   });
 });

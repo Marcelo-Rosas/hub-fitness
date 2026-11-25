@@ -5,8 +5,10 @@
  * uma instância única do container. Instância única é obrigatória enquanto a
  * intranet/comex usam SQLite local: dados vivem no disco do container e são
  * perdidos quando ele reinicia (deploy ou sleep). Ver ADR / PgIntranetStore.
+ * Identidade: o e-mail do login do Cloudflare Access (JWT verificado) vai ao container em x-hub-access-email.
  */
 import { Container, getContainer } from "@cloudflare/containers";
+import { applyAccessIdentity } from "./accessIdentity";
 
 interface Env {
   HUB_APP: DurableObjectNamespace<HubApp>;
@@ -21,6 +23,9 @@ interface Env {
   PUCOMEX_CNPJ_LABEL: string;
   PUCOMEX_USE_VECTRA_HUB_CERT: string;
   COMEX_CLIENT_SLUG?: string;
+  // Cloudflare Access (painel Zero Trust → Access → Applications → app do hub)
+  CF_ACCESS_TEAM_DOMAIN?: string;
+  CF_ACCESS_AUD?: string;
   // secrets (opcionais: app sobe sem eles, com fallbacks)
   GEMINI_API_KEY?: string;
   OPERATOR_DATABASE_URL?: string;
@@ -28,6 +33,8 @@ interface Env {
   RESEND_API_KEY?: string;
   PUCOMEX_CERT_PASSWORD?: string;
   COMEX_OPERATOR_TOKEN?: string;
+  // e-mails (Access) liberados no comex; lido pelo gateway do container
+  COMEX_ALLOWED_EMAILS?: string;
   PUCOMEX_CERT_PFX_B64_1?: string;
   PUCOMEX_CERT_PFX_B64_2?: string;
   PUCOMEX_CERT_PFX_B64_3?: string;
@@ -56,6 +63,7 @@ const PASSTHROUGH_ENV = [
   "RESEND_API_KEY",
   "PUCOMEX_CERT_PASSWORD",
   "COMEX_OPERATOR_TOKEN",
+  "COMEX_ALLOWED_EMAILS",
   "PUCOMEX_CERT_PFX_B64_1",
   "PUCOMEX_CERT_PFX_B64_2",
   "PUCOMEX_CERT_PFX_B64_3",
@@ -120,6 +128,8 @@ const SPOOFABLE = new Set([
   "x-forwarded-port",
   "x-client-ip",
   "x-cluster-client-ip",
+  // Identidade do Access: só o Worker define (applyAccessIdentity), nunca o cliente.
+  "x-hub-access-email",
 ]);
 
 function buildUpstreamHeaders(request: Request, publicHost: string): Headers {
@@ -173,9 +183,11 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
       const incoming = new URL(request.url);
+      const headers = buildUpstreamHeaders(request, incoming.host);
+      await applyAccessIdentity(request.headers, headers, env);
       const init: RequestInit = {
         method: request.method,
-        headers: buildUpstreamHeaders(request, incoming.host),
+        headers,
         redirect: "manual",
       };
       if (request.method !== "GET" && request.method !== "HEAD") {

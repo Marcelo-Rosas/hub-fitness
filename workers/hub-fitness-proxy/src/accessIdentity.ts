@@ -143,3 +143,40 @@ export async function verifyAccessJwt(
     return null;
   }
 }
+
+/** Header que o container (gateway comex) usa como identidade de quem logou no Access. */
+export const ACCESS_EMAIL_HEADER = 'x-hub-access-email';
+
+export interface AccessIdentityEnv {
+  CF_ACCESS_TEAM_DOMAIN?: string;
+  CF_ACCESS_AUD?: string;
+}
+
+/** 'https://equipe.cloudflareaccess.com/' → 'equipe.cloudflareaccess.com'. */
+function normalizarTeamDomain(raw: string): string {
+  return raw.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+}
+
+/**
+ * Repassa ao container o e-mail verificado do Access em `x-hub-access-email`.
+ * Sempre remove primeiro qualquer cópia vinda do cliente (anti-spoof). Só seta o
+ * header se o JWT de `Cf-Access-Jwt-Assertion` for válido para a equipe/AUD do env.
+ */
+export async function applyAccessIdentity(
+  incoming: Headers,
+  upstream: Headers,
+  env: AccessIdentityEnv,
+  verify: (token: string, opts: VerifyAccessJwtOptions) => Promise<string | null> = verifyAccessJwt,
+): Promise<void> {
+  upstream.delete(ACCESS_EMAIL_HEADER);
+
+  const token = incoming.get('cf-access-jwt-assertion');
+  if (!token) return;
+
+  const teamDomain = normalizarTeamDomain(env.CF_ACCESS_TEAM_DOMAIN ?? '');
+  const aud = (env.CF_ACCESS_AUD ?? '').trim();
+  if (!teamDomain || !aud) return;
+
+  const email = await verify(token, { teamDomain, aud });
+  if (email) upstream.set(ACCESS_EMAIL_HEADER, email);
+}

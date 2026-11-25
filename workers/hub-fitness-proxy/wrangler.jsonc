@@ -37,7 +37,13 @@
     "PUCOMEX_ROLE_TYPE": "OPERPORT",
     "PUCOMEX_LIVE": "true",
     "PUCOMEX_CNPJ_LABEL": "VECTRA HUB LTDA:62.188.748/0001-17",
-    "PUCOMEX_USE_VECTRA_HUB_CERT": "false"
+    "PUCOMEX_USE_VECTRA_HUB_CERT": "false",
+    // Cloudflare Access: valores vêm do painel Zero Trust (Access → Applications →
+    // app do hub): team domain (ex. <equipe>.cloudflareaccess.com) e Application
+    // Audience (AUD) tag. Vazios = Worker não repassa identidade (x-hub-access-email).
+    // COMEX_ALLOWED_EMAILS é secret (wrangler secret put), não var.
+    "CF_ACCESS_TEAM_DOMAIN": "",
+    "CF_ACCESS_AUD": ""
   },
   "routes": [
     {
