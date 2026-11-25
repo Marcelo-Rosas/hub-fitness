@@ -14,7 +14,7 @@ export interface VerifyAccessJwtOptions {
   aud: string;
   /** Relógio injetável em ms (testes). Padrão: Date.now(). */
   now?: number;
-  /** Busca do JWKS injetável (testes). Padrão: fetch(url).then(r => r.json()). */
+  /** Busca do JWKS injetável (testes). Padrão: fetch(url) → json(); HTTP não-ok lança. */
   fetchJwks?: JwksFetcher;
 }
 
@@ -33,8 +33,12 @@ export function clearJwksCache(): void {
   cacheJwks.clear();
 }
 
-const fetcherPadrao: JwksFetcher = (url) =>
-  fetch(url).then((r) => r.json() as Promise<{ keys: JsonWebKey[] }>);
+// Resposta não-ok lança: não pode virar "keys vazias" no cache (verify captura → null).
+const fetcherPadrao: JwksFetcher = async (url) => {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`JWKS do Access respondeu HTTP ${r.status}`);
+  return (await r.json()) as { keys: JsonWebKey[] };
+};
 
 function base64UrlParaBytes(s: string): Uint8Array {
   if (!/^[A-Za-z0-9_-]*$/.test(s)) throw new Error('base64url inválido');
@@ -152,9 +156,9 @@ export interface AccessIdentityEnv {
   CF_ACCESS_AUD?: string;
 }
 
-/** 'https://equipe.cloudflareaccess.com/' → 'equipe.cloudflareaccess.com'. */
+/** ' HTTPS://Equipe.cloudflareaccess.com/ ' → 'equipe.cloudflareaccess.com' (iss do JWT é minúsculo). */
 function normalizarTeamDomain(raw: string): string {
-  return raw.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+  return raw.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '').toLowerCase();
 }
 
 /**

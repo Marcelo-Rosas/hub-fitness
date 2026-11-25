@@ -165,9 +165,13 @@ export const M18Comex: React.FC = () => {
   const [authSuccessMsg, setAuthSuccessMsg] = useState<string | null>(null);
   const [guard, setGuard] = useState<ComexGuardStatus | null>(null);
   const [tokenRejected, setTokenRejected] = useState(false);
+  // /status falhou (rede ou resposta sem guard): não dá para saber se o Access autoriza.
+  const [guardCheckFailed, setGuardCheckFailed] = useState(false);
   const [, setTokenVersion] = useState(0);
   // Painel só quando o servidor diz que não estamos autorizados (Access ou token).
-  // Antes do /status carregar (guard null), cai no critério antigo: sem token salvo = painel.
+  // Enquanto o /status não carrega, mostra "Verificando acesso…" (evita piscar o painel
+  // para quem entra pelo Access). Se o /status falhou, critério antigo: sem token salvo = painel.
+  const checkingAccess = !tokenRejected && guard === null && !guardCheckFailed;
   const needsToken = tokenRejected || (guard ? !guard.authorized : !getComexOperatorToken());
 
   /** comexFetch + detecção de recusa do gateway por token (volta ao painel do token). */
@@ -185,6 +189,7 @@ export const M18Comex: React.FC = () => {
         setPortalStatus(json.status);
         setRepStatus(json.representante ?? null);
         if (json.guard) setGuard(json.guard);
+        else setGuardCheckFailed(true);
         setStoreFallback(json.store?.fallbackReason ?? null);
         if (json.session) {
           setPucomexAuth({
@@ -198,9 +203,12 @@ export const M18Comex: React.FC = () => {
             authenticatedAt: json.session.authenticatedAt,
           });
         }
+      } else {
+        setGuardCheckFailed(true);
       }
     } catch {
       /* offline */
+      setGuardCheckFailed(true);
     }
   };
 
@@ -804,7 +812,12 @@ export const M18Comex: React.FC = () => {
         )}
       </div>
 
-      {needsToken ? (
+      {checkingAccess ? (
+        <div className="flex items-center gap-2 p-4 text-sm text-slate-400">
+          <RefreshCw className="w-4 h-4 animate-spin" />
+          Verificando acesso…
+        </div>
+      ) : needsToken ? (
         <ComexOperatorTokenPanel
           configuredOnServer={guard?.operatorTokenConfigured ?? false}
           rejected={tokenRejected}

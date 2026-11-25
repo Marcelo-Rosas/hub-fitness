@@ -208,6 +208,25 @@ describe('verifyAccessJwt', () => {
     const email = await verifyAccessJwt(token, { teamDomain: TEAM, aud: AUD, now: NOW, fetchJwks });
     expect(email).toBeNull();
   });
+
+  it('fetcher padrão: resposta não-ok (ex.: 503) → null, mesmo com corpo JSON de chaves', async () => {
+    const token = await sign(headerOk, payloadOk());
+    const fetchGlobal = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ keys: [publicJwk] }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    );
+    vi.stubGlobal('fetch', fetchGlobal);
+    try {
+      const email = await verifyAccessJwt(token, { teamDomain: TEAM, aud: AUD, now: NOW });
+      expect(email).toBeNull();
+      expect(fetchGlobal).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe('applyAccessIdentity', () => {
@@ -257,14 +276,14 @@ describe('applyAccessIdentity', () => {
     expect(upstream.has('x-hub-access-email')).toBe(false);
   });
 
-  it('normaliza CF_ACCESS_TEAM_DOMAIN (remove https:// e barra final)', async () => {
+  it('normaliza CF_ACCESS_TEAM_DOMAIN (trim, remove https:// e barra final, minúsculas)', async () => {
     const incoming = new Headers({ 'cf-access-jwt-assertion': 'tok' });
     const upstream = new Headers();
     const verify = vi.fn(async () => 'op@exemplo.com');
     await applyAccessIdentity(
       incoming,
       upstream,
-      { CF_ACCESS_TEAM_DOMAIN: 'https://equipe.cloudflareaccess.com/', CF_ACCESS_AUD: AUD },
+      { CF_ACCESS_TEAM_DOMAIN: ' HTTPS://Equipe.CloudflareAccess.com/ ', CF_ACCESS_AUD: AUD },
       verify,
     );
     expect(verify).toHaveBeenCalledWith('tok', { teamDomain: 'equipe.cloudflareaccess.com', aud: AUD });
