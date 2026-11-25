@@ -277,7 +277,7 @@ app.post("/api/gemini/comex-ai", async (req, res) => {
   } = req.body ?? {};
 
   // Enriquece com consulta NCM no Portal quando sessão/live disponível
-  // Só com x-comex-token válido: evita anônimo gerar tráfego mTLS/autenticar em nome da VECTRA
+  // Só com request autorizado (e-mail do Access ou x-comex-token): evita anônimo gerar tráfego mTLS/autenticar em nome da VECTRA
   const portalNcm = await fetchPortalNcmIfAuthorized(req, String(ncmCode), pucomexClient);
 
   const hasPortal = portalNcm != null;

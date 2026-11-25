@@ -1,13 +1,23 @@
 /**
- * Token de operador Comex (header x-comex-token) — guardado só na aba
- * (sessionStorage). Exigido pelas rotas /api/comex (exceto status/catalog/benchmark).
+ * Token de operador Comex (header x-comex-token) — guardado no localStorage
+ * deste navegador (persiste entre abas/visitas; antes era sessionStorage e o
+ * painel voltava a cada entrada). Exigido pelas rotas /api/comex (exceto
+ * status/catalog/benchmark/stats).
  */
 
 const KEY = 'hub.comex.operatorToken';
 
 export function getComexOperatorToken(): string {
   try {
-    return (sessionStorage.getItem(KEY) || '').trim();
+    const persisted = (localStorage.getItem(KEY) || '').trim();
+    if (persisted) return persisted;
+    // Migração: token salvo pela versão antiga (sessionStorage).
+    const legacy = (sessionStorage.getItem(KEY) || '').trim();
+    if (legacy) {
+      localStorage.setItem(KEY, legacy);
+      sessionStorage.removeItem(KEY);
+    }
+    return legacy;
   } catch {
     return '';
   }
@@ -16,8 +26,9 @@ export function getComexOperatorToken(): string {
 export function setComexOperatorToken(token: string): void {
   const clean = token.trim();
   try {
-    if (clean) sessionStorage.setItem(KEY, clean);
-    else sessionStorage.removeItem(KEY);
+    if (clean) localStorage.setItem(KEY, clean);
+    else localStorage.removeItem(KEY);
+    sessionStorage.removeItem(KEY);
   } catch {
     /* storage bloqueado — token vale só até recarregar */
   }

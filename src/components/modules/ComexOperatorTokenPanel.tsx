@@ -11,11 +11,14 @@ import {
 interface ComexOperatorTokenPanelProps {
   onSaved: () => void;
   configuredOnServer: boolean;
+  /** true quando o gateway respondeu 401/503 ao token salvo. */
+  rejected?: boolean;
 }
 
 export const ComexOperatorTokenPanel: React.FC<ComexOperatorTokenPanelProps> = ({
   onSaved,
   configuredOnServer,
+  rejected = false,
 }) => {
   const [token, setToken] = useState(getComexOperatorToken);
   const [visible, setVisible] = useState(false);
@@ -53,7 +56,8 @@ export const ComexOperatorTokenPanel: React.FC<ComexOperatorTokenPanelProps> = (
             Token de operador Comex
           </h3>
           <p className="text-xs text-slate-600 mt-1 leading-relaxed">
-            As rotas do Comex exigem o token de operador. Ele fica guardado só nesta aba do navegador.
+            Você não está autorizado pelo login do Cloudflare Access. Como alternativa (ex.: dev local), use o token
+            de operador. Ele fica guardado neste navegador (não precisa colar de novo a cada entrada).
           </p>
         </div>
       </div>
@@ -94,15 +98,21 @@ export const ComexOperatorTokenPanel: React.FC<ComexOperatorTokenPanelProps> = (
 
       {error && <p className="text-xs text-rose-700">{error}</p>}
 
-      <p className="text-xs text-amber-700 leading-relaxed">
-        Atenção: gravar ou trocar o secret só vale depois de reiniciar o container (deploy). Sem{' '}
-        <span className="font-mono">DATABASE_URL</span>, reiniciar APAGA o SQLite (processos, clientes e
-        despachantes). Fixe o token uma vez, antes de cadastrar clientes reais, e ligue o Postgres antes do uso
-        real.
-      </p>
+      {rejected && configuredOnServer && (
+        <p className="text-xs text-rose-700 leading-relaxed">
+          O servidor recusou o token desta aba. Cole o token que você gravou no secret (gerenciador de senhas) —
+          não clique em Gerar: um token novo só funciona depois de gravar o secret de novo e reiniciar o container.
+        </p>
+      )}
 
       {command && (
         <div className="space-y-2">
+          <p className="text-xs text-amber-700 leading-relaxed">
+            Atenção: gravar ou trocar o secret só vale depois de reiniciar o container (deploy). Sem{' '}
+            <span className="font-mono">DATABASE_URL</span>, reiniciar APAGA o SQLite (processos, clientes e
+            despachantes). Fixe o token uma vez, antes de cadastrar clientes reais, e ligue o Postgres antes do uso
+            real.
+          </p>
           <p className="text-xs text-slate-700">
             {copied
               ? 'O token foi copiado para a área de transferência. '

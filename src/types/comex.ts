@@ -234,6 +234,11 @@ export interface PucomexRepresentativeStatus {
 export interface ComexGuardStatus {
   operatorTokenRequired: boolean;
   operatorTokenConfigured: boolean;
+  /** COMEX_ALLOWED_EMAILS definido e HUB_TRUST_ACCESS_HEADER='true' no servidor (a lista nunca é exposta). */
+  accessEmailConfigured: boolean;
+  /** O request que chamou /status está autorizado (Access ou token). */
+  authorized: boolean;
+  via: 'access' | 'token' | null;
 }
 
 export interface ComexPort {

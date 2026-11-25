@@ -152,7 +152,7 @@ export function registerPucomexRoutes(app: Express): void {
   registerComexTrackingRoutes(app);
   registerComexStatsRoutes(app);
 
-  app.get('/api/comex/pucomex/status', async (_req, res) => {
+  app.get('/api/comex/pucomex/status', async (req, res) => {
     const store = await storeOf();
     res.json({
       success: true,
@@ -160,7 +160,7 @@ export function registerPucomexRoutes(app: Express): void {
       status: pucomexClient.getStatusMasked(),
       session: pucomexClient.getSessionMasked(),
       representante: { status: pucomexRepClient.getStatusMasked(), session: pucomexRepClient.getSessionMasked() },
-      guard: comexGuardStatus(),
+      guard: comexGuardStatus(req),
       environments: PUCOMEX_ENVIRONMENTS,
       roleTypes: PUCOMEX_ROLE_TYPES,
       store: { driver: store.driver, docsRoot: defaultDocsRoot(), fallbackReason: getStoreFallbackReason() },

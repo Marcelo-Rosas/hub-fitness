@@ -21,7 +21,7 @@ Fonte: [Ambientes](https://docs.portalunico.siscomex.gov.br/ambientes/)
 | `producao` | https://portalunico.siscomex.gov.br |
 | `homologacao` | https://hom.pucomex.serpro.gov.br (restrito) |
 
-Env: `PUCOMEX_ENV`, `PUCOMEX_CERT_PFX_PATH`, `PUCOMEX_CERT_PASSWORD`, `PUCOMEX_ROLE_TYPE`, `PUCOMEX_REP_CERT_PFX_PATH`, `PUCOMEX_REP_CERT_PASSWORD`, `PUCOMEX_REP_ROLE_TYPE`, `PUCOMEX_LIVE`, `COMEX_OPERATOR_TOKEN`, `PUCOMEX_PROXY_ALLOW_WRITE`
+Env: `PUCOMEX_ENV`, `PUCOMEX_CERT_PFX_PATH`, `PUCOMEX_CERT_PASSWORD`, `PUCOMEX_ROLE_TYPE`, `PUCOMEX_REP_CERT_PFX_PATH`, `PUCOMEX_REP_CERT_PASSWORD`, `PUCOMEX_REP_ROLE_TYPE`, `PUCOMEX_LIVE`, `COMEX_OPERATOR_TOKEN`, `COMEX_ALLOWED_EMAILS`, `HUB_TRUST_ACCESS_HEADER` (só o Worker injeta `'true'`; nunca em dev local), `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` (as duas últimas no Worker), `PUCOMEX_PROXY_ALLOW_WRITE`
 
 Sem PFX → modo **DEMO** (sessão local + respostas stub; paths oficiais preservados).
 
@@ -34,13 +34,17 @@ Sem PFX → modo **DEMO** (sessão local + respostas stub; paths oficiais preser
 - TTCE vazio → `ttceDiag` (tipo do arquivo, amostra/gzip/zip se string, chaves, nº de intervalos, intervalos da NCM com `paisesOrigem`, código de país usado). Arquivo string (JSON com BOM) é parseado antes do recorte.
 
 ## Trava geral (`src/core/comex/comexGuard.ts`)
-- `comexGateway` montado com `app.use('/api/comex', …)` em `registerPucomexRoutes.ts`: **todo** `/api/comex/*` exige header `x-comex-token` = `COMEX_OPERATOR_TOKEN`, inclusive em DEMO e em dev.
+- `comexGateway` montado com `app.use('/api/comex', …)` em `registerPucomexRoutes.ts`: **todo** `/api/comex/*` exige autorização, inclusive em DEMO e em dev. Duas vias:
+  1. **Principal — identidade do Cloudflare Access.** O Worker (`workers/hub-fitness-proxy/src/accessIdentity.ts`) valida o JWT `Cf-Access-Jwt-Assertion` (JWKS do team `CF_ACCESS_TEAM_DOMAIN`, audience `CF_ACCESS_AUD`) e repassa ao container o header confiável `x-hub-access-email` (minúsculas), sempre removendo a cópia vinda do cliente. Autoriza se o e-mail estiver em `COMEX_ALLOWED_EMAILS` (lista por vírgula; secret: `npx.cmd wrangler secret put COMEX_ALLOWED_EMAILS` na pasta `workers/hub-fitness-proxy`). O container só aceita esse header com `HUB_TRUST_ACCESS_HEADER='true'` — var em `wrangler.jsonc` repassada pelo Worker (`PASSTHROUGH_ENV`). Sem a flag (dev local: Express em `0.0.0.0` e certificado ICP real) o header é ignorado e a lista não conta como configurada; **nunca** setar a flag no `.env` local.
+  2. **Fallback (dev local sem Access)** — header `x-comex-token` = `COMEX_OPERATOR_TOKEN`.
 - Livres (`COMEX_PUBLIC_ROUTES`): `GET /api/comex/pucomex/status`, `GET /api/comex/pucomex/catalog`, `POST /api/comex/benchmark` e `POST /api/comex/stats/monthly` (dados públicos ComexStat, cota 30/min).
-- Sem `COMEX_OPERATOR_TOKEN` no servidor → 503 `COMEX_OPERATOR_TOKEN_UNSET` (também em DEMO). Header ausente ou errado → 401 `COMEX_OPERATOR_TOKEN_REQUIRED`. Comparação por SHA-256 + `timingSafeEqual`.
+- Nem `COMEX_ALLOWED_EMAILS` (com a flag) nem `COMEX_OPERATOR_TOKEN` no servidor → 503 `COMEX_OPERATOR_TOKEN_UNSET` (também em DEMO). E-mail fora da lista e token ausente/errado → 401 `COMEX_OPERATOR_TOKEN_REQUIRED`. Token comparado por SHA-256 + `timingSafeEqual`.
+- `/status` devolve `guard` com `operatorTokenRequired`, `operatorTokenConfigured`, `accessEmailConfigured`, `authorized` e `via` (`'access'` | `'token'` | `null`). O M18 só mostra o painel do token quando `guard.authorized` é `false` (ou o gateway recusou); antes do `/status` carregar mostra "Verificando acesso…"; se o `/status` falhar, sem token salvo = painel. `accessEmailConfigured` só é `true` com lista **e** flag.
+- **Deploy:** `CF_ACCESS_TEAM_DOMAIN` e `CF_ACCESS_AUD` são `vars` em `workers/hub-fitness-proxy/wrangler.jsonc`, e `wrangler deploy` aplica as vars do jsonc — os valores reais têm de estar no jsonc, senão o que foi configurado no painel da Cloudflare é sobrescrito (vazio = via Access desligada).
 - Login do app é mock (forjável, repo público) → **não** serve de autorização.
-- Gerador no M18 (`src/components/modules/ComexOperatorTokenPanel.tsx`, lógica em `comexOperatorToken.ts`): botões **Gerar** e **Salvar**. O token fica só no `sessionStorage` da aba. Salvar valida o formato (`^[A-Za-z0-9_-]{16,}$`), copia o TOKEN para a área de transferência e mostra o comando `cd workers\hub-fitness-proxy; Get-Clipboard | npx.cmd wrangler secret put COMEX_OPERATOR_TOKEN` (rodar na raiz do repo; o token não vai no comando). **O servidor nunca recebe o token por HTTP**; o secret é gravado pelo próprio comando (Cloudflare ou `.env` local).
+- Gerador no M18 (`src/components/modules/ComexOperatorTokenPanel.tsx`, lógica em `comexOperatorToken.ts`): botões **Gerar** e **Salvar**. O token fica no `localStorage` do navegador (antes `sessionStorage` → painel voltava a cada aba/visita; migração automática). Aviso de restart/SQLite só aparece após Salvar (junto do comando); recusa do gateway mostra "cole o token gravado, não gere outro". Salvar valida o formato (`^[A-Za-z0-9_-]{16,}$`), copia o TOKEN para a área de transferência e mostra o comando `cd workers\hub-fitness-proxy; Get-Clipboard | npx.cmd wrangler secret put COMEX_OPERATOR_TOKEN` (rodar na raiz do repo; o token não vai no comando). **O servidor nunca recebe o token por HTTP**; o secret é gravado pelo próprio comando (Cloudflare ou `.env` local).
 - **Aviso operacional:** gravar/trocar o secret só vale após reiniciar o container (deploy); sem `DATABASE_URL`, reiniciar APAGA o SQLite (processos, clientes, despachantes). Fixe o token uma vez, antes de cadastrar clientes reais, e ligue o Postgres antes do uso real.
-- `POST /api/gemini/comex-ai` só consulta o NCM no Portal (mTLS) com `x-comex-token` válido; sem token roda só com o Gemini.
+- `POST /api/gemini/comex-ai` só consulta o NCM no Portal (mTLS) quando o request está autorizado (e-mail do Access em `COMEX_ALLOWED_EMAILS` ou `x-comex-token` válido); sem autorização roda só com o Gemini.
 - Proxy: só `GET`; escrita exige `PUCOMEX_PROXY_ALLOW_WRITE=true`. Path absoluto/`//` recusado.
 - `/status` expõe `status.certError` (PFX testado com `tls.createSecureContext`; "mac verify failure" = senha errada ou .pfx corrompido) e `guard`.
 - `autenticar` respeita 60s mesmo com `force` e deduplica chamadas simultâneas.
@@ -83,7 +87,8 @@ Sem PFX → modo **DEMO** (sessão local + respostas stub; paths oficiais preser
 - `src/core/comex/registerPucomexRoutes.ts` — Express
 - `src/core/comex/environments.ts`, `endpoints.ts`
 - `src/components/modules/M18Comex.tsx`
-- `src/components/modules/ComexOperatorTokenPanel.tsx` — gerador de token
+- `src/components/modules/ComexOperatorTokenPanel.tsx` — gerador de token (fallback)
+- `workers/hub-fitness-proxy/src/accessIdentity.ts` — valida JWT do Cloudflare Access e gera `x-hub-access-email`
 - `src/components/modules/ComexClientsPanel.tsx`
 - `.env.example` (bloco PUCOMEX + COMEX_DOCS_ROOT + COMEX_RADAR_*)
 
